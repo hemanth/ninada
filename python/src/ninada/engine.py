@@ -355,10 +355,10 @@ class Ninada:
         noise_duration: float = 0.80,
         tier: str = "auto",
         chunk_frames: int = 64,
-        halo_frames: int = 16,
+        halo_frames: int = 12,
         crossfade_samples: int = 256,
     ) -> Iterator[dict[str, Any]]:
-        """Stream audio chunks (<200 ms TTFA) via 16-frame halo + 256-sample raised-cosine crossfaded HiFi-GAN."""
+        """Stream audio chunks (<200 ms TTFA) via 12-frame halo + 256-sample raised-cosine crossfaded HiFi-GAN."""
         use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
         clauses = split_prosodic_clauses(text)
         t_start = time.perf_counter()
@@ -389,6 +389,7 @@ class Ninada:
             )
             fade_out = 1.0 - fade_in
 
+            global_ord = 0
             for c_idx, clause in enumerate(clauses):
                 parsed = text_to_ids(clause, lang=use_lang)
                 ort_in: dict[str, Any] = {
@@ -411,12 +412,21 @@ class Ninada:
                     voice_cond = None
 
                 total_frames = int(latents.shape[2])
-                bounds = list(range(0, total_frames, chunk_f))
+                bounds: list[tuple[int, int]] = []
+                cur = 0
+                while cur < total_frames:
+                    step = min(chunk_f, 48) if global_ord == 0 else chunk_f
+                    nxt = min(total_frames, cur + step)
+                    if total_frames - nxt < 32:
+                        nxt = total_frames
+                    bounds.append((cur, nxt))
+                    cur = nxt
+                    global_ord += 1
+
                 num_sub = max(1, len(bounds))
                 prev_tail: np.ndarray | None = None
 
-                for sub_i, st in enumerate(bounds):
-                    ed = min(total_frames, st + chunk_f)
+                for sub_i, (st, ed) in enumerate(bounds):
                     is_last_sub = sub_i == num_sub - 1
                     w_st = max(0, st - halo_f)
                     w_ed = min(total_frames, ed + halo_f)

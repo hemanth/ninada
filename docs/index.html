@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ninada — Streaming Pan-Indic &amp; Classical Sanskrit Neural TTS Studio</title>
-  <meta name="description" content="Ninada: Sub-second streaming Pan-Indic and Classical Sanskrit Neural VITS + HiFi-GAN speech synthesizer powered by Web Worker ONNX Runtime WebAssembly SIMD and Paninian Akshara G2P." />
+  <title>Ninada — Sanskrit &amp; Indian Language Streaming Voice Studio</title>
+  <meta name="description" content="Ninada: Natural, real-time streaming speech synthesis for Classical Sanskrit, Kannada, Hindi, Tamil, Telugu, and Malayalam — running privately in the browser with offline model caching." />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23121210'/%3E%3Cpath d='M7 16h3l2.5-7 4 14 3.5-10 2.5 3H25' fill='none' stroke='%23fbfaf7' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" />
   <style>
     :root {
       --paper: #fbfaf7;
@@ -559,26 +559,26 @@
       <div>
         <div class="kicker">
           <span id="modelDot" class="status-dot loading"></span>
-          <span id="modelStatusKicker">NINADA // STREAMING PAN-INDIC &amp; CLASSICAL SANSKRIT NEURAL VITS + HIFI-GAN</span>
+          <span id="modelStatusKicker">NINADA // SANSKRIT &amp; INDIAN LANGUAGE STREAMING VOICE STUDIO</span>
         </div>
         <h1>Ninada<span class="title-dev" id="devTitle"></span></h1>
         <p class="subtitle">
-          Sub-second streaming Pan-Indic &amp; Classical Sanskrit neural speech synthesis trained on Google Cloud NVIDIA L4 GPUs (anechoic Male studio voices from Su-srota Sanskrit + AI4Bharat Rasa) and running off-main-thread via Web Worker WebAssembly SIMD.
+          Natural, studio-clarity speech for Classical Sanskrit and five Indian languages — streaming live right in your browser with instant playback and offline caching.
         </p>
       </div>
       <div class="masthead-badges">
-        <span class="pill-stat">6 NATIVE SPECIALISTS</span>
-        <span class="pill-stat">HALO-STREAMING TTFA</span>
-        <span class="pill-stat">27.3 + 27.4 MB ONNX</span>
+        <span class="pill-stat">6 INDIAN LANGUAGES</span>
+        <span class="pill-stat">INSTANT STREAMING</span>
+        <span class="pill-stat">OFFLINE CACHE</span>
         <a class="pill-stat" href="https://huggingface.co/gnumanth/ninada" target="_blank" rel="noopener" style="text-decoration:none;">HF MODEL</a>
         <a class="pill-stat" href="https://github.com/hemanth/ninada" target="_blank" rel="noopener" style="text-decoration:none;">GITHUB</a>
       </div>
     </header>
 
-    <section class="loader-bar" aria-label="Neural ONNX Runtime Status">
+    <section class="loader-bar" aria-label="Voice Model Status">
       <div class="loader-info">
         <svg class="icon" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" /></svg>
-        <span id="loaderLabel">Initializing Web Worker ONNX Runtime WebAssembly SIMD...</span>
+        <span id="loaderLabel">Preparing browser voice engine...</span>
       </div>
       <div class="progress-track">
         <div id="loaderFill" class="progress-fill"></div>
@@ -753,7 +753,7 @@
     const PRESETS_BY_LANG = {
       sa: [
         { label: 'Sanskrit \u00b7 Madhvacharya', lang: 'sa', text: '\u092a\u094d\u0930\u091c\u094d\u091e\u093e\u092a\u0942\u0930\u094d\u0935\u0915\u0935\u094d\u092f\u093e\u092a\u093e\u0930\u0935\u0924\u094d\u0924\u094d\u0935\u0902 \u091c\u0940\u0935\u0924\u094d\u0935\u092e\u094d \u0964 \u092f\u0925\u093e\u0930\u094d\u0925\u091c\u094d\u091e\u093e\u0928\u0902 \u092a\u094d\u0930\u092e\u093e\u0923\u092e\u094d \u0965' },
-        { label: 'Sanskrit \u00b7 Su-srota Shloka', lang: 'sa', text: '\u0935\u093e\u0917\u0930\u094d\u0925\u093e\u0935\u093f\u0935 \u0938\u0902\u092a\u0943\u0915\u094d\u0924\u094c \u0935\u093e\u0917\u0930\u094d\u0925\u092a\u094d\u0930\u0924\u093f\u092a\u0924\u094d\u0924\u092f\u0947 \u0964 \u091c\u0917\u0924\u0903 \u092a\u093f\u0924\u0930\u094c \u0935\u0928\u094d\u0926\u0947 \u092a\u093e\u0930\u094d\u0935\u0924\u0940\u092a\u0930\u092e\u0947\u0936\u094d\u0935\u0930\u094c \u0965' },
+        { label: 'Sanskrit \u00b7 Kalidasa Raghuvamsha', lang: 'sa', text: '\u0935\u093e\u0917\u0930\u094d\u0925\u093e\u0935\u093f\u0935 \u0938\u0902\u092a\u0943\u0915\u094d\u0924\u094c \u0935\u093e\u0917\u0930\u094d\u0925\u092a\u094d\u0930\u0924\u093f\u092a\u0924\u094d\u0924\u092f\u0947 \u0964 \u091c\u0917\u0924\u0903 \u092a\u093f\u0924\u0930\u094c \u0935\u0928\u094d\u0926\u0947 \u092a\u093e\u0930\u094d\u0935\u0924\u0940\u092a\u0930\u092e\u0947\u0936\u094d\u0935\u0930\u094c \u0965' },
         { label: 'Sanskrit \u00b7 Rigveda & Vedanta', lang: 'sa', text: '\u090b\u0924\u0902 \u091a \u0938\u0924\u094d\u092f\u0902 \u091a\u093e\u092d\u0940\u0926\u094d\u0927\u093e\u0924\u094d \u0924\u092a\u0938\u094b\u093d\u0927\u094d\u092f\u091c\u093e\u092f\u0924 \u0964 \u0924\u0924\u094b \u0930\u093e\u0924\u094d\u0930\u094d\u092f\u091c\u093e\u092f\u0924 \u0924\u0924\u0903 \u0938\u092e\u0941\u0926\u094d\u0930\u094b \u0905\u0930\u094d\u0923\u0935\u0903 \u0965' },
         { label: 'Sanskrit \u00b7 IAST Streaming', lang: 'sa', text: 'karma\u1e47yev\u0101dhik\u0101raste m\u0101 phale\u1e63u kad\u0101cana | m\u0101 karmaphalaheturbh\u016brm\u0101 te sa\u1e45go\'stvakarmani || yogastha\u1e25 kuru karm\u0101\u1e47i sa\u1e45ga\u1e43 tyaktv\u0101 dhana\u00f1jaya |' },
       ],
@@ -863,18 +863,89 @@
       setDownloadEnabled(!locked && Boolean(currentBlobUrl));
     }
 
-    // Gapless Web Audio streaming state
+    // Real-time AudioWorklet ring-buffer streaming state + fallback scheduler
     let audioCtx = null;
+    let workletNode = null;
+    let workletReady = false;
+    let workletFailed = false;
+    let activePlaySessionId = 0;
+    let isStreamAudioActive = false;
+    let pendingAudioSrcUrl = null;
+    let playbackIdleResolvers = [];
+
+    // Fallback AudioBufferSourceNode state (used only if AudioWorklet is unavailable)
     let activeSources = [];
     let nextPlayTime = 0;
     let streamPlayStartCtxTime = 0;
     let totalScheduledSec = 0;
     let rafPlayhead = 0;
+    let lastRafTs = 0;
 
-    function stopLiveAudio() {
+    const streamStats = {
+      engine: 'none',
+      crossOriginIsolated: Boolean(window.crossOriginIsolated),
+      threads: 1,
+      underrunCount: 0,
+      playedSamples: 0,
+      bufferedSamples: 0,
+      totalPushedSamples: 0,
+      watermarkSamples: 0,
+      maxRafGapMs: 0,
+      isPlaying: false,
+      endedCount: 0,
+    };
+    window.__ninadaStreamStats = streamStats;
+
+    function resolvePlaybackWaiters() {
+      const waiters = playbackIdleResolvers.splice(0, playbackIdleResolvers.length);
+      for (const fn of waiters) {
+        try { fn(streamStats); } catch {}
+      }
+    }
+
+    window.__ninadaWaitForPlayback = () => {
+      if (!isStreamAudioActive && activeSources.length === 0) {
+        return Promise.resolve(streamStats);
+      }
+      return new Promise((res) => {
+        playbackIdleResolvers.push(res);
+      });
+    };
+
+    function finishLiveStreamPlayback() {
+      isStreamAudioActive = false;
+      streamStats.isPlaying = false;
+      streamStats.bufferedSamples = 0;
       if (rafPlayhead) {
         cancelAnimationFrame(rafPlayhead);
         rafPlayhead = 0;
+      }
+      lastRafTs = 0;
+      if (!currentPendingReq) {
+        synthBtn.classList.remove('streaming');
+        synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
+        stopBtn.disabled = true;
+      }
+      if (pendingAudioSrcUrl) {
+        audioPlayer.src = pendingAudioSrcUrl;
+        pendingAudioSrcUrl = null;
+      }
+      renderWaveBars(0);
+      resolvePlaybackWaiters();
+    }
+
+    function stopLiveAudio() {
+      activePlaySessionId += 1;
+      isStreamAudioActive = false;
+      streamStats.isPlaying = false;
+      streamStats.bufferedSamples = 0;
+      if (rafPlayhead) {
+        cancelAnimationFrame(rafPlayhead);
+        rafPlayhead = 0;
+      }
+      lastRafTs = 0;
+      if (workletNode) {
+        workletNode.port.postMessage({ type: 'stop' });
       }
       for (const src of activeSources) {
         try { src.stop(); } catch {}
@@ -883,23 +954,147 @@
       activeSources = [];
       nextPlayTime = 0;
       totalScheduledSec = 0;
+      if (pendingAudioSrcUrl) {
+        audioPlayer.src = pendingAudioSrcUrl;
+        pendingAudioSrcUrl = null;
+      }
       audioPlayer.pause();
+      resolvePlaybackWaiters();
+    }
+
+    function startPlayheadLoop() {
+      if (rafPlayhead) return;
+      lastRafTs = performance.now();
+      const tick = (now) => {
+        if (!isStreamAudioActive && activeSources.length === 0 && currentPendingReq === null) {
+          rafPlayhead = 0;
+          lastRafTs = 0;
+          return;
+        }
+        if (lastRafTs > 0) {
+          const dt = now - lastRafTs;
+          // Ignore background tab suspension > 500ms; capture genuine main-thread frame jank
+          if (dt < 500 && dt > streamStats.maxRafGapMs) {
+            streamStats.maxRafGapMs = dt;
+          }
+        }
+        lastRafTs = now;
+
+        let progress = 0;
+        if (workletReady && workletNode) {
+          const denom = Math.max(1600, streamStats.totalPushedSamples);
+          progress = Math.min(1, streamStats.playedSamples / denom);
+        } else if (audioCtx && totalScheduledSec > 0) {
+          const played = Math.max(0, audioCtx.currentTime - streamPlayStartCtxTime);
+          progress = Math.min(1, played / Math.max(0.05, totalScheduledSec));
+        }
+        renderWaveBars(progress);
+        rafPlayhead = requestAnimationFrame(tick);
+      };
+      rafPlayhead = requestAnimationFrame(tick);
     }
 
     async function ensureAudioContext() {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return null;
       if (!audioCtx) {
-        audioCtx = new Ctx();
+        try {
+          audioCtx = new Ctx({ latencyHint: 'playback' });
+        } catch {
+          audioCtx = new Ctx();
+        }
       }
       if (audioCtx.state === 'suspended') {
         try { await audioCtx.resume(); } catch {}
       }
+      if (!workletReady && !workletFailed && audioCtx.audioWorklet) {
+        try {
+          await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js');
+          workletNode = new AudioWorkletNode(audioCtx, 'ninada-stream-processor', {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [1],
+          });
+          workletNode.port.onmessage = (ev) => {
+            const m = ev.data || {};
+            if (m.sessionId && m.sessionId !== activePlaySessionId) return;
+            if (m.type === 'progress') {
+              streamStats.playedSamples = m.playedSourceSamples;
+              streamStats.bufferedSamples = m.bufferedSourceSamples;
+              streamStats.underrunCount = m.underrunCount;
+            } else if (m.type === 'underrun') {
+              streamStats.underrunCount = m.underrunCount;
+              streamStats.playedSamples = m.playedSourceSamples;
+            } else if (m.type === 'ended') {
+              streamStats.playedSamples = m.playedSourceSamples;
+              streamStats.underrunCount = m.underrunCount;
+              streamStats.endedCount += 1;
+              finishLiveStreamPlayback();
+            }
+          };
+          workletNode.connect(audioCtx.destination);
+          workletReady = true;
+          streamStats.engine = 'audioworklet';
+        } catch {
+          workletFailed = true;
+          streamStats.engine = 'buffersource-fallback';
+        }
+      }
       return audioCtx;
     }
 
-    function schedulePcmChunk(pcm, sampleRate = SAMPLE_RATE) {
+    function beginLiveAudioSession() {
+      activePlaySessionId += 1;
+      const initialWatermark = window.crossOriginIsolated
+        ? Math.round(0.045 * SAMPLE_RATE)
+        : Math.round(0.28 * SAMPLE_RATE);
+      streamStats.underrunCount = 0;
+      streamStats.playedSamples = 0;
+      streamStats.bufferedSamples = 0;
+      streamStats.totalPushedSamples = 0;
+      streamStats.watermarkSamples = initialWatermark;
+      streamStats.maxRafGapMs = 0;
+      streamStats.isPlaying = true;
+      isStreamAudioActive = true;
+      if (workletReady && workletNode) {
+        workletNode.port.postMessage({
+          type: 'reset',
+          sessionId: activePlaySessionId,
+          sampleRate: SAMPLE_RATE,
+          watermarkSamples: initialWatermark,
+        });
+      }
+      return activePlaySessionId;
+    }
+
+    function pushLivePcmChunk(pcm, sampleRate = SAMPLE_RATE, chunkMeta = null) {
       if (!audioCtx || audioCtx.state !== 'running') return;
+      if (workletReady && workletNode) {
+        // On non-COI 1-thread fallback CPUs, adapt watermark from measured Chunk 0 vocoder speed
+        if (chunkMeta && chunkMeta.index === 0) {
+          const estVocRtf = (chunkMeta.vocoderMs || chunkMeta.latencyMs || 0) / Math.max(120, (chunkMeta.durationSec || 0.5) * 1000);
+          if (estVocRtf > 0.52) {
+            const extraCushionSec = Math.min(1.8, Math.max(0.65, (estVocRtf - 0.40) * 2.4));
+            const adaptedWatermark = pcm.length + Math.round(extraCushionSec * sampleRate);
+            streamStats.watermarkSamples = adaptedWatermark;
+            workletNode.port.postMessage({
+              type: 'watermark',
+              watermarkSamples: adaptedWatermark,
+            });
+          }
+        }
+        const copy = pcm.slice();
+        streamStats.totalPushedSamples += copy.length;
+        streamStats.bufferedSamples += copy.length;
+        workletNode.port.postMessage(
+          { type: 'push', pcm: copy, sampleRate },
+          [copy.buffer]
+        );
+        startPlayheadLoop();
+        return;
+      }
+
+      // Fallback AudioBufferSourceNode scheduling
       const buf = audioCtx.createBuffer(1, pcm.length, sampleRate);
       buf.copyToChannel(pcm, 0);
       const src = audioCtx.createBufferSource();
@@ -907,39 +1102,24 @@
       src.connect(audioCtx.destination);
 
       const now = audioCtx.currentTime;
-      const startAt = nextPlayTime > now ? nextPlayTime : now + 0.015;
+      const startAt = nextPlayTime > now ? nextPlayTime : now + 0.02;
       if (activeSources.length === 0) {
         streamPlayStartCtxTime = startAt;
       }
       nextPlayTime = startAt + buf.duration;
       totalScheduledSec += buf.duration;
+      streamStats.totalPushedSamples += pcm.length;
 
       activeSources.push(src);
       src.onended = () => {
         const i = activeSources.indexOf(src);
         if (i >= 0) activeSources.splice(i, 1);
         if (activeSources.length === 0 && currentPendingReq === null) {
-          stopBtn.disabled = true;
-          if (lastPcm) drawWaveform(lastPcm, 0);
+          finishLiveStreamPlayback();
         }
       };
       src.start(startAt);
-
-      if (!rafPlayhead) {
-        const tick = () => {
-          if (!audioCtx || (activeSources.length === 0 && currentPendingReq === null)) {
-            rafPlayhead = 0;
-            return;
-          }
-          const played = Math.max(0, audioCtx.currentTime - streamPlayStartCtxTime);
-          const denom = Math.max(0.05, totalScheduledSec);
-          if (livePreviewPcm && livePreviewPcm.length > 0) {
-            drawWaveform(livePreviewPcm, Math.min(1, played / denom));
-          }
-          rafPlayhead = requestAnimationFrame(tick);
-        };
-        rafPlayhead = requestAnimationFrame(tick);
-      }
+      startPlayheadLoop();
     }
 
     function renderPresetsForLang(langCode) {
@@ -988,7 +1168,7 @@
       modelDot.classList.remove('ready');
       modelDot.classList.add('loading');
       loaderFill.style.width = '8%';
-      loaderLabel.textContent = `Loading ${targetLang.toUpperCase()} Specialist Neural ONNX...`;
+      loaderLabel.textContent = `Loading ${targetLang.toUpperCase()} voice model...`;
       activeTierBadge.textContent = `LOADING \u00b7 ${targetLang.toUpperCase()}`;
       setStudioControlsLocked(true);
       synthWorker.postMessage({ type: 'load_lang', lang: targetLang });
@@ -1060,11 +1240,85 @@
       return info;
     }
 
-    function drawWaveform(pcm, progress = 0) {
-      const dpr = window.devicePixelRatio || 1;
+    // Zero-jank cached-geometry 128-bar waveform renderer
+    const WAVE_BARS = 128;
+    const waveBarAmps = new Float32Array(WAVE_BARS);
+    let hasWaveBars = false;
+    let canvasCssW = 520;
+    let canvasCssH = 148;
+
+    function syncWaveCanvasSize() {
       const rect = waveCanvas.getBoundingClientRect();
-      const W = Math.max(320, Math.floor(rect.width * dpr));
-      const H = Math.max(120, Math.floor(rect.height * dpr));
+      if (rect.width > 0) canvasCssW = rect.width;
+      if (rect.height > 0) canvasCssH = rect.height;
+    }
+    syncWaveCanvasSize();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const cr = entry.contentRect;
+          if (cr.width > 0) canvasCssW = cr.width;
+          if (cr.height > 0) canvasCssH = cr.height;
+        }
+        if (hasWaveBars) renderWaveBars(0);
+      });
+      ro.observe(waveCanvas);
+    }
+
+    function updateWaveBarsFromChunks(chunks, totalLen) {
+      if (!chunks || chunks.length === 0 || totalLen <= 0) {
+        waveBarAmps.fill(0);
+        hasWaveBars = false;
+        return;
+      }
+      const step = Math.max(1, Math.floor(totalLen / WAVE_BARS));
+      let cIdx = 0;
+      let cOff = 0;
+      let globalPos = 0;
+
+      for (let b = 0; b < WAVE_BARS; b++) {
+        const targetStart = b * step;
+        const targetEnd = b === WAVE_BARS - 1 ? totalLen : Math.min(totalLen, targetStart + step);
+        while (cIdx < chunks.length && globalPos + (chunks[cIdx].length - cOff) <= targetStart) {
+          globalPos += chunks[cIdx].length - cOff;
+          cIdx += 1;
+          cOff = 0;
+        }
+        let peak = 0;
+        let sumSq = 0;
+        let count = 0;
+        let tc = cIdx;
+        let to = cOff + Math.max(0, targetStart - globalPos);
+        let rem = Math.max(0, targetEnd - targetStart);
+        // Subsample stride inside very large bins so bar update stays < 0.2ms even on 30s audio
+        const stride = rem > 512 ? Math.floor(rem / 256) : 1;
+
+        while (rem > 0 && tc < chunks.length) {
+          const arr = chunks[tc];
+          while (to < arr.length && rem > 0) {
+            const v = Math.abs(arr[to]);
+            if (v > peak) peak = v;
+            sumSq += v * v;
+            count += 1;
+            const adv = Math.min(rem, stride);
+            to += adv;
+            rem -= adv;
+          }
+          if (to >= arr.length) {
+            to -= arr.length;
+            tc += 1;
+          }
+        }
+        const rms = count > 0 ? Math.sqrt(sumSq / count) : 0;
+        waveBarAmps[b] = Math.min(1, peak * 0.72 + rms * 0.55);
+      }
+      hasWaveBars = true;
+    }
+
+    function renderWaveBars(progress = 0) {
+      const dpr = window.devicePixelRatio || 1;
+      const W = Math.max(320, Math.floor(canvasCssW * dpr));
+      const H = Math.max(120, Math.floor(canvasCssH * dpr));
       if (waveCanvas.width !== W || waveCanvas.height !== H) {
         waveCanvas.width = W;
         waveCanvas.height = H;
@@ -1079,30 +1333,27 @@
       ctx.lineTo(W, H / 2);
       ctx.stroke();
 
-      if (!pcm || pcm.length === 0) return;
+      if (!hasWaveBars) return;
 
-      const bars = 128;
-      const step = Math.max(1, Math.floor(pcm.length / bars));
-      const barW = W / bars;
+      const barW = W / WAVE_BARS;
       const playX = progress * W;
+      const minBarH = 2 * dpr;
+      const scaleH = H * 0.84;
+      const rectW = Math.max(1.5 * dpr, barW - 2.2 * dpr);
 
-      for (let i = 0; i < bars; i++) {
-        let peak = 0;
-        let sumSq = 0;
-        const start = i * step;
-        const end = Math.min(pcm.length, start + step);
-        for (let j = start; j < end; j++) {
-          const v = Math.abs(pcm[j]);
-          if (v > peak) peak = v;
-          sumSq += v * v;
-        }
-        const rms = Math.sqrt(sumSq / Math.max(1, end - start));
-        const amp = Math.min(1, peak * 0.72 + rms * 0.55);
-        const h = Math.max(2 * dpr, amp * (H * 0.84));
+      for (let i = 0; i < WAVE_BARS; i++) {
+        const h = Math.max(minBarH, waveBarAmps[i] * scaleH);
         const x = i * barW;
         ctx.fillStyle = x <= playX && progress > 0 ? '#b44324' : '#121210';
-        ctx.fillRect(x + 1 * dpr, (H - h) / 2, Math.max(1.5 * dpr, barW - 2.2 * dpr), h);
+        ctx.fillRect(x + dpr, (H - h) * 0.5, rectW, h);
       }
+    }
+
+    function drawWaveform(pcm, progress = 0) {
+      if (pcm && pcm.length > 0) {
+        updateWaveBarsFromChunks([pcm], pcm.length);
+      }
+      renderWaveBars(progress);
     }
 
     function concatFloat32(chunks) {
@@ -1117,17 +1368,77 @@
       return out;
     }
 
+    async function ensureCrossOriginIsolation() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('coi') === '0') {
+        streamStats.crossOriginIsolated = Boolean(window.crossOriginIsolated);
+        return streamStats.crossOriginIsolated;
+      }
+      if (window.crossOriginIsolated) {
+        try { sessionStorage.removeItem('ninada_coi_boot'); } catch {}
+        if ('serviceWorker' in navigator && window.isSecureContext) {
+          navigator.serviceWorker.register('./coi-sw.js').catch(() => {});
+        }
+        streamStats.crossOriginIsolated = true;
+        return true;
+      }
+      if (!('serviceWorker' in navigator) || !window.isSecureContext) {
+        return false;
+      }
+      let alreadyTried = false;
+      try {
+        alreadyTried = sessionStorage.getItem('ninada_coi_boot') === '1';
+      } catch {}
+      if (alreadyTried) {
+        try { sessionStorage.removeItem('ninada_coi_boot'); } catch {}
+        return false;
+      }
+      try {
+        loaderLabel.textContent = 'Activating Multi-Core WASM SIMD Isolation...';
+        const reg = await navigator.serviceWorker.register('./coi-sw.js');
+        if (!navigator.serviceWorker.controller) {
+          await new Promise((resolve) => {
+            const timer = setTimeout(resolve, 1500);
+            navigator.serviceWorker.addEventListener(
+              'controllerchange',
+              () => {
+                clearTimeout(timer);
+                resolve();
+              },
+              { once: true }
+            );
+            const sw = reg.installing || reg.waiting || reg.active;
+            if (sw && sw.state === 'activated' && navigator.serviceWorker.controller) {
+              clearTimeout(timer);
+              resolve();
+            }
+          });
+        }
+        if (navigator.serviceWorker.controller || reg.active) {
+          sessionStorage.setItem('ninada_coi_boot', '1');
+          window.location.reload();
+          await new Promise(() => {});
+        }
+      } catch {
+        // Proceed cleanly with 1-thread WASM fallback
+      }
+      return Boolean(window.crossOriginIsolated);
+    }
+
+    setStudioControlsLocked(true);
+    setActiveLang('sa', { loadDefaultPreset: true });
+    await ensureCrossOriginIsolation();
+
     // Dedicated off-main-thread Web Worker for ONNX Runtime WASM SIMD
     const synthWorker = new Worker('./synth-worker.mjs', { type: 'module' });
     let nextReqSeq = 1;
     let currentPendingReq = null;
-    let livePreviewPcm = null;
 
     let readyResolve;
     const workerReadyPromise = new Promise((res) => { readyResolve = res; });
 
     let workerFailed = false;
-    synthWorker.addEventListener('error', (err) => {
+    synthWorker.addEventListener('error', () => {
       workerFailed = true;
       loaderFill.style.width = '100%';
       loaderLabel.textContent = 'Web Worker unavailable on device — running Zero-Dep Klatt Tier-2';
@@ -1151,12 +1462,12 @@
         const lTag = (msg.lang || activeLang).toUpperCase();
         loaderFill.style.width = `${msg.pct || 0}%`;
         if (msg.phase === 'compile') {
-          const srcNote = msg.fromCache ? 'from browser cache ' : '';
-          loaderLabel.textContent = `Compiling ${lTag} Web Worker WASM SIMD sessions ${srcNote}(${msg.totalMB.toFixed(1)} MB)...`;
+          const srcNote = msg.fromCache ? 'from offline cache ' : '';
+          loaderLabel.textContent = `Preparing ${lTag} voice engine ${srcNote}(${msg.totalMB.toFixed(1)} MB)...`;
         } else if (msg.phase === 'cache') {
-          loaderLabel.textContent = `Loading cached Ninada ${lTag} ONNX from browser storage (${msg.loadedMB.toFixed(1)} / ${msg.totalMB.toFixed(1)} MB)...`;
+          loaderLabel.textContent = `Loading cached ${lTag} voice model (${msg.loadedMB.toFixed(1)} / ${msg.totalMB.toFixed(1)} MB)...`;
         } else {
-          loaderLabel.textContent = `Downloading & caching Ninada ${lTag} ONNX (${msg.loadedMB.toFixed(1)} / ${msg.totalMB.toFixed(1)} MB)...`;
+          loaderLabel.textContent = `Downloading & caching ${lTag} voice model (${msg.loadedMB.toFixed(1)} / ${msg.totalMB.toFixed(1)} MB)...`;
         }
         return;
       }
@@ -1164,6 +1475,8 @@
       if (msg.type === 'ready') {
         workerReadyInfo = msg;
         loadedWorkerLang = msg.lang || activeLang;
+        streamStats.threads = Number(msg.threads || 1);
+        streamStats.crossOriginIsolated = Boolean(window.crossOriginIsolated);
         window.__ninadaLoadedLang = loadedWorkerLang;
         window.__ninadaReadyInfo = msg;
         window.__ninadaModelCached = Boolean(msg.cachedPersisted);
@@ -1172,17 +1485,18 @@
         loaderFill.style.width = '100%';
         modelDot.classList.remove('loading');
         modelDot.classList.add('ready');
+        const threadTag = msg.threads > 1 ? ` \u00b7 ${msg.threads} Threads` : '';
         const cacheTag = msg.fromCache
           ? ' \u00b7 Loaded from Cache'
           : msg.cachedPersisted
           ? ' \u00b7 Cached Offline'
           : '';
         if (msg.isStreamingNeural) {
-          loaderLabel.textContent = `Ninada ${lTag} Halo-Streaming VITS + HiFi-GAN Ready (${msg.totalMB.toFixed(1)} MB WASM SIMD${cacheTag})`;
-          activeTierBadge.textContent = `TIER 1 \u00b7 ${lTag} STREAMING ONNX`;
+          loaderLabel.textContent = `Ninada ${lTag} Streaming Voice Ready (${msg.totalMB.toFixed(1)} MB${threadTag}${cacheTag})`;
+          activeTierBadge.textContent = `TIER 1 \u00b7 ${lTag} STREAMING`;
         } else if (msg.isNeural) {
-          loaderLabel.textContent = `Ninada ${lTag} Neural VITS + HiFi-GAN Ready (${msg.totalMB.toFixed(1)} MB WASM SIMD${cacheTag})`;
-          activeTierBadge.textContent = `TIER 1 \u00b7 ${lTag} NEURAL ONNX`;
+          loaderLabel.textContent = `Ninada ${lTag} Voice Ready (${msg.totalMB.toFixed(1)} MB${threadTag}${cacheTag})`;
+          activeTierBadge.textContent = `TIER 1 \u00b7 ${lTag} VOICE`;
         } else {
           loaderLabel.textContent = msg.reason || 'Running Zero-Dep Klatt Tier-2 in Web Worker';
           activeTierBadge.textContent = 'TIER 2 \u00b7 KLATT ZERO-DEP';
@@ -1203,6 +1517,7 @@
 
       if (msg.type === 'chunk') {
         currentPendingReq.chunks.push(msg.pcm);
+        currentPendingReq.totalSamples += msg.pcm.length;
         if (msg.durations && msg.durations.length > 0) {
           currentPendingReq.durations.push(...msg.durations);
         }
@@ -1210,20 +1525,20 @@
           currentPendingReq.ttfaMs = msg.ttfaMs;
           metricTtfa.textContent = `${msg.ttfaMs.toFixed(1)} ms`;
         }
-        livePreviewPcm = concatFloat32(currentPendingReq.chunks);
-        const curSec = livePreviewPcm.length / SAMPLE_RATE;
+        const curSec = currentPendingReq.totalSamples / SAMPLE_RATE;
         metricDuration.textContent = `${curSec.toFixed(2)} s (${currentPendingReq.chunks.length} ch)`;
         activeTierBadge.textContent =
           msg.tier === 'neural_onnx' ? 'STREAMING \u00b7 NEURAL ONNX' : 'STREAMING \u00b7 KLATT';
 
+        updateWaveBarsFromChunks(currentPendingReq.chunks, currentPendingReq.totalSamples);
         if (!rafPlayhead) {
-          drawWaveform(livePreviewPcm, 0);
+          renderWaveBars(0);
         }
         if (currentPendingReq.durations.length > 0 && msg.index === 0) {
           refreshInspection(currentPendingReq.durations);
         }
         if (currentPendingReq.autoPlay) {
-          schedulePcmChunk(msg.pcm, msg.sampleRate || SAMPLE_RATE);
+          pushLivePcmChunk(msg.pcm, msg.sampleRate || SAMPLE_RATE, msg);
         }
         return;
       }
@@ -1231,15 +1546,10 @@
       if (msg.type === 'done') {
         const req = currentPendingReq;
         currentPendingReq = null;
-        synthBtn.classList.remove('streaming');
-        synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
-        if (activeSources.length === 0) {
-          stopBtn.disabled = true;
-        }
 
         const pcm = concatFloat32(req.chunks);
         lastPcm = pcm;
-        livePreviewPcm = pcm;
+        updateWaveBarsFromChunks([pcm], pcm.length);
 
         let rmsSq = 0;
         for (let i = 0; i < pcm.length; i++) rmsSq += pcm[i] * pcm[i];
@@ -1249,10 +1559,24 @@
         if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
         const blob = new Blob([wavBytesArr], { type: 'audio/wav' });
         currentBlobUrl = URL.createObjectURL(blob);
-        audioPlayer.src = currentBlobUrl;
         downloadLink.href = currentBlobUrl;
         downloadLink.download = `ninada_${msg.lang}_${Date.now()}.wav`;
         setDownloadEnabled(true);
+
+        if (req.autoPlay && isStreamAudioActive && workletReady && workletNode) {
+          pendingAudioSrcUrl = currentBlobUrl;
+          workletNode.port.postMessage({ type: 'eos', sessionId: req.playSessionId });
+          synthBtnLabel.textContent = 'Playing Stream...';
+        } else if (req.autoPlay && activeSources.length > 0) {
+          pendingAudioSrcUrl = currentBlobUrl;
+          synthBtnLabel.textContent = 'Playing Stream...';
+        } else {
+          pendingAudioSrcUrl = null;
+          audioPlayer.src = currentBlobUrl;
+          synthBtn.classList.remove('streaming');
+          synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
+          stopBtn.disabled = true;
+        }
 
         const durationSec = pcm.length / SAMPLE_RATE;
         const rtf = (msg.totalMs / 1000) / Math.max(0.01, durationSec);
@@ -1264,7 +1588,7 @@
 
         refreshInspection(req.durations.length > 0 ? req.durations : null);
         if (!rafPlayhead) {
-          drawWaveform(pcm, 0);
+          renderWaveBars(0);
         }
 
         const summary = {
@@ -1280,6 +1604,8 @@
           rtf,
           rms,
           wavBytes: wavBytesArr.byteLength,
+          threads: streamStats.threads,
+          crossOriginIsolated: streamStats.crossOriginIsolated,
         };
         window.__ninadaLastResult = summary;
         req.resolve(summary);
@@ -1289,6 +1615,7 @@
       if (msg.type === 'error') {
         const req = currentPendingReq;
         currentPendingReq = null;
+        stopLiveAudio();
         synthBtn.classList.remove('streaming');
         synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
         stopBtn.disabled = true;
@@ -1320,8 +1647,10 @@
       }
       stopLiveAudio();
 
+      let playSessionId = 0;
       if (autoPlay) {
         await ensureAudioContext();
+        playSessionId = beginLiveAudioSession();
         synthBtn.classList.add('streaming');
         synthBtnLabel.textContent = 'Streaming...';
         stopBtn.disabled = false;
@@ -1333,7 +1662,9 @@
         currentPendingReq = {
           reqId,
           autoPlay,
+          playSessionId,
           chunks: [],
+          totalSamples: 0,
           durations: [],
           ttfaMs: null,
           resolve,
@@ -1347,18 +1678,17 @@
           rate: Number(rateSlider.value),
           noise: Number(noiseSlider.value),
           tier: tierSelect.value,
-          chunkFrames: 96,
         });
       });
     }
 
     audioPlayer.addEventListener('timeupdate', () => {
-      if (lastPcm && audioPlayer.duration > 0) {
-        drawWaveform(lastPcm, audioPlayer.currentTime / audioPlayer.duration);
+      if (!isStreamAudioActive && hasWaveBars && audioPlayer.duration > 0) {
+        renderWaveBars(audioPlayer.currentTime / audioPlayer.duration);
       }
     });
     audioPlayer.addEventListener('ended', () => {
-      if (lastPcm) drawWaveform(lastPcm, 0);
+      if (!isStreamAudioActive) renderWaveBars(0);
     });
 
     synthBtn.addEventListener('click', () => {
@@ -1388,8 +1718,6 @@
     window.__ninadaRunSynthesis = runSynthesis;
     window.__ninadaCancel = cancelActiveSynthesis;
 
-    setStudioControlsLocked(true);
-    setActiveLang('sa', { loadDefaultPreset: true });
     synthWorker.postMessage({ type: 'init' });
     await workerReadyPromise;
     await runSynthesis(false);

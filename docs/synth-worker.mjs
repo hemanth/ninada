@@ -278,12 +278,55 @@ async function fetchOrLoadModel(cacheKey, urls, expectedBytes, onDelta) {
   return null;
 }
 
-const SESSION_OPTS = {
-  executionProviders: ['wasm'],
-  graphOptimizationLevel: 'all',
-  enableCpuMemArena: false,
-  enableMemPattern: false,
-};
+function buildSessionOpts() {
+  const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
+  return {
+    executionProviders: ['wasm'],
+    graphOptimizationLevel: 'all',
+    enableCpuMemArena: isCoi,
+    enableMemPattern: isCoi,
+  };
+}
+
+async function warmupSessions(encSession, vocSession) {
+  try {
+    const warmIds = new ort.Tensor('int64', BigInt64Array.from([0n, 1n, 0n, 2n, 0n]), [1, 5]);
+    const warmMask = new ort.Tensor('int64', BigInt64Array.from([1n, 1n, 1n, 1n, 1n]), [1, 5]);
+    const encInNames = Array.isArray(encSession.inputNames) ? encSession.inputNames : [];
+    const feeds = { input_ids: warmIds, attention_mask: warmMask };
+    if (encInNames.includes('lang_id')) {
+      feeds.lang_id = new ort.Tensor('int64', BigInt64Array.from([0n]), [1]);
+      feeds.scales = new ort.Tensor('float32', Float32Array.from([1.0, 0.0]), [2]);
+    } else {
+      feeds.scales = new ort.Tensor('float32', Float32Array.from([1.0, 0.0, 0.0]), [3]);
+    }
+    const encOut = await encSession.run(feeds);
+    warmIds.dispose?.();
+    warmMask.dispose?.();
+    feeds.lang_id?.dispose?.();
+    feeds.scales.dispose?.();
+
+    const channels = encOut.latents?.dims?.[1] || 192;
+    const warmLat = new ort.Tensor('float32', new Float32Array(channels * 16), [1, channels, 16]);
+    const vocFeeds = { latents: warmLat };
+    const vocInNames = Array.isArray(vocSession.inputNames) ? vocSession.inputNames : [];
+    let vcTensor = null;
+    if (vocInNames.includes('voice_cond') && encOut.voice_cond) {
+      vcTensor = new ort.Tensor('float32', Float32Array.from(encOut.voice_cond.data), encOut.voice_cond.dims.slice());
+      vocFeeds.voice_cond = vcTensor;
+    }
+    encOut.latents?.dispose?.();
+    encOut.voice_cond?.dispose?.();
+    encOut.durations?.dispose?.();
+
+    const vocOut = await vocSession.run(vocFeeds);
+    warmLat.dispose?.();
+    vcTensor?.dispose?.();
+    vocOut.waveform?.dispose?.();
+  } catch {
+    // Non-fatal JIT warmup
+  }
+}
 
 async function ensureLangReady(rawLang = 'sa', { emitReady = true } = {}) {
   const lc = SUPPORTED_LANGS.includes(rawLang) ? rawLang : 'sa';
@@ -328,15 +371,17 @@ async function ensureLangReady(rawLang = 'sa', { emitReady = true } = {}) {
     return voiceEngine;
   }
 
+  const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
   if (!ortConfigured) {
     ortConfigured = true;
     ort.env.wasm.wasmPaths = new URL('./ort/', import.meta.url).href;
     ort.env.wasm.proxy = false;
-    ort.env.wasm.numThreads =
-      typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated
-        ? Math.min(4, self.navigator?.hardwareConcurrency || 2)
-        : 1;
+    ort.env.wasm.numThreads = isCoi
+      ? Math.min(6, Math.max(2, (self.navigator?.hardwareConcurrency || 4) - 1))
+      : 1;
   }
+  const activeThreads = ort.env.wasm.numThreads || 1;
+  const sessionOpts = buildSessionOpts();
 
   const manifest = await getModelsManifest();
   await pruneStaleModelCaches();
@@ -385,7 +430,7 @@ async function ensureLangReady(rawLang = 'sa', { emitReady = true } = {}) {
         pct: 52,
         fromCache: encFromCache,
       });
-      const encSession = await ort.InferenceSession.create(encRes.bytes, SESSION_OPTS);
+      const encSession = await ort.InferenceSession.create(encRes.bytes, sessionOpts);
       encRes.bytes = null;
       encRes = null;
       await new Promise((r) => setTimeout(r, 8));
@@ -415,13 +460,15 @@ async function ensureLangReady(rawLang = 'sa', { emitReady = true } = {}) {
         });
         let vocSession;
         try {
-          vocSession = await ort.InferenceSession.create(vocRes.bytes, SESSION_OPTS);
+          vocSession = await ort.InferenceSession.create(vocRes.bytes, sessionOpts);
         } catch (vocErr) {
           try { await encSession.release(); } catch {}
           throw vocErr;
         }
         vocRes.bytes = null;
         vocRes = null;
+
+        await warmupSessions(encSession, vocSession);
 
         voiceEngine = await ninada(lc, {
           encoderSession: encSession,
@@ -438,6 +485,8 @@ async function ensureLangReady(rawLang = 'sa', { emitReady = true } = {}) {
           fromCache: allFromCache,
           cachedPersisted,
           cacheBackend,
+          threads: activeThreads,
+          crossOriginIsolated: isCoi,
         };
         if (emitReady) self.postMessage(lastReadyPayload);
         return voiceEngine;
@@ -531,15 +580,19 @@ self.addEventListener('message', (ev) => {
         let finalTier = 'klatt_zero_dep';
         let finalLang = targetLang;
 
+        const workerIsCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
+        const defaultChunkFrames = workerIsCoi ? 96 : 144;
+        const defaultFirstFrames = workerIsCoi ? 44 : 56;
+
         for await (const ch of engine.stream(msg.text || '', {
           lang: targetLang,
           rate: Number(msg.rate ?? 1.0),
           noise: Number(msg.noise ?? 0.667),
           noiseDuration: 0.8,
           tier,
-          firstChunkFrames: 48,
-          chunkFrames: Number(msg.chunkFrames || 96),
-          haloFrames: 16,
+          firstChunkFrames: Number(msg.firstChunkFrames || defaultFirstFrames),
+          chunkFrames: Number(msg.chunkFrames || defaultChunkFrames),
+          haloFrames: 12,
           crossfadeSamples: 256,
           signal: controller.signal,
         })) {
@@ -567,6 +620,7 @@ self.addEventListener('message', (ev) => {
               isFinal: ch.isFinal,
               durationSec: ch.durationSec,
               latencyMs: ch.latencyMs,
+              vocoderMs: ch.vocoderMs ?? ch.latencyMs,
               ttfaMs,
               lang: ch.lang,
               script: ch.script,

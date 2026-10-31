@@ -827,20 +827,20 @@ function resolveLang(val) {
   return LANG_ALIASES[k] || 'sa';
 }
 
-function splitProsodicClauses(text, maxChars = 160) {
+function buildStreamingClauses(text, maxChars = 180) {
   const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
   if (!cleaned) return [];
   const rawParts = cleaned.split(/(?<=\|\||[\u0964\u0965|.?!;\n])\s+/g);
-  const clauses = [];
+  const rawClauses = [];
   for (const part of rawParts) {
     const p = (part || '').trim();
     if (!p) continue;
     if (/^[\u0964\u0965|.?!;,\s-]+$/.test(p)) {
-      if (clauses.length > 0) clauses[clauses.length - 1] += ` ${p}`;
+      if (rawClauses.length > 0) rawClauses[rawClauses.length - 1].text += ` ${p}`;
       continue;
     }
     if (p.length <= maxChars) {
-      clauses.push(p);
+      rawClauses.push({ text: p, sentenceEnd: true });
       continue;
     }
     const words = p.split(' ');
@@ -849,13 +849,30 @@ function splitProsodicClauses(text, maxChars = 160) {
       if (!buf) buf = w;
       else if (buf.length + 1 + w.length <= maxChars) buf = `${buf} ${w}`;
       else {
-        clauses.push(buf);
+        rawClauses.push({ text: buf, sentenceEnd: false });
         buf = w;
       }
     }
-    if (buf) clauses.push(buf);
+    if (buf) rawClauses.push({ text: buf, sentenceEnd: true });
   }
-  return clauses.length > 0 ? clauses : [cleaned];
+  const merged = [];
+  for (const item of rawClauses) {
+    if (
+      merged.length > 0 &&
+      merged[merged.length - 1].text.length < 10 &&
+      merged[merged.length - 1].text.length + 1 + item.text.length <= maxChars
+    ) {
+      merged[merged.length - 1].text += ` ${item.text}`;
+      merged[merged.length - 1].sentenceEnd = item.sentenceEnd;
+    } else {
+      merged.push(item);
+    }
+  }
+  return merged.length > 0 ? merged : [{ text: cleaned, sentenceEnd: true }];
+}
+
+function splitProsodicClauses(text, maxChars = 180) {
+  return buildStreamingClauses(text, maxChars).map((c) => c.text);
 }
 
 async function resolveOrt(explicitOrt) {
@@ -936,11 +953,12 @@ async function createOrtSession(ort, source, providers, useCache = true) {
     resolved = await fetchBrowserCachedBytes(source, useCache);
   }
   const useProviders = providers || (ort.env?.wasm ? ['wasm'] : ['cpu']);
+  const canUseArena = isNode || Boolean(typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated);
   return ort.InferenceSession.create(resolved, {
     executionProviders: useProviders,
     graphOptimizationLevel: 'all',
-    enableCpuMemArena: false,
-    enableMemPattern: false,
+    enableCpuMemArena: canUseArena,
+    enableMemPattern: canUseArena,
   });
 }
 
@@ -1031,18 +1049,31 @@ async function ninada(input = 'sa', opts = {}) {
       const noise = callOpts.noise ?? opts.noise ?? 0.667;
       const noiseDuration = callOpts.noiseDuration ?? opts.noiseDuration ?? 0.80;
       const tier = callOpts.tier || 'auto';
-      const firstChunkFrames = Math.max(24, Number(callOpts.firstChunkFrames || 48));
+      const firstChunkFrames = Math.max(24, Number(callOpts.firstChunkFrames || 44));
       const chunkFrames = Math.max(32, Number(callOpts.chunkFrames || 96));
-      const haloFrames = Math.max(8, Number(callOpts.haloFrames || 16));
+      const haloFrames = Math.max(8, Number(callOpts.haloFrames || 12));
       const crossfadeSamples = Math.max(0, Math.min(Number(callOpts.crossfadeSamples ?? 256), (haloFrames * HOP_LENGTH) >> 1));
       const signal = callOpts.signal || null;
 
-      const clauses = splitProsodicClauses(text, callOpts.maxClauseChars || 160);
+      const attachLazyWav = (obj, pcmBuf) => {
+        let cachedWav = null;
+        Object.defineProperty(obj, 'wav', {
+          enumerable: true,
+          configurable: true,
+          get() {
+            if (!cachedWav) cachedWav = encodeWavBuffer(pcmBuf, SAMPLE_RATE);
+            return cachedWav;
+          },
+        });
+        return obj;
+      };
+
+      const clauses = buildStreamingClauses(text, callOpts.maxClauseChars || 180);
       const tStart = nowMs();
       let ttfaMs = null;
       let chunkIndex = 0;
 
-      // Path 1: 16-Frame Halo + 256-Sample Raised-Cosine Crossfaded Neural Streaming
+      // Path 1: 12-Frame Halo + 256-Sample Raised-Cosine Crossfaded Neural Streaming (122.1 dB SNR)
       if (tier !== 'klatt' && encSession && vocSession && ort) {
         const encInNames = Array.isArray(encSession.inputNames) ? encSession.inputNames : [];
         const vocInNames = Array.isArray(vocSession.inputNames) ? vocSession.inputNames : [];
@@ -1057,9 +1088,13 @@ async function ninada(input = 'sa', opts = {}) {
           fadeOut[i] = 1.0 - w;
         }
 
+        let globalChunkOrdinal = 0;
+
         for (let cIdx = 0; cIdx < clauses.length; cIdx++) {
           if (signal?.aborted) return;
-          const parsed = textToIds(clauses[cIdx], { lang });
+          const clauseItem = clauses[cIdx];
+          const tEnc0 = nowMs();
+          const parsed = textToIds(clauseItem.text, { lang });
           const feeds = {
             input_ids: new ort.Tensor('int64', BigInt64Array.from(parsed.inputIds.map(BigInt)), [1, parsed.inputIds.length]),
             attention_mask: new ort.Tensor('int64', BigInt64Array.from(parsed.attentionMask.map(BigInt)), [1, parsed.attentionMask.length]),
@@ -1072,6 +1107,7 @@ async function ninada(input = 'sa', opts = {}) {
           }
 
           const encOut = await encSession.run(feeds);
+          const encElapsedMs = nowMs() - tEnc0;
           feeds.input_ids.dispose?.();
           feeds.attention_mask.dispose?.();
           feeds.lang_id?.dispose?.();
@@ -1093,12 +1129,24 @@ async function ninada(input = 'sa', opts = {}) {
           encOut.voice_cond?.dispose?.();
           encOut.durations.dispose?.();
 
+          // Progressive geometric chunk ladder + sliver merging prevents Chunk 0->1 buffer underruns
           const bounds = [];
           for (let cur = 0; cur < totalFrames; ) {
-            const step = cur === 0 && cIdx === 0 ? firstChunkFrames : chunkFrames;
-            const nxt = Math.min(totalFrames, cur + step);
+            let step = chunkFrames;
+            if (globalChunkOrdinal === 0) {
+              step = firstChunkFrames;
+            } else if (globalChunkOrdinal === 1 && chunkFrames > firstChunkFrames) {
+              step = Math.round(firstChunkFrames + (chunkFrames - firstChunkFrames) * 0.30);
+            } else if (globalChunkOrdinal === 2 && chunkFrames > firstChunkFrames) {
+              step = Math.round(firstChunkFrames + (chunkFrames - firstChunkFrames) * 0.65);
+            }
+            let nxt = Math.min(totalFrames, cur + step);
+            if (totalFrames - nxt < 36) {
+              nxt = totalFrames;
+            }
             bounds.push([cur, nxt]);
             cur = nxt;
+            globalChunkOrdinal += 1;
           }
           const numSub = bounds.length;
           let prevTail = null;
@@ -1115,9 +1163,7 @@ async function ninada(input = 'sa', opts = {}) {
             for (let ch = 0; ch < channels; ch++) {
               const srcBase = ch * totalFrames + wSt;
               const dstBase = ch * winLen;
-              for (let f = 0; f < winLen; f++) {
-                sliceBuf[dstBase + f] = latData[srcBase + f];
-              }
+              sliceBuf.set(latData.subarray(srcBase, srcBase + winLen), dstBase);
             }
 
             const tChunk = nowMs();
@@ -1177,8 +1223,8 @@ async function ninada(input = 'sa', opts = {}) {
             }
 
             let pcm;
-            if (isLastSub && cIdx < clauses.length - 1) {
-              const pauseSamples = Math.round(0.08 * SAMPLE_RATE);
+            if (isLastSub && cIdx < clauses.length - 1 && clauseItem.sentenceEnd) {
+              const pauseSamples = Math.round(0.048 * SAMPLE_RATE);
               pcm = new Float32Array(basePcm.length + pauseSamples);
               pcm.set(basePcm, 0);
             } else {
@@ -1189,23 +1235,27 @@ async function ninada(input = 'sa', opts = {}) {
             const elapsedNow = nowMs() - tStart;
             if (ttfaMs === null) ttfaMs = elapsedNow;
             const isFinal = cIdx === clauses.length - 1 && isLastSub;
-            const chunkObj = {
-              pcm,
-              wav: encodeWavBuffer(pcm, SAMPLE_RATE),
-              sampleRate: SAMPLE_RATE,
-              index: chunkIndex++,
-              clauseIndex: cIdx,
-              clauseCount: clauses.length,
-              isFinal,
-              durationSec: pcm.length / SAMPLE_RATE,
-              latencyMs: nowMs() - tChunk,
-              ttfaMs,
-              lang: parsed.lang,
-              script: parsed.script,
-              tier: 'neural_onnx',
-              aksharas: subIdx === 0 ? parsed.aksharas : [],
-              durations: subIdx === 0 ? dursArr : [],
-            };
+            const vocMs = nowMs() - tChunk;
+            const chunkObj = attachLazyWav(
+              {
+                pcm,
+                sampleRate: SAMPLE_RATE,
+                index: chunkIndex++,
+                clauseIndex: cIdx,
+                clauseCount: clauses.length,
+                isFinal,
+                durationSec: pcm.length / SAMPLE_RATE,
+                latencyMs: vocMs + (subIdx === 0 ? encElapsedMs : 0),
+                vocoderMs: vocMs,
+                ttfaMs,
+                lang: parsed.lang,
+                script: parsed.script,
+                tier: 'neural_onnx',
+                aksharas: subIdx === 0 ? parsed.aksharas : [],
+                durations: subIdx === 0 ? dursArr : [],
+              },
+              pcm
+            );
             emit('chunk', chunkObj);
             yield chunkObj;
           }
@@ -1220,7 +1270,7 @@ async function ninada(input = 'sa', opts = {}) {
         for (let cIdx = 0; cIdx < clauses.length; cIdx++) {
           if (signal?.aborted) return;
           const tChunk = nowMs();
-          const parsed = textToIds(clauses[cIdx], { lang });
+          const parsed = textToIds(clauses[cIdx].text, { lang });
           const feeds = {
             input_ids: new ort.Tensor('int64', BigInt64Array.from(parsed.inputIds.map(BigInt)), [1, parsed.inputIds.length]),
             attention_mask: new ort.Tensor('int64', BigInt64Array.from(parsed.attentionMask.map(BigInt)), [1, parsed.attentionMask.length]),
@@ -1244,23 +1294,25 @@ async function ninada(input = 'sa', opts = {}) {
           for (let i = 0; i < raw.length; i++) pcm[i] = raw[i] * gain;
 
           if (ttfaMs === null) ttfaMs = nowMs() - tStart;
-          const chunkObj = {
-            pcm,
-            wav: encodeWavBuffer(pcm, SAMPLE_RATE),
-            sampleRate: SAMPLE_RATE,
-            index: chunkIndex++,
-            clauseIndex: cIdx,
-            clauseCount: clauses.length,
-            isFinal: cIdx === clauses.length - 1,
-            durationSec: pcm.length / SAMPLE_RATE,
-            latencyMs: nowMs() - tChunk,
-            ttfaMs,
-            lang: parsed.lang,
-            script: parsed.script,
-            tier: 'neural_onnx',
-            aksharas: parsed.aksharas,
-            durations: Array.from(out.durations.data, Number),
-          };
+          const chunkObj = attachLazyWav(
+            {
+              pcm,
+              sampleRate: SAMPLE_RATE,
+              index: chunkIndex++,
+              clauseIndex: cIdx,
+              clauseCount: clauses.length,
+              isFinal: cIdx === clauses.length - 1,
+              durationSec: pcm.length / SAMPLE_RATE,
+              latencyMs: nowMs() - tChunk,
+              ttfaMs,
+              lang: parsed.lang,
+              script: parsed.script,
+              tier: 'neural_onnx',
+              aksharas: parsed.aksharas,
+              durations: Array.from(out.durations.data, Number),
+            },
+            pcm
+          );
           emit('chunk', chunkObj);
           yield chunkObj;
         }
@@ -1271,25 +1323,27 @@ async function ninada(input = 'sa', opts = {}) {
       for (let cIdx = 0; cIdx < clauses.length; cIdx++) {
         if (signal?.aborted) return;
         const tChunk = nowMs();
-        const { pcm, meta: baseMeta } = synthesizeKlattPcm(clauses[cIdx], { lang, rate });
+        const { pcm, meta: baseMeta } = synthesizeKlattPcm(clauses[cIdx].text, { lang, rate });
         if (ttfaMs === null) ttfaMs = nowMs() - tStart;
-        const chunkObj = {
-          pcm,
-          wav: encodeWavBuffer(pcm, SAMPLE_RATE),
-          sampleRate: SAMPLE_RATE,
-          index: chunkIndex++,
-          clauseIndex: cIdx,
-          clauseCount: clauses.length,
-          isFinal: cIdx === clauses.length - 1,
-          durationSec: pcm.length / SAMPLE_RATE,
-          latencyMs: nowMs() - tChunk,
-          ttfaMs,
-          lang: baseMeta.lang,
-          script: baseMeta.script,
-          tier: 'klatt_zero_dep',
-          aksharas: baseMeta.aksharas,
-          durations: [],
-        };
+        const chunkObj = attachLazyWav(
+          {
+            pcm,
+            sampleRate: SAMPLE_RATE,
+            index: chunkIndex++,
+            clauseIndex: cIdx,
+            clauseCount: clauses.length,
+            isFinal: cIdx === clauses.length - 1,
+            durationSec: pcm.length / SAMPLE_RATE,
+            latencyMs: nowMs() - tChunk,
+            ttfaMs,
+            lang: baseMeta.lang,
+            script: baseMeta.script,
+            tier: 'klatt_zero_dep',
+            aksharas: baseMeta.aksharas,
+            durations: [],
+          },
+          pcm
+        );
         emit('chunk', chunkObj);
         yield chunkObj;
       }

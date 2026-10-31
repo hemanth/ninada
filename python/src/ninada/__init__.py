@@ -26,7 +26,7 @@ from .g2p import (
     text_to_ids,
 )
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 __all__ = [
     "__version__",

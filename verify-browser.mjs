@@ -23,10 +23,30 @@ async function waitForServer(url, timeoutMs = 8000) {
   throw new Error(`Server at ${url} did not start within ${timeoutMs}ms`);
 }
 
+async function waitForIsolatedBoot(page, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const state = await page.evaluate(() => ({
+        coi: Boolean(window.crossOriginIsolated),
+        hasLockFlag: typeof window.__ninadaControlsLocked === "boolean",
+      }));
+      if (state.coi && state.hasLockFlag) {
+        return state;
+      }
+    } catch {
+      // Transient navigation while coi-sw.js activates and reloads once (<50ms)
+    }
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  throw new Error("Timed out waiting for Cross-Origin Isolation (coi-sw.js) boot");
+}
+
 async function main() {
+  // Run local server WITHOUT HTTP COOP/COEP headers (COOP_COEP=0) so coi-sw.js is tested identically to GitHub Pages!
   const server = USE_LOCAL_SERVER
     ? spawn(process.execPath, ["serve-playground.mjs"], {
-        env: { ...process.env, PORT: String(PORT) },
+        env: { ...process.env, PORT: String(PORT), COOP_COEP: "0" },
         stdio: ["ignore", "pipe", "pipe"],
       })
     : null;
@@ -39,6 +59,7 @@ async function main() {
     const launchOpts = {
       headless: true,
       args: [
+        "--autoplay-policy=no-user-gesture-required",
         "--disable-background-timer-throttling",
         "--disable-renderer-backgrounding",
         "--disable-backgrounding-occluded-windows",
@@ -52,7 +73,7 @@ async function main() {
     const page = await context.newPage();
 
     const errors = [];
-    let holdNextOnnxMs = 450;
+    let holdNextOnnxMs = 600;
     let activeBucket = "phase1";
     const onnxBuckets = {
       phase1: [],
@@ -84,8 +105,9 @@ async function main() {
     });
 
     await page.goto(TARGET_URL, { waitUntil: "domcontentloaded" });
+    await waitForIsolatedBoot(page);
 
-    // 1. Verify NO buttons or studio controls work before the model finishes loading!
+    // 1. Verify Cross-Origin Isolation + NO buttons or studio controls work before the model finishes loading!
     const preLoadLock = await page.evaluate(() => {
       const knBtn = document.querySelector('.lang-btn[data-lang="kn"]');
       const synthBtn = document.getElementById("synthBtn");
@@ -100,6 +122,7 @@ async function main() {
       if (synthBtn) synthBtn.click();
 
       return {
+        crossOriginIsolated: Boolean(window.crossOriginIsolated),
         ready: Boolean(window.__ninadaReady),
         controlsLocked: window.__ninadaControlsLocked,
         synthDisabled: synthBtn?.disabled,
@@ -116,8 +139,9 @@ async function main() {
         badgeAfterBlockedClick: document.getElementById("detectedBadge")?.textContent,
       };
     });
-    console.log("Pre-load Button Lock Verification:", preLoadLock);
-    assert.equal(preLoadLock.ready, false, "Expected model to still be loading during 450ms ONNX hold");
+    console.log("Pre-load COI & Button Lock Verification:", preLoadLock);
+    assert.equal(preLoadLock.crossOriginIsolated, true, "Expected window.crossOriginIsolated === true via coi-sw.js");
+    assert.equal(preLoadLock.ready, false, "Expected model to still be loading during 600ms ONNX hold");
     assert.equal(preLoadLock.controlsLocked, true);
     assert.equal(preLoadLock.synthDisabled, true);
     assert.equal(preLoadLock.synthLabel, "Loading Model...");
@@ -146,6 +170,7 @@ async function main() {
     );
 
     const postLoadState = await page.evaluate(() => ({
+      crossOriginIsolated: Boolean(window.crossOriginIsolated),
       controlsLocked: window.__ninadaControlsLocked,
       loadedLang: window.__ninadaLoadedLang,
       modelCached: window.__ninadaModelCached,
@@ -155,7 +180,12 @@ async function main() {
       langAnyDisabled: Array.from(document.querySelectorAll(".lang-btn")).some((b) => b.disabled),
       downloadDisabled: document.getElementById("downloadLink")?.classList.contains("is-disabled"),
     }));
-    console.log("Post-load Cache & Unlock State:", postLoadState);
+    console.log("Post-load Multi-Thread WASM, Cache & Unlock State:", postLoadState);
+    assert.equal(postLoadState.crossOriginIsolated, true);
+    assert.ok(
+      postLoadState.readyInfo.threads >= 2,
+      `Expected >=2 WASM threads under COI, got ${postLoadState.readyInfo.threads}`
+    );
     assert.equal(postLoadState.controlsLocked, false);
     assert.equal(postLoadState.loadedLang, "sa");
     assert.equal(postLoadState.modelCached, true, "Expected ONNX models to be persisted in browser cache");
@@ -167,7 +197,7 @@ async function main() {
       `Expected >=2 ONNX fetches on cold load, got ${onnxBuckets.phase1.length}`
     );
 
-    // 2. Reload page in same browser context — verify 0 network ONNX requests (100% browser cache hit!)
+    // 2. Reload page in same browser context — verify immediate COI + 0 network ONNX requests (100% browser cache hit!)
     activeBucket = "reload";
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(
@@ -180,6 +210,7 @@ async function main() {
       { timeout: 90000 }
     );
     const reloadCacheState = await page.evaluate(() => ({
+      crossOriginIsolated: Boolean(window.crossOriginIsolated),
       cacheHit: window.__ninadaCacheHit,
       modelCached: window.__ninadaModelCached,
       controlsLocked: window.__ninadaControlsLocked,
@@ -189,6 +220,7 @@ async function main() {
       ...reloadCacheState,
       onnxNetworkRequestsOnReload: onnxBuckets.reload.length,
     });
+    assert.equal(reloadCacheState.crossOriginIsolated, true);
     assert.equal(
       onnxBuckets.reload.length,
       0,
@@ -205,7 +237,8 @@ async function main() {
     assert.equal(saResult.lang, "sa");
     assert.ok(saResult.samples > 16000, `Expected >1s audio, got ${saResult.samples} samples`);
     assert.ok(saResult.rms > 0.02, `Expected non-silent RMS > 0.02, got ${saResult.rms}`);
-    assert.ok(saResult.ttfaMs > 0, `Expected positive TTFA ms, got ${saResult.ttfaMs}`);
+    assert.ok(saResult.ttfaMs > 0 && saResult.ttfaMs < 650, `Expected TTFA < 650ms, got ${saResult.ttfaMs}`);
+    assert.ok(saResult.rtf < 0.55, `Expected multi-threaded RTF < 0.55, got ${saResult.rtf}`);
     assert.ok(saResult.wavBytes > 32000);
 
     await page.screenshot({
@@ -275,7 +308,7 @@ async function main() {
       assert.equal(tabState.modelCached, true, `Expected ${item.lang} ONNX specialist to be cached`);
     }
 
-    // 4. Revisit cached Kannada (`kn`) — verify 0 network ONNX requests + Multi-Sentence Streaming!
+    // 4. Revisit cached Kannada (`kn`) — verify 0 network ONNX requests + Real-Time AudioWorklet Multi-Sentence Smoothness!
     activeBucket = "revisitCached";
     await page.locator('.lang-btn[data-lang="kn"]').click();
     await page.waitForFunction(
@@ -292,16 +325,6 @@ async function main() {
     await page.locator(".preset-chip", { hasText: "Streaming Passage" }).click();
     await page.evaluate(() => {
       window.__ninadaLastResult = null;
-      window.__maxMainThreadGapMs = 0;
-      window.__rafRunning = true;
-      let last = performance.now();
-      function loop(now) {
-        const dt = now - last;
-        if (dt > window.__maxMainThreadGapMs) window.__maxMainThreadGapMs = dt;
-        last = now;
-        if (window.__rafRunning) requestAnimationFrame(loop);
-      }
-      requestAnimationFrame(loop);
     });
 
     await page.locator("#synthBtn").click();
@@ -313,25 +336,46 @@ async function main() {
       null,
       { timeout: 60000 }
     );
-    const knStream = await page.evaluate(() => {
-      window.__rafRunning = false;
+
+    // Wait for full real-time hardware AudioWorklet playback drain!
+    const knStream = await page.evaluate(async () => {
+      const midStreamLabel = document.getElementById("synthBtnLabel")?.textContent;
+      const statsAfterDrain = await window.__ninadaWaitForPlayback();
       return {
         result: window.__ninadaLastResult,
-        maxMainThreadGapMs: window.__maxMainThreadGapMs,
-        crossOriginIsolated: window.crossOriginIsolated,
+        midStreamLabel,
+        stats: { ...statsAfterDrain },
+        finalBtnLabel: document.getElementById("synthBtnLabel")?.textContent,
+        stopDisabledAfterEnd: document.getElementById("stopBtn")?.disabled,
+        audioPlayerHasBlob: (document.getElementById("audioPlayer")?.src || "").startsWith("blob:"),
       };
     });
-    console.log("Kannada Multi-Sentence Web Worker Stream:", knStream);
+    console.log("Kannada 3-Sentence Real-Time AudioWorklet Stream:", knStream);
     assert.equal(knStream.result.lang, "kn");
     assert.equal(knStream.result.tier, "neural_onnx");
     assert.ok(knStream.result.chunkCount >= 3, `Expected >=3 streamed chunks, got ${knStream.result.chunkCount}`);
     assert.ok(knStream.result.rms > 0.02);
-    assert.ok(
-      knStream.maxMainThreadGapMs < 250,
-      `Main thread blocked for ${knStream.maxMainThreadGapMs.toFixed(1)}ms (expected <250ms in Web Worker!)`
+    assert.ok(knStream.result.ttfaMs < 650, `Expected KN TTFA < 650ms, got ${knStream.result.ttfaMs}`);
+    assert.ok(knStream.result.rtf < 0.55, `Expected KN RTF < 0.55, got ${knStream.result.rtf}`);
+    assert.equal(knStream.stats.engine, "audioworklet", `Expected AudioWorklet engine, got ${knStream.stats.engine}`);
+    assert.equal(
+      knStream.stats.underrunCount,
+      0,
+      `Expected ZERO audio buffer underruns during 3-sentence KN stream, got ${knStream.stats.underrunCount}!`
     );
+    assert.ok(
+      knStream.stats.playedSamples >= Math.floor(knStream.result.samples * 0.99),
+      `Expected full sample drain (${knStream.result.samples}), played ${knStream.stats.playedSamples}`
+    );
+    assert.ok(
+      knStream.stats.maxRafGapMs < 120,
+      `Expected smooth 60fps UI (<120ms max rAF gap), got ${knStream.stats.maxRafGapMs.toFixed(1)}ms`
+    );
+    assert.equal(knStream.finalBtnLabel, "Stream Speech");
+    assert.equal(knStream.stopDisabledAfterEnd, true);
+    assert.equal(knStream.audioPlayerHasBlob, true);
 
-    // 5. Test cached Tamil (`ta`) streaming synthesis (0 network ONNX requests!)
+    // 5. Test cached Tamil (`ta`) multi-sentence real-time AudioWorklet streaming (0 network ONNX requests, 0 underruns!)
     await page.locator('.lang-btn[data-lang="ta"]').click();
     await page.waitForFunction(
       () => window.__ninadaReady === true && window.__ninadaLoadedLang === "ta" && !window.__ninadaControlsLocked,
@@ -343,6 +387,7 @@ async function main() {
       0,
       `Expected 0 ONNX network requests when switching back to cached TA, got ${onnxBuckets.revisitCached.length}`
     );
+    await page.locator(".preset-chip", { hasText: "Streaming Passage" }).click();
     await page.evaluate(() => {
       window.__ninadaLastResult = null;
     });
@@ -355,10 +400,21 @@ async function main() {
       null,
       { timeout: 45000 }
     );
-    const taResult = await page.evaluate(() => window.__ninadaLastResult);
-    console.log("Tamil Streaming Neural ONNX Result:", taResult);
-    assert.equal(taResult.lang, "ta");
-    assert.ok(taResult.rms > 0.02);
+    const taStream = await page.evaluate(async () => {
+      const statsAfterDrain = await window.__ninadaWaitForPlayback();
+      return {
+        result: window.__ninadaLastResult,
+        stats: { ...statsAfterDrain },
+      };
+    });
+    console.log("Tamil Multi-Sentence Real-Time AudioWorklet Stream:", taStream);
+    assert.equal(taStream.result.lang, "ta");
+    assert.ok(taStream.result.rms > 0.02);
+    assert.equal(
+      taStream.stats.underrunCount,
+      0,
+      `Expected ZERO audio buffer underruns during TA stream, got ${taStream.stats.underrunCount}!`
+    );
 
     // 6. Check mobile viewport responsiveness
     await page.setViewportSize({ width: 390, height: 844 });
@@ -374,9 +430,55 @@ async function main() {
       fullPage: false,
     });
 
+    // 7. Single-thread fallback check (?coi=0 in isolated context without SW) when running local verification
+    if (USE_LOCAL_SERVER) {
+      const singleThreadCtx = await browser.newContext({
+        viewport: { width: 1280, height: 800 },
+        serviceWorkers: "block",
+      });
+      const stPage = await singleThreadCtx.newPage();
+      stPage.on("pageerror", (err) => errors.push(`ST_PAGEERROR: ${err.message}`));
+      await stPage.goto(`${TARGET_URL}?coi=0`, { waitUntil: "domcontentloaded" });
+      await stPage.waitForFunction(
+        () =>
+          window.__ninadaReady === true &&
+          window.__ninadaLoadedLang === "sa" &&
+          window.__ninadaLastResult &&
+          window.__ninadaLastResult.tier === "neural_onnx",
+        null,
+        { timeout: 90000 }
+      );
+      await stPage.evaluate(() => {
+        window.__ninadaLastResult = null;
+      });
+      await stPage.locator("#synthBtn").click();
+      await stPage.waitForFunction(
+        () => window.__ninadaLastResult && window.__ninadaLastResult.tier === "neural_onnx",
+        null,
+        { timeout: 60000 }
+      );
+      const stStream = await stPage.evaluate(async () => {
+        const stats = await window.__ninadaWaitForPlayback();
+        return {
+          coi: window.crossOriginIsolated,
+          result: window.__ninadaLastResult,
+          stats: { ...stats },
+        };
+      });
+      console.log("Single-Thread Non-COI Fallback Stream Check:", stStream);
+      assert.equal(stStream.coi, false);
+      assert.equal(stStream.result.threads, 1);
+      assert.equal(
+        stStream.stats.underrunCount,
+        0,
+        `Expected ZERO underruns even in 1-thread fallback mode, got ${stStream.stats.underrunCount}!`
+      );
+      await singleThreadCtx.close();
+    }
+
     assert.equal(errors.length, 0, `Browser errors detected: ${errors.join(" | ")}`);
     await browser.close();
-    console.log(`ALL NINADA v2.0 STREAMING & CACHE BROWSER CHECKS PASSED ON ${TARGET_URL} WITH ZERO ERRORS!`);
+    console.log(`ALL NINADA v2.1 SMOOTH STREAMING & CACHE BROWSER CHECKS PASSED ON ${TARGET_URL} WITH ZERO UNDERRUNS & ZERO ERRORS!`);
   } finally {
     if (server) {
       server.kill("SIGTERM");

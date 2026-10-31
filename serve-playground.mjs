@@ -60,9 +60,10 @@ const server = http.createServer((req, res) => {
   res.setHeader("Content-Type", contentType);
   res.setHeader("Accept-Ranges", "bytes");
   res.setHeader("Cache-Control", "no-cache");
-  if (process.env.COOP_COEP === "1") {
+  if (process.env.COOP_COEP !== "0") {
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-    res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
+    res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   }
 
   const range = req.headers.range;
