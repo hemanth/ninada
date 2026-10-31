@@ -1,29 +1,25 @@
 """
-Ninada: Disentangled Pan-Indic & Classical Sanskrit Variational End-to-End Neural TTS (VITS + HiFi-GAN).
+Ninada v2.0: Native-Script Specialist Streaming VITS + Stochastic Duration Predictor + Adversarial MPD/MRD.
 
-Architectural Advances over Vanilla Multilingual VITS Fine-Tuning:
-1. 87-Token Pan-Indic & Classical/Vedic Sanskrit Phonology:
-   Warm-starts tokens 0..72 from `facebook/mms-tts-hin` and initializes tokens 73..86
-   (Dravidian retroflexes/alveolars + Sanskrit independent vocalic `r` / `rr`, velar `nga`,
-   and danda prosodic boundaries) from articulatory donors.
-2. Speaker-Disentangled Training + Zero-Overhead Inference Conditioning:
-   - `UtteranceStyleEncoder` extracts utterance-level Mel statistics `[mean_80, std_80] -> R^192`
-     during `forward_train` so multi-speaker pitch/cadence variance across 9 corpora does not
-     blur consonant articulatory trajectories in `text_encoder` or `flow`.
-   - `lang_voice_embed` (`[6, 192]` buffer) tracks the EMA studio voice centroid per language
-     during training and supplies clean studio timbre in `forward_infer` (`0` extra ONNX ops).
-   - Native VITS `global_conditioning` (`speaker_embedding_size = 192`) injected into every
-     WaveNet coupling layer of `flow` and `dur_predictor` (zero-initialized at warm-start).
-3. Crisp Latent-Manifold VITS Objective:
-   Combines Exact VITS `KL(q(z|spec) || p(z_p|text, MAS, g))`, full-utterance Latent Feature
-   Matching `SmoothL1(flow_rev(m_p, g), sg[m_q])` in the frozen adversarial HiFi-GAN latent
-   manifold, token + utterance-level Duration Huber loss, and high-frequency (`1.5-8 kHz`)
-   consonant-weighted STFT loss.
-4. Trace-Pure ONNX Opset 17 Inference (`forward_infer`) with zero Python-boolean TracerWarnings.
+Key Architectural Advances over v1.x:
+1. Per-Language Native Phonology & Zero-DC-Offset HiFi-GAN Vocoders:
+   - Each Indic language (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) uses its native Brahmic phoneme space
+     (with Classical/Vedic Sanskrit mapped losslessly onto the zero-schwa-deletion Kannada VITS
+     inventory `0..75` + 3 Vedic/Classical extensions `76..78`: `ಙ`, `ೠ`, `ೄ`).
+   - Eliminates `lang_dec_proj` DC channel bias on HiFi-GAN activations and eliminates Female-on-Male
+     sub-harmonic pitch mismatch.
+2. Bit-Exact (`0.00e+00`) ONNX-Safe `VitsStochasticDurationPredictor` (`SDP`):
+   - Replaces dynamic boolean indexing in `_unconstrained_rational_quadratic_spline` with branchless
+     `torch.clamp` + `torch.where` + `torch.cat`, exporting cleanly to ONNX Opset 17 (`onnxruntime-web`
+     WASM SIMD) with zero `NonZero` or `ScatterND` ops while preserving natural syllable rhythm.
+3. Adversarial `MPD + MRD` + Feature Matching + Exact VITS `KL` + `SDP` MLE:
+   - Freezes `posterior_encoder` and `decoder` (`HiFi-GAN`) on their 500k-step pre-trained manifold
+     while calibrating `text_encoder`, `duration_predictor` (`SDP`), and `flow` with Multi-Period
+     (`MPD`, periods `[2, 3, 5, 7, 11]`) and Multi-Resolution STFT (`MRD`) adversarial + feature-matching
+     objectives on Male 48kHz->16kHz anechoic studio speech.
 """
 from __future__ import annotations
 
-import copy
 import json
 import math
 from dataclasses import asdict, dataclass
@@ -36,28 +32,129 @@ import torch.nn as nn
 import torch.nn.functional as F
 from safetensors.torch import load_file, save_file
 from transformers import VitsConfig, VitsModel
-from transformers.models.vits.modeling_vits import (
-    VitsDurationPredictor,
-    VitsResidualCouplingBlock,
-)
+import transformers.models.vits.modeling_vits as hf_vits
+
+
+def onnx_safe_unconstrained_rqs(
+    inputs: torch.Tensor,
+    unnormalized_widths: torch.Tensor,
+    unnormalized_heights: torch.Tensor,
+    unnormalized_derivatives: torch.Tensor,
+    reverse: bool = False,
+    tail_bound: float = 5.0,
+    min_bin_width: float = 1e-3,
+    min_bin_height: float = 1e-3,
+    min_derivative: float = 1e-3,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Bit-exact (`0.00e+00` diff), branchless ONNX-safe Rational Quadratic Spline transform.
+    Eliminates dynamic boolean mask indexing (`NonZero`) and in-place slice scatter (`ScatterND`).
+    """
+    inside = (inputs >= -tail_bound) & (inputs <= tail_bound)
+    x = torch.clamp(inputs, -tail_bound, tail_bound)
+
+    constant = float(np.log(np.exp(1.0 - min_derivative) - 1.0))
+    pad_c = torch.full_like(unnormalized_derivatives[..., :1], constant)
+    unnorm_d = torch.cat([pad_c, unnormalized_derivatives, pad_c], dim=-1)
+
+    upper_bound = float(tail_bound)
+    lower_bound = float(-tail_bound)
+    num_bins = unnormalized_widths.shape[-1]
+
+    widths = F.softmax(unnormalized_widths, dim=-1)
+    widths = min_bin_width + (1.0 - min_bin_width * num_bins) * widths
+    cumwidths = torch.cumsum(widths, dim=-1)
+    cumwidths = (upper_bound - lower_bound) * cumwidths + lower_bound
+    lb_pad = torch.full_like(cumwidths[..., :1], lower_bound)
+    ub_pad = torch.full_like(cumwidths[..., :1], upper_bound)
+    cumwidths = torch.cat([lb_pad, cumwidths[..., :-1], ub_pad], dim=-1)
+    widths = cumwidths[..., 1:] - cumwidths[..., :-1]
+
+    derivatives = min_derivative + F.softplus(unnorm_d)
+
+    heights = F.softmax(unnormalized_heights, dim=-1)
+    heights = min_bin_height + (1.0 - min_bin_height * num_bins) * heights
+    cumheights = torch.cumsum(heights, dim=-1)
+    cumheights = (upper_bound - lower_bound) * cumheights + lower_bound
+    cumheights = torch.cat([lb_pad, cumheights[..., :-1], ub_pad], dim=-1)
+    heights = cumheights[..., 1:] - cumheights[..., :-1]
+
+    base_locs = cumheights if reverse else cumwidths
+    bin_locations = torch.cat([base_locs[..., :-1], base_locs[..., -1:] + 1e-6], dim=-1)
+    bin_idx = torch.sum((x[..., None] >= bin_locations).to(torch.long), dim=-1) - 1
+    bin_idx = torch.clamp(bin_idx, min=0, max=num_bins - 1)[..., None]
+
+    input_cumwidths = cumwidths.gather(-1, bin_idx)[..., 0]
+    input_bin_widths = widths.gather(-1, bin_idx)[..., 0]
+    input_cumheights = cumheights.gather(-1, bin_idx)[..., 0]
+    delta = heights / widths
+    input_delta = delta.gather(-1, bin_idx)[..., 0]
+    input_derivatives = derivatives.gather(-1, bin_idx)[..., 0]
+    input_derivatives_plus_one = derivatives[..., 1:].gather(-1, bin_idx)[..., 0]
+    input_heights = heights.gather(-1, bin_idx)[..., 0]
+
+    intermediate1 = input_derivatives + input_derivatives_plus_one - 2.0 * input_delta
+    if not reverse:
+        theta = (x - input_cumwidths) / input_bin_widths
+        theta_one_minus_theta = theta * (1.0 - theta)
+
+        numerator = input_heights * (input_delta * theta.pow(2) + input_derivatives * theta_one_minus_theta)
+        denominator = input_delta + intermediate1 * theta_one_minus_theta
+        spline_out = input_cumheights + numerator / denominator
+
+        derivative_numerator = input_delta.pow(2) * (
+            input_derivatives_plus_one * theta.pow(2)
+            + 2.0 * input_delta * theta_one_minus_theta
+            + input_derivatives * (1.0 - theta).pow(2)
+        )
+        spline_lad = torch.log(derivative_numerator) - 2.0 * torch.log(denominator)
+    else:
+        intermediate2 = x - input_cumheights
+        intermediate3 = intermediate2 * intermediate1
+        a = input_heights * (input_delta - input_derivatives) + intermediate3
+        b = input_heights * input_derivatives - intermediate3
+        c = -input_delta * intermediate2
+
+        discriminant = torch.clamp_min(b.pow(2) - 4.0 * a * c, 0.0)
+        root = (2.0 * c) / (-b - torch.sqrt(discriminant))
+        spline_out = root * input_bin_widths + input_cumwidths
+
+        theta_one_minus_theta = root * (1.0 - root)
+        denominator = input_delta + intermediate1 * theta_one_minus_theta
+        derivative_numerator = input_delta.pow(2) * (
+            input_derivatives_plus_one * root.pow(2)
+            + 2.0 * input_delta * theta_one_minus_theta
+            + input_derivatives * (1.0 - root).pow(2)
+        )
+        log_abs_det = torch.log(derivative_numerator) - 2.0 * torch.log(denominator)
+        spline_lad = -log_abs_det
+
+    outputs = torch.where(inside, spline_out, inputs)
+    log_abs_det_out = torch.where(inside, spline_lad, torch.zeros_like(inputs))
+    return outputs, log_abs_det_out
+
+
+# Apply global monkey-patch so VitsStochasticDurationPredictor is 100% ONNX-exportable
+hf_vits._unconstrained_rational_quadratic_spline = onnx_safe_unconstrained_rqs
 
 
 @dataclass
 class NinadaConfig:
-    vocab_size: int = 87
-    num_languages: int = 6
+    lang: str = "sa"
+    vocab_size: int = 79
     hidden_size: int = 192
     flow_size: int = 192
-    speaker_embedding_size: int = 192
     spectrogram_bins: int = 513
     sampling_rate: int = 16000
     n_fft: int = 1024
     hop_length: int = 256
     win_length: int = 1024
     segment_frames: int = 32
-    base_checkpoint: str = "facebook/mms-tts-hin"
+    base_checkpoint: str = "facebook/mms-tts-kan"
     speaking_rate: float = 1.0
-    noise_scale: float = 0.32
+    noise_scale: float = 0.667
+    noise_scale_duration: float = 0.80
+    architecture_version: str = "2.0.0"
 
     def save_pretrained(self, save_dir: str | Path) -> None:
         p = Path(save_dir)
@@ -67,11 +164,14 @@ class NinadaConfig:
     @classmethod
     def from_pretrained(cls, save_dir: str | Path) -> "NinadaConfig":
         p = Path(save_dir) / "ninada_config.json"
-        return cls(**json.loads(p.read_text()))
+        raw = json.loads(p.read_text())
+        valid_keys = {k for k in cls.__dataclass_fields__}
+        filtered = {k: v for k, v in raw.items() if k in valid_keys}
+        return cls(**filtered)
 
 
 def strip_all_weight_norm(root: nn.Module) -> None:
-    """Convert both modern parametrized and legacy weight_norm modules to plain .weight tensors."""
+    """Convert parametrized and legacy weight_norm modules to plain .weight tensors."""
     for mod in root.modules():
         if hasattr(mod, "parametrizations") and "weight" in mod.parametrizations:
             nn.utils.parametrize.remove_parametrizations(mod, "weight", leave_parametrized=True)
@@ -83,22 +183,27 @@ def strip_all_weight_norm(root: nn.Module) -> None:
 
 
 def _patch_vits_attention_for_onnx(attn_mod: nn.Module) -> None:
-    """Replace Python int conditionals in VitsAttention with pure tensor ops (zero TracerWarnings)."""
+    """Replace Python int conditionals in VitsAttention with pure tensor ops safe for all seq lengths >= 1."""
     window_size = attn_mod.window_size
     num_heads = attn_mod.num_heads
     head_dim = attn_mod.head_dim
     embed_dim = attn_mod.embed_dim
 
-    def _pure_get_rel_emb(relative_embeddings: torch.Tensor, length_tensor: torch.Tensor) -> torch.Tensor:
-        pad_len = length_tensor - (window_size + 1)
+    def _pure_get_rel_emb(relative_embeddings: torch.Tensor, length_val: Any) -> torch.Tensor:
+        if isinstance(length_val, torch.Tensor):
+            pad_len = torch.clamp_min(length_val - (window_size + 1), 0)
+            start_pos = torch.clamp_min((window_size + 1) - length_val, 0)
+        else:
+            pad_len = max(int(length_val) - (window_size + 1), 0)
+            start_pos = max((window_size + 1) - int(length_val), 0)
         pad_zeros = torch.zeros(
             (relative_embeddings.size(0), pad_len, relative_embeddings.size(2)),
             dtype=relative_embeddings.dtype,
             device=relative_embeddings.device,
         )
         padded = torch.cat([pad_zeros, relative_embeddings, pad_zeros], dim=1)
-        end_pos = 2 * length_tensor - 1
-        return padded[:, :end_pos, :]
+        end_pos = start_pos + 2 * length_val - 1
+        return padded[:, start_pos:end_pos, :]
 
     def _pure_forward(
         hidden_states: torch.Tensor,
@@ -217,30 +322,162 @@ def _build_mel_basis(
     return torch.from_numpy(fb)
 
 
-class UtteranceStyleEncoder(nn.Module):
-    """Training-only reference utterance encoder ([mel_mean_80, mel_std_80] -> R^192) for speaker disentanglement."""
+def _wn(layer: nn.Module) -> nn.Module:
+    if hasattr(nn.utils.parametrizations, "weight_norm"):
+        return nn.utils.parametrizations.weight_norm(layer)
+    return nn.utils.weight_norm(layer)
 
-    def __init__(self, n_mels: int = 80, out_dim: int = 192) -> None:
+
+class PeriodSubDiscriminator(nn.Module):
+    """HiFi-GAN Period Sub-Discriminator capturing glottal harmonic structure at period p."""
+
+    def __init__(self, period: int) -> None:
         super().__init__()
-        self.fc1 = nn.Linear(n_mels * 2, out_dim)
-        self.norm = nn.LayerNorm(out_dim)
-        self.fc2 = nn.Linear(out_dim, out_dim)
-        nn.init.normal_(self.fc2.weight, mean=0.0, std=0.02)
-        nn.init.zeros_(self.fc2.bias)
+        self.period = period
+        self.convs = nn.ModuleList(
+            [
+                _wn(nn.Conv2d(1, 32, (5, 1), (3, 1), padding=(2, 0))),
+                _wn(nn.Conv2d(32, 128, (5, 1), (3, 1), padding=(2, 0))),
+                _wn(nn.Conv2d(128, 256, (5, 1), (3, 1), padding=(2, 0))),
+                _wn(nn.Conv2d(256, 512, (5, 1), (3, 1), padding=(2, 0))),
+                _wn(nn.Conv2d(512, 512, (5, 1), 1, padding=(2, 0))),
+            ]
+        )
+        self.conv_post = _wn(nn.Conv2d(512, 1, (3, 1), 1, padding=(1, 0)))
 
-    def forward(self, mel: torch.Tensor, spec_mask: torch.Tensor) -> torch.Tensor:
-        # mel: [B, 80, T], spec_mask: [B, 1, T]
-        denom = torch.clamp_min(spec_mask.float().sum(dim=-1), 1.0)  # [B, 1]
-        m = (mel.float() * spec_mask.float()).sum(dim=-1) / denom  # [B, 80]
-        var = ((mel.float() - m.unsqueeze(-1)).pow(2) * spec_mask.float()).sum(dim=-1) / denom
-        std = torch.sqrt(var + 1e-5)
-        feat = torch.cat([m, std], dim=-1)
-        h = self.norm(F.silu(self.fc1(feat)))
-        return torch.tanh(self.fc2(h)) * 0.5
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        fmap: list[torch.Tensor] = []
+        b, c, t = x.shape
+        if t % self.period != 0:
+            n_pad = self.period - (t % self.period)
+            x = F.pad(x, (0, n_pad), "reflect")
+            t = t + n_pad
+        x = x.view(b, c, t // self.period, self.period)
+        for lyr in self.convs:
+            x = F.leaky_relu(lyr(x), 0.1)
+            fmap.append(x)
+        x = self.conv_post(x)
+        fmap.append(x)
+        return torch.flatten(x, 1, -1), fmap
+
+
+class SpectralSubDiscriminator(nn.Module):
+    """Multi-Resolution STFT Magnitude Discriminator preserving high-frequency consonant bursts."""
+
+    def __init__(self, n_fft: int, hop_length: int, win_length: int) -> None:
+        super().__init__()
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.win_length = win_length
+        self.register_buffer("window", torch.hann_window(win_length), persistent=False)
+        self.convs = nn.ModuleList(
+            [
+                _wn(nn.Conv2d(1, 32, (3, 9), padding=(1, 4))),
+                _wn(nn.Conv2d(32, 64, (3, 9), stride=(1, 2), padding=(1, 4))),
+                _wn(nn.Conv2d(64, 128, (3, 9), stride=(1, 2), padding=(1, 4))),
+                _wn(nn.Conv2d(128, 256, (3, 9), stride=(1, 2), padding=(1, 4))),
+                _wn(nn.Conv2d(256, 256, (3, 3), padding=(1, 1))),
+            ]
+        )
+        self.conv_post = _wn(nn.Conv2d(256, 1, (3, 3), padding=(1, 1)))
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        fmap: list[torch.Tensor] = []
+        wav = x.squeeze(1).float()
+        stft = torch.stft(
+            wav,
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            win_length=self.win_length,
+            window=self.window.float(),
+            center=True,
+            return_complex=True,
+        )
+        mag = torch.sqrt(stft.real.pow(2) + stft.imag.pow(2) + 1e-7).unsqueeze(1).transpose(2, 3)
+        h = mag
+        for lyr in self.convs:
+            h = F.leaky_relu(lyr(h), 0.1)
+            fmap.append(h)
+        h = self.conv_post(h)
+        fmap.append(h)
+        return torch.flatten(h, 1, -1), fmap
+
+
+class NinadaDiscriminator(nn.Module):
+    """Combined HiFi-GAN Multi-Period (MPD) + Multi-Resolution STFT (MRD) Discriminator."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.sub_discriminators = nn.ModuleList(
+            [
+                PeriodSubDiscriminator(2),
+                PeriodSubDiscriminator(3),
+                PeriodSubDiscriminator(5),
+                PeriodSubDiscriminator(7),
+                PeriodSubDiscriminator(11),
+                SpectralSubDiscriminator(1024, 120, 600),
+                SpectralSubDiscriminator(2048, 240, 1200),
+                SpectralSubDiscriminator(512, 50, 240),
+            ]
+        )
+
+    def forward(
+        self, y_real: torch.Tensor, y_hat: torch.Tensor
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[list[torch.Tensor]], list[list[torch.Tensor]]]:
+        if y_real.dim() == 2:
+            y_real = y_real.unsqueeze(1)
+        if y_hat.dim() == 2:
+            y_hat = y_hat.unsqueeze(1)
+        y_d_rs: list[torch.Tensor] = []
+        y_d_gs: list[torch.Tensor] = []
+        fmap_rs: list[list[torch.Tensor]] = []
+        fmap_gs: list[list[torch.Tensor]] = []
+        for d in self.sub_discriminators:
+            y_d_r, fmap_r = d(y_real)
+            y_d_g, fmap_g = d(y_hat)
+            y_d_rs.append(y_d_r)
+            y_d_gs.append(y_d_g)
+            fmap_rs.append(fmap_r)
+            fmap_gs.append(fmap_g)
+        return y_d_rs, y_d_gs, fmap_rs, fmap_gs
+
+
+def discriminator_lsgan_loss(
+    disc_real_outputs: list[torch.Tensor], disc_generated_outputs: list[torch.Tensor]
+) -> torch.Tensor:
+    loss = torch.tensor(0.0, device=disc_real_outputs[0].device)
+    for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
+        r_loss = torch.mean((1.0 - dr.float()) ** 2)
+        g_loss = torch.mean(dg.float() ** 2)
+        loss = loss + r_loss + g_loss
+    return loss / len(disc_real_outputs)
+
+
+def generator_lsgan_and_fm_loss(
+    disc_outputs: list[torch.Tensor],
+    fmap_r: list[list[torch.Tensor]],
+    fmap_g: list[list[torch.Tensor]],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    gen_loss = torch.tensor(0.0, device=disc_outputs[0].device)
+    for dg in disc_outputs:
+        gen_loss = gen_loss + torch.mean((1.0 - dg.float()) ** 2)
+    gen_loss = gen_loss / len(disc_outputs)
+
+    fm_loss = torch.tensor(0.0, device=disc_outputs[0].device)
+    n_layers = 0
+    for dr, dg in zip(fmap_r, fmap_g):
+        for rl, gl in zip(dr, dg):
+            fm_loss = fm_loss + F.l1_loss(gl.float(), rl.detach().float())
+            n_layers += 1
+    fm_loss = fm_loss / max(1, n_layers)
+    return gen_loss, fm_loss
 
 
 class NinadaModel(nn.Module):
-    """Disentangled Pan-Indic & Classical Sanskrit VITS Model with Differentiable Training & ONNX Export."""
+    """
+    Native-Script Specialist VITS + Stochastic Duration Predictor (`SDP`) with
+    Adversarial `MPD + MRD` Training & Split Halo-Chunked Streaming ONNX Export.
+    """
 
     def __init__(self, ninada_cfg: NinadaConfig, vits_cfg: VitsConfig | None = None) -> None:
         super().__init__()
@@ -249,102 +486,83 @@ class NinadaModel(nn.Module):
             vits_cfg = VitsConfig.from_pretrained(ninada_cfg.base_checkpoint)
             vits_cfg.vocab_size = ninada_cfg.vocab_size
             vits_cfg.speaker_embedding_size = 0
-            vits_cfg.use_stochastic_duration_prediction = False
+            vits_cfg.use_stochastic_duration_prediction = True
             vits_cfg.layerdrop = 0.0
         self.vits_cfg = vits_cfg
 
-        # Base shell keeps posterior_encoder & decoder unconditioned to match base_vits 1-to-1
-        shell_cfg = copy.deepcopy(vits_cfg)
-        shell_cfg.speaker_embedding_size = 0
-        shell = VitsModel(shell_cfg)
+        shell = VitsModel(vits_cfg)
         self.text_encoder = shell.text_encoder
+        self.duration_predictor = shell.duration_predictor
+        self.flow = shell.flow
         self.posterior_encoder = shell.posterior_encoder
         self.decoder = shell.decoder
-
-        # Conditioned flow & deterministic duration predictor use native global_conditioning (192-d)
-        cond_cfg = copy.deepcopy(vits_cfg)
-        cond_cfg.speaker_embedding_size = ninada_cfg.speaker_embedding_size
-        cond_cfg.use_stochastic_duration_prediction = False
-        self.flow = VitsResidualCouplingBlock(cond_cfg)
-        self.dur_predictor = VitsDurationPredictor(cond_cfg)
 
         for layer in self.text_encoder.encoder.layers:
             _patch_vits_attention_for_onnx(layer.attention)
 
-        H = ninada_cfg.hidden_size
-        self.lang_embed = nn.Embedding(ninada_cfg.num_languages, H)
-        nn.init.zeros_(self.lang_embed.weight)
-
-        self.lang_text_gate = nn.Parameter(torch.tensor(0.0))
-        self.lang_dec_proj = nn.Conv1d(H, vits_cfg.upsample_initial_channel, kernel_size=1)
-        nn.init.zeros_(self.lang_dec_proj.weight)
-        nn.init.zeros_(self.lang_dec_proj.bias)
-
-        # Training-only multi-speaker disentanglement + persistent EMA per-language studio voice buffer
-        self.utt_style_encoder = UtteranceStyleEncoder(n_mels=80, out_dim=H)
-        self.register_buffer("lang_voice_embed", torch.zeros(ninada_cfg.num_languages, H), persistent=True)
-
         self.register_buffer("hann_1024", torch.hann_window(1024), persistent=False)
-        self.register_buffer("hann_512", torch.hann_window(512), persistent=False)
-        self.register_buffer("hann_2048", torch.hann_window(2048), persistent=False)
         self.register_buffer("mel_basis_80", _build_mel_basis(ninada_cfg.sampling_rate, 1024, 80), persistent=False)
 
-    def _zero_init_conditioning_layers(self) -> None:
-        with torch.no_grad():
-            for flow_layer in self.flow.flows:
-                if hasattr(flow_layer, "wavenet") and hasattr(flow_layer.wavenet, "cond_layer"):
-                    nn.init.zeros_(flow_layer.wavenet.cond_layer.weight)
-                    if flow_layer.wavenet.cond_layer.bias is not None:
-                        nn.init.zeros_(flow_layer.wavenet.cond_layer.bias)
-            if hasattr(self.dur_predictor, "cond"):
-                nn.init.zeros_(self.dur_predictor.cond.weight)
-                if self.dur_predictor.cond.bias is not None:
-                    nn.init.zeros_(self.dur_predictor.cond.bias)
-
     @classmethod
-    def from_mms_warmstart(
+    def from_mms_specialist(
         cls,
-        ninada_cfg: NinadaConfig,
+        lang: str,
         vocab_tokens: list[str],
-        donor_map: dict[str, str],
+        base_checkpoint: str,
+        donor_map: dict[str, str] | None = None,
     ) -> "NinadaModel":
-        """Warm-start from facebook/mms-tts-hin with exact zero-init conditioning and 87-token donors."""
-        base_vits = VitsModel.from_pretrained(ninada_cfg.base_checkpoint)
+        """
+        Warm-start a native Indic or Classical Sanskrit VITS+SDP specialist directly from its
+        exact `facebook/mms-tts-{kan,hin,tam,tel,mal}` checkpoint (`strict=True` on all layers!).
+        """
+        base_vits = VitsModel.from_pretrained(base_checkpoint)
         strip_all_weight_norm(base_vits)
 
-        vits_cfg = VitsConfig.from_pretrained(ninada_cfg.base_checkpoint)
+        vits_cfg = VitsConfig.from_pretrained(base_checkpoint)
         old_vocab_size = vits_cfg.vocab_size
-        vits_cfg.vocab_size = ninada_cfg.vocab_size
+        new_vocab_size = len(vocab_tokens)
+        vits_cfg.vocab_size = new_vocab_size
         vits_cfg.speaker_embedding_size = 0
-        vits_cfg.use_stochastic_duration_prediction = False
+        vits_cfg.use_stochastic_duration_prediction = True
         vits_cfg.layerdrop = 0.0
 
+        ninada_cfg = NinadaConfig(
+            lang=lang,
+            vocab_size=new_vocab_size,
+            hidden_size=vits_cfg.hidden_size,
+            flow_size=vits_cfg.flow_size,
+            spectrogram_bins=vits_cfg.spectrogram_bins,
+            sampling_rate=vits_cfg.sampling_rate,
+            base_checkpoint=base_checkpoint,
+            speaking_rate=1.0,
+            noise_scale=0.667,
+            noise_scale_duration=0.80,
+        )
         model = cls(ninada_cfg, vits_cfg)
         strip_all_weight_norm(model)
 
         with torch.no_grad():
-            model.text_encoder.embed_tokens.weight[:old_vocab_size].copy_(
-                base_vits.text_encoder.embed_tokens.weight[:old_vocab_size]
+            copy_n = min(old_vocab_size, new_vocab_size)
+            model.text_encoder.embed_tokens.weight[:copy_n].copy_(
+                base_vits.text_encoder.embed_tokens.weight[:copy_n]
             )
-            tok_to_idx = {t: i for i, t in enumerate(vocab_tokens)}
-            for ext_tok, donor_tok in donor_map.items():
-                if ext_tok in tok_to_idx and donor_tok in tok_to_idx:
-                    dst_i = tok_to_idx[ext_tok]
-                    src_i = tok_to_idx[donor_tok]
-                    if dst_i >= old_vocab_size and src_i < old_vocab_size:
-                        model.text_encoder.embed_tokens.weight[dst_i].copy_(
-                            base_vits.text_encoder.embed_tokens.weight[src_i]
-                        )
+            if donor_map and new_vocab_size > old_vocab_size:
+                tok_to_idx = {t: i for i, t in enumerate(vocab_tokens)}
+                for ext_tok, donor_tok in donor_map.items():
+                    if ext_tok in tok_to_idx and donor_tok in tok_to_idx:
+                        dst_i = tok_to_idx[ext_tok]
+                        src_i = tok_to_idx[donor_tok]
+                        if dst_i >= old_vocab_size and src_i < old_vocab_size:
+                            model.text_encoder.embed_tokens.weight[dst_i].copy_(
+                                base_vits.text_encoder.embed_tokens.weight[src_i]
+                            )
 
             model.text_encoder.encoder.load_state_dict(base_vits.text_encoder.encoder.state_dict(), strict=True)
             model.text_encoder.project.load_state_dict(base_vits.text_encoder.project.state_dict(), strict=True)
-            model.flow.load_state_dict(base_vits.flow.state_dict(), strict=False)
+            model.duration_predictor.load_state_dict(base_vits.duration_predictor.state_dict(), strict=True)
+            model.flow.load_state_dict(base_vits.flow.state_dict(), strict=True)
             model.posterior_encoder.load_state_dict(base_vits.posterior_encoder.state_dict(), strict=True)
             model.decoder.load_state_dict(base_vits.decoder.state_dict(), strict=True)
-
-            model._zero_init_conditioning_layers()
-            nn.init.normal_(model.lang_embed.weight, mean=0.0, std=0.02)
-            nn.init.constant_(model.dur_predictor.proj.bias, 1.45)
 
         return model
 
@@ -364,83 +582,39 @@ class NinadaModel(nn.Module):
         )
         return torch.sqrt(stft.real.pow(2) + stft.imag.pow(2) + 1e-6)
 
-    def compute_log_mel_from_spec(self, spec: torch.Tensor) -> torch.Tensor:
+    def compute_log_mel(self, wav: torch.Tensor) -> torch.Tensor:
+        spec = self.compute_linear_spectrogram(wav)
         mel = torch.matmul(self.mel_basis_80.float(), spec.float())
         return torch.log(torch.clamp_min(mel, 1e-5))
 
-    def compute_log_mel(self, wav: torch.Tensor) -> torch.Tensor:
-        spec = self.compute_linear_spectrogram(wav)
-        return self.compute_log_mel_from_spec(spec)
-
-    def _encode_text_conditioned(
+    def _encode_text(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        g_lang: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         pad_mask = attention_mask.unsqueeze(-1).to(self.text_encoder.embed_tokens.weight.dtype)
         attn_4d = (1.0 - attention_mask[:, None, None, :].to(pad_mask.dtype)) * -10000.0
 
-        lang_bias = self.lang_text_gate * g_lang.unsqueeze(1)
-        x = (self.text_encoder.embed_tokens(input_ids) * math.sqrt(self.ninada_cfg.hidden_size) + lang_bias) * pad_mask
-
+        x = (self.text_encoder.embed_tokens(input_ids) * math.sqrt(self.ninada_cfg.hidden_size)) * pad_mask
         for layer in self.text_encoder.encoder.layers:
             x = layer(x, padding_mask=pad_mask, attention_mask=attn_4d, output_attentions=False)[0]
         x = x * pad_mask
 
-        stats = self.text_encoder.project((x + lang_bias).transpose(1, 2)).transpose(1, 2)
-        stats = stats * pad_mask
+        stats = self.text_encoder.project(x.transpose(1, 2)).transpose(1, 2) * pad_mask
         prior_means, prior_log_vars = torch.split(stats, self.ninada_cfg.flow_size, dim=2)
         return x, prior_means, prior_log_vars, pad_mask
-
-    def _decode_conditioned(self, z: torch.Tensor, g_vec: torch.Tensor) -> torch.Tensor:
-        dec = self.decoder
-        h = dec.conv_pre(z) + self.lang_dec_proj(g_vec.unsqueeze(-1))
-        for i in range(dec.num_upsamples):
-            h = F.leaky_relu(h, dec.config.leaky_relu_slope)
-            h = dec.upsampler[i](h)
-            res = dec.resblocks[i * dec.num_kernels](h)
-            for j in range(1, dec.num_kernels):
-                res = res + dec.resblocks[i * dec.num_kernels + j](h)
-            h = res / dec.num_kernels
-        h = F.leaky_relu(h)
-        h = dec.conv_post(h)
-        return torch.tanh(h).squeeze(1)
-
-    def _consonant_weighted_stft_loss(self, y_hat: torch.Tensor, y_gt: torch.Tensor) -> torch.Tensor:
-        """Multi-resolution STFT loss with 1.5x emphasis on 1.5-8.0 kHz consonant/sibilant bursts."""
-        y_hat_f = y_hat.float()
-        y_gt_f = y_gt.float()
-        total = torch.tensor(0.0, device=y_hat.device)
-        configs = [
-            (512, 128, 512, self.hann_512.float()),
-            (1024, 256, 1024, self.hann_1024.float()),
-            (2048, 512, 2048, self.hann_2048.float()),
-        ]
-        for n_fft, hop, win, window in configs:
-            s_hat = torch.stft(y_hat_f, n_fft=n_fft, hop_length=hop, win_length=win, window=window, center=True, return_complex=True)
-            s_gt = torch.stft(y_gt_f, n_fft=n_fft, hop_length=hop, win_length=win, window=window, center=True, return_complex=True)
-            m_hat = torch.sqrt(s_hat.real.pow(2) + s_hat.imag.pow(2) + 1e-6)
-            m_gt = torch.sqrt(s_gt.real.pow(2) + s_gt.imag.pow(2) + 1e-6)
-
-            sc_loss = torch.norm(m_gt - m_hat, p="fro") / (torch.norm(m_gt, p="fro") + 1e-6)
-            mag_loss = F.l1_loss(torch.log(m_gt + 1e-5), torch.log(m_hat + 1e-5))
-
-            hf_bin = max(1, int(round(1500.0 * n_fft / self.ninada_cfg.sampling_rate)))
-            hf_mag = F.l1_loss(torch.log(m_gt[:, hf_bin:, :] + 1e-5), torch.log(m_hat[:, hf_bin:, :] + 1e-5))
-            total = total + (sc_loss + 0.65 * mag_loss + 0.55 * hf_mag)
-        return total / len(configs)
 
     def forward_train(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        lang_id: torch.Tensor,
         wav: torch.Tensor,
         wav_lengths: torch.Tensor,
-        is_primary_studio: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
-        """Disentangled Latent-Manifold VITS Training Step."""
+        """
+        Compute VITS Variational `KL` + `SDP` normalizing-flow NLL + windowed `decoder(z_slice)`
+        for adversarial `MPD + MRD` evaluation.
+        """
         spec = self.compute_linear_spectrogram(wav)  # [B, 513, T_spec]
         T_spec = spec.shape[2]
         spec_lengths = torch.clamp(wav_lengths // self.ninada_cfg.hop_length, min=4, max=T_spec)
@@ -448,33 +622,14 @@ class NinadaModel(nn.Module):
         spec_mask_2d = (spec_idx < spec_lengths.unsqueeze(1)).to(spec.dtype)
         spec_mask = spec_mask_2d.unsqueeze(1)  # [B, 1, T_spec]
 
-        mel_full = self.compute_log_mel_from_spec(spec)  # [B, 80, T_spec]
-        utt_style = self.utt_style_encoder(mel_full, spec_mask)  # [B, 192]
+        h_text, m_p, logs_p, text_pad_mask = self._encode_text(input_ids, attention_mask)
 
-        if self.training:
-            with torch.no_grad():
-                for c in range(self.ninada_cfg.num_languages):
-                    c_mask = lang_id == c
-                    if is_primary_studio is not None:
-                        c_studio = c_mask & is_primary_studio.bool()
-                        if c_studio.any():
-                            c_mask = c_studio
-                    if c_mask.any():
-                        batch_mean = utt_style[c_mask].detach().mean(dim=0)
-                        self.lang_voice_embed[c].mul_(0.96).add_(batch_mean, alpha=0.04)
-
-        g_lang = self.lang_embed(lang_id)  # [B, 192]
-        g_vec = g_lang + utt_style if self.training else (g_lang + F.embedding(lang_id, self.lang_voice_embed))
-        g_cond = g_vec.unsqueeze(-1)  # [B, 192, 1]
-
-        h_text, m_p, logs_p, text_pad_mask = self._encode_text_conditioned(input_ids, attention_mask, g_lang)
-
-        # Frozen adversarial posterior encoder + conditioned normalizing flow forward (z -> z_p)
+        # Frozen posterior encoder q(z | x_lin) + trainable normalizing flow z -> z_p
         with torch.no_grad():
             z, m_q, logs_q = self.posterior_encoder(spec, spec_mask)
-        z_p = self.flow(z, spec_mask, global_conditioning=g_cond, reverse=False)
+        z_p = self.flow(z, spec_mask, reverse=False)
 
-        # Exact Monotonic Alignment Search (MAS)
+        # Exact Viterbi Monotonic Alignment Search (MAS)
         with torch.no_grad():
             inv_var = torch.exp(-2.0 * torch.clamp(logs_p.float(), -5.0, 3.0))
             const_term = -0.5 * torch.sum(
@@ -490,57 +645,56 @@ class NinadaModel(nn.Module):
         m_p_aligned = torch.matmul(attn.transpose(1, 2), m_p).transpose(1, 2) * spec_mask
         logs_p_aligned = torch.matmul(attn.transpose(1, 2), logs_p).transpose(1, 2) * spec_mask
 
-        # 1. Exact VITS Variational KL Divergence Loss (normalized per latent dimension & frame)
+        # 1. Exact VITS Variational KL Divergence Loss
         kl = logs_p_aligned.float() - logs_q.float() - 0.5 + 0.5 * (
-            (z_p.float() - m_p_aligned.float()).pow(2) * torch.exp(-2.0 * torch.clamp(logs_p_aligned.float(), -6.0, 3.0))
+            (z_p.float() - m_p_aligned.float()).pow(2)
+            * torch.exp(-2.0 * torch.clamp(logs_p_aligned.float(), -6.0, 3.0))
         )
         kl_denom = torch.clamp_min(spec_mask.float().sum() * float(self.ninada_cfg.flow_size), 1.0)
         kl_loss = torch.clamp_min((kl * spec_mask.float()).sum() / kl_denom, 0.0)
 
-        # 2. Full-Utterance Latent Manifold Feature Matching: flow(m_p_aligned, reverse=True) -> m_q
-        # Trains text_encoder & flow directly in the crisp HiFi-GAN latent space without L1 Mel blurring!
-        z_hat_full = self.flow(m_p_aligned, spec_mask, global_conditioning=g_cond, reverse=True)
-        latent_loss = (
-            F.smooth_l1_loss(z_hat_full.float() * spec_mask.float(), m_q.detach().float() * spec_mask.float(), reduction="sum")
-            / kl_denom
-        )
-
-        # 3. Token + Utterance-Level Duration Predictor Loss
+        # 2. Exact Stochastic Duration Predictor (SDP) Maximum-Likelihood Loss
         gt_dur = torch.sum(attn, dim=2, keepdim=True).transpose(1, 2)  # [B, 1, T_text]
-        pm_t = text_pad_mask.transpose(1, 2)
-        log_dur_pred = self.dur_predictor(h_text.detach().transpose(1, 2), pm_t, global_conditioning=g_cond.detach())
-        log_dur_gt = torch.log(torch.clamp_min(gt_dur.float(), 1.0)) * pm_t.float()
-        tok_dur_loss = ((log_dur_pred.float() - log_dur_gt).pow(2) * pm_t.float()).sum() / torch.clamp_min(
-            pm_t.float().sum(), 1.0
+        pm_t = text_pad_mask.transpose(1, 2)  # [B, 1, T_text]
+        sdp_nll = self.duration_predictor(
+            h_text.detach().transpose(1, 2),
+            pm_t,
+            durations=torch.clamp_min(gt_dur, 1.0),
+            reverse=False,
         )
+        dur_loss = torch.sum(sdp_nll.float()) / torch.clamp_min(pm_t.float().sum(), 1.0)
 
-        frame_sec = self.ninada_cfg.hop_length / float(self.ninada_cfg.sampling_rate)
-        pred_utt_sec = (torch.exp(torch.clamp(log_dur_pred.float(), -3.0, 5.0)) * pm_t.float()).sum(dim=[1, 2]) * frame_sec
-        gt_utt_sec = (gt_dur.float() * pm_t.float()).sum(dim=[1, 2]) * frame_sec
-        utt_dur_loss = F.smooth_l1_loss(pred_utt_sec, gt_utt_sec)
-        dur_loss = tok_dur_loss + 0.85 * utt_dur_loss
-        dur_mae = (
-            ((torch.exp(torch.clamp(log_dur_pred.float(), -3.0, 5.0)) * pm_t.float() - gt_dur.float()).abs() * pm_t.float()).sum()
-            / torch.clamp_min(pm_t.float().sum(), 1.0)
-        )
+        with torch.no_grad():
+            log_dur_sample = self.duration_predictor(
+                h_text.detach().transpose(1, 2),
+                pm_t,
+                reverse=True,
+                noise_scale=0.6,
+            )
+            pred_dur = torch.ceil(torch.exp(torch.clamp(log_dur_sample.float(), -3.0, 5.0)) * pm_t.float())
+            dur_mae = ((pred_dur - gt_dur.float()).abs() * pm_t.float()).sum() / torch.clamp_min(pm_t.float().sum(), 1.0)
+            frame_sec = self.ninada_cfg.hop_length / float(self.ninada_cfg.sampling_rate)
+            utt_dur_mae_sec = (
+                (pred_dur.sum(dim=[1, 2]) - (gt_dur.float() * pm_t.float()).sum(dim=[1, 2])).abs().mean() * frame_sec
+            )
 
-        # 4. Windowed HiFi-GAN Acoustic Calibration (light weight to prevent over-smoothing)
+        # 3. Sample from prior p(z_p | text, MAS) -> flow_reverse -> frozen HiFi-GAN decoder window
+        eps_prior = torch.randn_like(m_p_aligned) * 0.667
+        z_p_sample = (m_p_aligned + eps_prior * torch.exp(torch.clamp(logs_p_aligned, -6.0, 2.0))) * spec_mask
+        z_hat_full = self.flow(z_p_sample, spec_mask, reverse=True) * spec_mask
+
         B = wav.shape[0]
         seg_f = self.ninada_cfg.segment_frames
         hop = self.ninada_cfg.hop_length
         seg_samples = seg_f * hop
 
-        z_slices = []
-        wav_slices = []
-        eps_prior = torch.randn_like(m_p_aligned) * 0.30
-        z_p_sample = (m_p_aligned + eps_prior * torch.exp(torch.clamp(logs_p_aligned, -6.0, 1.5))) * spec_mask
-        z_hat_sample = self.flow(z_p_sample, spec_mask, global_conditioning=g_cond, reverse=True)
-
+        z_slices: list[torch.Tensor] = []
+        wav_slices: list[torch.Tensor] = []
         for b in range(B):
             valid_f = int(spec_lengths[b].item())
             max_start = max(0, valid_f - seg_f)
             st = int(torch.randint(0, max_start + 1, (1,), device=wav.device).item()) if max_start > 0 else 0
-            z_chunk = z_hat_sample[b, :, st : st + seg_f]
+            z_chunk = z_hat_full[b, :, st : st + seg_f]
             if z_chunk.shape[1] < seg_f:
                 z_chunk = F.pad(z_chunk, (0, seg_f - z_chunk.shape[1]))
             z_slices.append(z_chunk)
@@ -553,7 +707,7 @@ class NinadaModel(nn.Module):
 
         z_batch = torch.stack(z_slices, dim=0)
         wav_gt_slice = torch.stack(wav_slices, dim=0)
-        wav_hat_slice = self._decode_conditioned(z_batch, g_vec)
+        wav_hat_slice = self.decoder(z_batch).squeeze(1)
 
         min_s = min(wav_gt_slice.shape[1], wav_hat_slice.shape[1])
         wav_gt_slice = wav_gt_slice[:, :min_s]
@@ -562,93 +716,43 @@ class NinadaModel(nn.Module):
         mel_gt = self.compute_log_mel(wav_gt_slice)
         mel_hat = self.compute_log_mel(wav_hat_slice)
         mel_l1 = F.l1_loss(mel_hat, mel_gt)
-        mr_stft = self._consonant_weighted_stft_loss(wav_hat_slice, wav_gt_slice)
 
-        # Balanced latent-first loss: avoids GAN-free Mel over-smoothing while calibrating spectral timbre
-        total_loss = (
-            3.0 * kl_loss
-            + 14.0 * latent_loss
-            + 2.5 * dur_loss
-            + 2.2 * mel_l1
-            + 1.0 * mr_stft
-        )
         return {
-            "loss": total_loss,
-            "kl_loss": kl_loss.detach(),
-            "latent_loss": latent_loss.detach(),
-            "dur_loss": dur_loss.detach(),
-            "mel_l1": mel_l1.detach(),
-            "mr_stft": mr_stft.detach(),
+            "kl_loss": kl_loss,
+            "dur_loss": dur_loss,
+            "mel_l1": mel_l1,
             "dur_mae_frames": dur_mae.detach(),
-            "utt_dur_mae_sec": (pred_utt_sec - gt_utt_sec).abs().mean().detach(),
+            "utt_dur_mae_sec": utt_dur_mae_sec.detach(),
+            "wav_gt_slice": wav_gt_slice,
+            "wav_hat_slice": wav_hat_slice,
         }
-
-    def forward_infer(
-        self,
-        input_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
-        lang_id: torch.Tensor,
-        scales: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Pure-tensor Inference Forward Pass (ONNX opset 17 compatible, zero UtteranceStyleEncoder overhead)."""
-        g_lang = self.lang_embed(lang_id)
-        g_voice = F.embedding(lang_id, self.lang_voice_embed)
-        g_vec = g_lang + g_voice
-        g_cond = g_vec.unsqueeze(-1)
-
-        h_text, prior_means, prior_log_vars, pad_mask = self._encode_text_conditioned(
-            input_ids, attention_mask, g_lang
-        )
-        pm_t = pad_mask.transpose(1, 2)
-        log_dur = self.dur_predictor(h_text.transpose(1, 2), pm_t, global_conditioning=g_cond)
-
-        length_scale = 1.0 / torch.clamp_min(scales[0], 0.25)
-        dur = torch.floor(torch.exp(log_dur) * pm_t * length_scale + 0.5)
-        dur = torch.clamp_min(dur, 1.0) * pm_t
-
-        pred_lengths = torch.clamp_min(torch.sum(dur, dim=[1, 2]), 1.0).long()
-        max_len = pred_lengths.max()
-        idx = torch.arange(max_len, device=input_ids.device).unsqueeze(0)
-        out_mask = (idx < pred_lengths.unsqueeze(1)).unsqueeze(1).to(pad_mask.dtype)
-
-        attn_mask = pm_t.unsqueeze(2) * out_mask.unsqueeze(-1)
-        bsz, _, out_len, in_len = attn_mask.shape
-        cum_dur = torch.cumsum(dur, dim=-1).reshape(bsz * in_len, 1)
-        out_idx = torch.arange(out_len, device=input_ids.device, dtype=dur.dtype).unsqueeze(0)
-        valid = (out_idx < cum_dur).to(pad_mask.dtype).reshape(bsz, in_len, out_len)
-        padded = valid - F.pad(valid, [0, 0, 1, 0])[:, :-1, :]
-        attn = padded.unsqueeze(1).transpose(2, 3) * attn_mask
-
-        m_p = torch.matmul(attn.squeeze(1), prior_means).transpose(1, 2)
-        logs_p = torch.matmul(attn.squeeze(1), prior_log_vars).transpose(1, 2)
-
-        eps = torch.randn_like(m_p) * scales[1]
-        z_p = (m_p + eps * torch.exp(logs_p)) * out_mask
-        z = self.flow(z_p, out_mask, global_conditioning=g_cond, reverse=True) * out_mask
-        waveform = self._decode_conditioned(z, g_vec)
-        return waveform, dur.squeeze(1)
 
     def encode_flow_infer(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        lang_id: torch.Tensor,
         scales: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Streaming Stage-1 Forward Pass: Akshara IDs -> Conditioned Flow Latents [B, 192, T_frames] (~35 ms)."""
-        g_lang = self.lang_embed(lang_id)
-        g_voice = F.embedding(lang_id, self.lang_voice_embed)
-        g_vec = g_lang + g_voice
-        g_cond = g_vec.unsqueeze(-1)
-
-        h_text, prior_means, prior_log_vars, pad_mask = self._encode_text_conditioned(
-            input_ids, attention_mask, g_lang
-        )
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Streaming Stage-1 Forward Pass (ONNX Opset 17):
+        `scales` = `[speaking_rate, noise_scale, noise_scale_duration]`.
+        Returns `(latents [B, 192, T_frames], durations [B, T_seq])`.
+        """
+        h_text, prior_means, prior_log_vars, pad_mask = self._encode_text(input_ids, attention_mask)
         pm_t = pad_mask.transpose(1, 2)
-        log_dur = self.dur_predictor(h_text.transpose(1, 2), pm_t, global_conditioning=g_cond)
 
-        length_scale = 1.0 / torch.clamp_min(scales[0], 0.25)
-        dur = torch.floor(torch.exp(log_dur) * pm_t * length_scale + 0.5)
+        rate = torch.clamp_min(scales[0], 0.25)
+        noise_scale = scales[1]
+        noise_scale_dur = scales[2] if int(scales.shape[0]) >= 3 else (scales[1] * 1.2)
+
+        log_dur = self.duration_predictor(
+            h_text.transpose(1, 2),
+            pm_t,
+            reverse=True,
+            noise_scale=noise_scale_dur,
+        )
+        length_scale = 1.0 / rate
+        dur = torch.ceil(torch.exp(log_dur) * pm_t * length_scale)
         dur = torch.clamp_min(dur, 1.0) * pm_t
 
         pred_lengths = torch.clamp_min(torch.sum(dur, dim=[1, 2]), 1.0).long()
@@ -667,33 +771,42 @@ class NinadaModel(nn.Module):
         m_p = torch.matmul(attn.squeeze(1), prior_means).transpose(1, 2)
         logs_p = torch.matmul(attn.squeeze(1), prior_log_vars).transpose(1, 2)
 
-        eps = torch.randn_like(m_p) * scales[1]
+        eps = torch.randn_like(m_p) * noise_scale
         z_p = (m_p + eps * torch.exp(logs_p)) * out_mask
-        latents = self.flow(z_p, out_mask, global_conditioning=g_cond, reverse=True) * out_mask
-        return latents, g_vec, dur.squeeze(1)
+        latents = self.flow(z_p, out_mask, reverse=True) * out_mask
+        return latents, dur.squeeze(1)
 
-    def decode_latents_infer(
+    def decode_latents_infer(self, latents: torch.Tensor) -> torch.Tensor:
+        """Streaming Stage-2 Forward Pass: Halo-Windowed Latents [B, 192, W] -> 16 kHz Audio [B, W*256]."""
+        return self.decoder(latents).squeeze(1)
+
+    def forward_infer(
         self,
-        latents: torch.Tensor,
-        voice_cond: torch.Tensor,
-    ) -> torch.Tensor:
-        """Streaming Stage-2 Forward Pass: Halo-Windowed Latents [B, 192, W] -> 16 kHz HiFi-GAN Audio [B, W*256]."""
-        return self._decode_conditioned(latents, voice_cond)
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        scales: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        latents, dur = self.encode_flow_infer(input_ids, attention_mask, scales)
+        waveform = self.decode_latents_infer(latents)
+        return waveform, dur
 
     def forward(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        lang_id: torch.Tensor,
         scales: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if scales is None:
             scales = torch.tensor(
-                [self.ninada_cfg.speaking_rate, self.ninada_cfg.noise_scale],
+                [
+                    self.ninada_cfg.speaking_rate,
+                    self.ninada_cfg.noise_scale,
+                    self.ninada_cfg.noise_scale_duration,
+                ],
                 dtype=torch.float32,
                 device=input_ids.device,
             )
-        return self.forward_infer(input_ids, attention_mask, lang_id, scales)
+        return self.forward_infer(input_ids, attention_mask, scales)
 
     def save_pretrained(self, save_dir: str | Path, filename: str = "model.safetensors") -> None:
         p = Path(save_dir)
@@ -714,3 +827,6 @@ class NinadaModel(nn.Module):
         state = load_file(str(p / filename))
         model.load_state_dict(state, strict=True)
         return model
+
+
+NinadaSpecialistModel = NinadaModel

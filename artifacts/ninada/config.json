@@ -1,4 +1,5 @@
 {
+  "_attn_implementation_autoset": true,
   "activation_dropout": 0.1,
   "architectures": [
     "VitsModel"
@@ -73,8 +74,8 @@
     2
   ],
   "use_bias": true,
-  "use_stochastic_duration_prediction": false,
-  "vocab_size": 87,
+  "use_stochastic_duration_prediction": true,
+  "vocab_size": 79,
   "wavenet_dilation_rate": 1,
   "wavenet_dropout": 0.0,
   "wavenet_kernel_size": 5,

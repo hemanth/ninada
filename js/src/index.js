@@ -1,5 +1,5 @@
 /**
- * ninada — Streaming Pan-Indic & Classical Sanskrit Neural TTS (Browser WASM SIMD & Node.js)
+ * ninada — Streaming Pan-Indic & Classical Sanskrit Specialist Neural TTS (Browser WASM SIMD & Node.js)
  *
  * Streaming quick start:
  *   import ninada from 'ninada';
@@ -16,6 +16,8 @@ import {
   TOKEN_TO_ID,
   BLANK_ID,
   LANGUAGE_IDS,
+  NATIVE_VOCABS,
+  NATIVE_TOKEN_TO_ID,
   detectScriptAndLang,
   iastToDevanagari,
   brahmicToDevanagari,
@@ -50,7 +52,6 @@ function splitProsodicClauses(text, maxChars = 160) {
   for (const part of rawParts) {
     const p = (part || '').trim();
     if (!p) continue;
-    // Merge standalone punctuation markers (e.g. trailing danda) into previous clause
     if (/^[\u0964\u0965|.?!;,\s-]+$/.test(p)) {
       if (clauses.length > 0) clauses[clauses.length - 1] += ` ${p}`;
       continue;
@@ -89,21 +90,74 @@ async function resolveOrt(explicitOrt) {
   return null;
 }
 
-async function createOrtSession(ort, source, providers) {
+const BROWSER_MODEL_CACHE = 'ninada-onnx-v2.0.0';
+
+async function fetchBrowserCachedBytes(url, useCache = true) {
+  const absUrl =
+    typeof location !== 'undefined' && location?.href
+      ? new URL(url, location.href).href
+      : url;
+  if (useCache && typeof caches !== 'undefined' && caches?.open) {
+    try {
+      const cache = await caches.open(BROWSER_MODEL_CACHE);
+      const hit = await cache.match(absUrl);
+      if (hit) {
+        const arr = new Uint8Array(await hit.arrayBuffer());
+        if (arr.byteLength >= 1000000 && arr[0] === 0x08) {
+          return arr;
+        }
+        await cache.delete(absUrl).catch(() => {});
+      }
+    } catch {
+      // Fall through to network fetch
+    }
+  }
+  const res = await fetch(absUrl);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch ONNX model (${res.status}): ${absUrl}`);
+  }
+  const arr = new Uint8Array(await res.arrayBuffer());
+  if (useCache && arr.byteLength >= 1000000 && arr[0] === 0x08 && typeof caches !== 'undefined' && caches?.open) {
+    try {
+      const cache = await caches.open(BROWSER_MODEL_CACHE);
+      await cache.put(
+        absUrl,
+        new Response(arr, {
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'Content-Length': String(arr.byteLength),
+          },
+        })
+      );
+    } catch {
+      // Ignore quota / private-browsing cache errors
+    }
+  }
+  return arr;
+}
+
+async function createOrtSession(ort, source, providers, useCache = true) {
   if (!source || !ort || !ort.InferenceSession) return null;
-  const isNode = typeof process !== 'undefined' && Boolean(process.versions?.node) && typeof window === 'undefined';
+  const isNode =
+    typeof process !== 'undefined' &&
+    Boolean(process.versions?.node) &&
+    typeof window === 'undefined' &&
+    typeof WorkerGlobalScope === 'undefined';
   let resolved = source;
   if (isNode && typeof source === 'string' && !/^https?:\/\//i.test(source) && ort.env?.wasm) {
     const fsPkg = 'node:fs/promises';
     const fsMod = await import(fsPkg);
     const buf = await fsMod.readFile(source);
     resolved = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  } else if (!isNode && typeof source === 'string' && typeof fetch === 'function') {
+    resolved = await fetchBrowserCachedBytes(source, useCache);
   }
   const useProviders = providers || (ort.env?.wasm ? ['wasm'] : ['cpu']);
   return ort.InferenceSession.create(resolved, {
     executionProviders: useProviders,
     graphOptimizationLevel: 'all',
     enableCpuMemArena: false,
+    enableMemPattern: false,
   });
 }
 
@@ -141,17 +195,17 @@ export default async function ninada(input = 'sa', opts = {}) {
   const needOrt = !session && !encSession && Boolean(modelSource || (encSource && vocSource));
   const ort = needOrt || session || encSession ? await resolveOrt(opts.ort) : null;
 
+  const useCache = opts.cache !== false;
   if (!encSession && !vocSession && encSource && vocSource && ort) {
-    encSession = await createOrtSession(ort, encSource, opts.providers);
+    encSession = await createOrtSession(ort, encSource, opts.providers, useCache);
     encSource = null;
-    vocSession = await createOrtSession(ort, vocSource, opts.providers);
+    vocSession = await createOrtSession(ort, vocSource, opts.providers, useCache);
     vocSource = null;
   } else if (!session && modelSource && ort) {
-    session = await createOrtSession(ort, modelSource, opts.providers);
+    session = await createOrtSession(ort, modelSource, opts.providers, useCache);
     modelSource = null;
   }
 
-  // Drop raw Uint8Array/ArrayBuffer references immediately so GC frees ~57MB JS heap
   modelSource = null;
   encSource = null;
   vocSource = null;
@@ -172,6 +226,14 @@ export default async function ninada(input = 'sa', opts = {}) {
     get isStreamingNeural() {
       return Boolean(encSession && vocSession);
     },
+    async dispose() {
+      try { await encSession?.release?.(); } catch {}
+      try { await vocSession?.release?.(); } catch {}
+      try { await session?.release?.(); } catch {}
+      encSession = null;
+      vocSession = null;
+      session = null;
+    },
     on(event, handler) {
       if (!listeners.has(event)) listeners.set(event, []);
       listeners.get(event).push(handler);
@@ -183,11 +245,13 @@ export default async function ninada(input = 'sa', opts = {}) {
     async *stream(text, callOpts = {}) {
       const lang = callOpts.lang ? resolveLang(callOpts.lang) : defaultLang;
       const rate = callOpts.rate ?? opts.rate ?? 1.0;
-      const noise = callOpts.noise ?? opts.noise ?? 0.32;
+      const noise = callOpts.noise ?? opts.noise ?? 0.667;
+      const noiseDuration = callOpts.noiseDuration ?? opts.noiseDuration ?? 0.80;
       const tier = callOpts.tier || 'auto';
-      const firstChunkFrames = Math.max(20, Number(callOpts.firstChunkFrames || 40));
+      const firstChunkFrames = Math.max(24, Number(callOpts.firstChunkFrames || 48));
       const chunkFrames = Math.max(32, Number(callOpts.chunkFrames || 96));
-      const haloFrames = Math.max(4, Number(callOpts.haloFrames || 8));
+      const haloFrames = Math.max(8, Number(callOpts.haloFrames || 16));
+      const crossfadeSamples = Math.max(0, Math.min(Number(callOpts.crossfadeSamples ?? 256), (haloFrames * HOP_LENGTH) >> 1));
       const signal = callOpts.signal || null;
 
       const clauses = splitProsodicClauses(text, callOpts.maxClauseChars || 160);
@@ -195,40 +259,57 @@ export default async function ninada(input = 'sa', opts = {}) {
       let ttfaMs = null;
       let chunkIndex = 0;
 
-      // Path 1: True Halo-Windowed Neural Streaming (Encoder+Flow ~35ms -> 40-frame HiFi-GAN chunks)
+      // Path 1: 16-Frame Halo + 256-Sample Raised-Cosine Crossfaded Neural Streaming
       if (tier !== 'klatt' && encSession && vocSession && ort) {
+        const encInNames = Array.isArray(encSession.inputNames) ? encSession.inputNames : [];
+        const vocInNames = Array.isArray(vocSession.inputNames) ? vocSession.inputNames : [];
+        const hasLangId = encInNames.includes('lang_id');
+        const hasVoiceCond = vocInNames.includes('voice_cond');
+
+        const fadeIn = new Float32Array(crossfadeSamples);
+        const fadeOut = new Float32Array(crossfadeSamples);
+        for (let i = 0; i < crossfadeSamples; i++) {
+          const w = 0.5 * (1.0 - Math.cos((Math.PI * i) / Math.max(1, crossfadeSamples)));
+          fadeIn[i] = w;
+          fadeOut[i] = 1.0 - w;
+        }
+
         for (let cIdx = 0; cIdx < clauses.length; cIdx++) {
           if (signal?.aborted) return;
           const parsed = textToIds(clauses[cIdx], { lang });
           const feeds = {
             input_ids: new ort.Tensor('int64', BigInt64Array.from(parsed.inputIds.map(BigInt)), [1, parsed.inputIds.length]),
             attention_mask: new ort.Tensor('int64', BigInt64Array.from(parsed.attentionMask.map(BigInt)), [1, parsed.attentionMask.length]),
-            lang_id: new ort.Tensor('int64', BigInt64Array.from([BigInt(parsed.langId)]), [1]),
-            scales: new ort.Tensor('float32', Float32Array.from([Number(rate), Number(noise)]), [2]),
           };
+          if (hasLangId) {
+            feeds.lang_id = new ort.Tensor('int64', BigInt64Array.from([BigInt(parsed.langId)]), [1]);
+            feeds.scales = new ort.Tensor('float32', Float32Array.from([Number(rate), Number(noise)]), [2]);
+          } else {
+            feeds.scales = new ort.Tensor('float32', Float32Array.from([Number(rate), Number(noise), Number(noiseDuration)]), [3]);
+          }
 
           const encOut = await encSession.run(feeds);
           feeds.input_ids.dispose?.();
           feeds.attention_mask.dispose?.();
-          feeds.lang_id.dispose?.();
+          feeds.lang_id?.dispose?.();
           feeds.scales.dispose?.();
           if (signal?.aborted) {
-            encOut.latents.dispose?.();
-            encOut.voice_cond.dispose?.();
-            encOut.durations.dispose?.();
+            encOut.latents?.dispose?.();
+            encOut.voice_cond?.dispose?.();
+            encOut.durations?.dispose?.();
             return;
           }
 
           const latData = Float32Array.from(encOut.latents.data);
           const totalFrames = encOut.latents.dims[2];
-          const channels = encOut.latents.dims[1]; // 192
-          const voiceCondData = Float32Array.from(encOut.voice_cond.data);
-          const voiceCondDims = encOut.voice_cond.dims.slice();
+          const channels = encOut.latents.dims[1];
+          const voiceCondData = encOut.voice_cond ? Float32Array.from(encOut.voice_cond.data) : null;
+          const voiceCondDims = encOut.voice_cond ? encOut.voice_cond.dims.slice() : null;
           const dursArr = Array.from(encOut.durations.data, Number);
           encOut.latents.dispose?.();
-          encOut.voice_cond.dispose?.();
+          encOut.voice_cond?.dispose?.();
           encOut.durations.dispose?.();
-          // Adaptive first-chunk streaming: fast 40-frame first chunk for low TTFA, 96-frame steady chunks for low halo overhead
+
           const bounds = [];
           for (let cur = 0; cur < totalFrames; ) {
             const step = cur === 0 && cIdx === 0 ? firstChunkFrames : chunkFrames;
@@ -237,15 +318,16 @@ export default async function ninada(input = 'sa', opts = {}) {
             cur = nxt;
           }
           const numSub = bounds.length;
+          let prevTail = null;
 
           for (let subIdx = 0; subIdx < numSub; subIdx++) {
             if (signal?.aborted) return;
             const [st, ed] = bounds[subIdx];
+            const isLastSub = subIdx === numSub - 1;
             const wSt = Math.max(0, st - haloFrames);
             const wEd = Math.min(totalFrames, ed + haloFrames);
             const winLen = wEd - wSt;
 
-            // Slice [1, 192, winLen] from [1, 192, totalFrames]
             const sliceBuf = new Float32Array(channels * winLen);
             for (let ch = 0; ch < channels; ch++) {
               const srcBase = ch * totalFrames + wSt;
@@ -257,13 +339,15 @@ export default async function ninada(input = 'sa', opts = {}) {
 
             const tChunk = nowMs();
             const latTensor = new ort.Tensor('float32', sliceBuf, [1, channels, winLen]);
-            const vcTensor = new ort.Tensor('float32', voiceCondData, voiceCondDims);
-            const vocOut = await vocSession.run({
-              latents: latTensor,
-              voice_cond: vcTensor,
-            });
+            const vocFeeds = { latents: latTensor };
+            let vcTensor = null;
+            if (hasVoiceCond && voiceCondData) {
+              vcTensor = new ort.Tensor('float32', voiceCondData, voiceCondDims);
+              vocFeeds.voice_cond = vcTensor;
+            }
+            const vocOut = await vocSession.run(vocFeeds);
             latTensor.dispose?.();
-            vcTensor.dispose?.();
+            vcTensor?.dispose?.();
             if (signal?.aborted) {
               vocOut.waveform.dispose?.();
               return;
@@ -272,16 +356,56 @@ export default async function ninada(input = 'sa', opts = {}) {
             const raw = vocOut.waveform.data;
             const cropL = (st - wSt) * HOP_LENGTH;
             const cropLen = (ed - st) * HOP_LENGTH;
-            const pcm = new Float32Array(cropLen);
-            for (let i = 0; i < cropLen; i++) {
+            const cropR = cropL + cropLen;
+            const extraR = Math.min(raw.length, cropR + (isLastSub ? 0 : crossfadeSamples));
+            const segLen = Math.max(0, extraR - cropL);
+            const seg = new Float32Array(segLen);
+            for (let i = 0; i < segLen; i++) {
               const v = (raw[cropL + i] || 0) * 0.90;
-              pcm[i] = v > 0.98 ? 0.98 : v < -0.98 ? -0.98 : v;
+              seg[i] = v > 0.98 ? 0.98 : v < -0.98 ? -0.98 : v;
             }
             vocOut.waveform.dispose?.();
 
+            if (prevTail && crossfadeSamples > 0 && prevTail.length === crossfadeSamples && seg.length >= crossfadeSamples) {
+              for (let i = 0; i < crossfadeSamples; i++) {
+                seg[i] = prevTail[i] * fadeOut[i] + seg[i] * fadeIn[i];
+              }
+            }
+
+            let basePcm;
+            if (!isLastSub && crossfadeSamples > 0 && extraR - cropR === crossfadeSamples) {
+              prevTail = seg.slice(seg.length - crossfadeSamples);
+              basePcm = seg.subarray(0, seg.length - crossfadeSamples);
+            } else {
+              prevTail = null;
+              basePcm = seg.subarray(0, Math.min(seg.length, cropLen));
+            }
+
+            if (subIdx === 0 && basePcm.length > 192) {
+              for (let i = 0; i < 192; i++) {
+                basePcm[i] *= 0.5 * (1.0 - Math.cos((Math.PI * i) / 192.0));
+              }
+            }
+            if (isLastSub && basePcm.length > 256) {
+              const off = basePcm.length - 256;
+              for (let i = 0; i < 256; i++) {
+                basePcm[off + i] *= 0.5 * (1.0 + Math.cos((Math.PI * i) / 256.0));
+              }
+            }
+
+            let pcm;
+            if (isLastSub && cIdx < clauses.length - 1) {
+              const pauseSamples = Math.round(0.08 * SAMPLE_RATE);
+              pcm = new Float32Array(basePcm.length + pauseSamples);
+              pcm.set(basePcm, 0);
+            } else {
+              pcm = new Float32Array(basePcm.length);
+              pcm.set(basePcm, 0);
+            }
+
             const elapsedNow = nowMs() - tStart;
             if (ttfaMs === null) ttfaMs = elapsedNow;
-            const isFinal = cIdx === clauses.length - 1 && subIdx === numSub - 1;
+            const isFinal = cIdx === clauses.length - 1 && isLastSub;
             const chunkObj = {
               pcm,
               wav: encodeWavBuffer(pcm, SAMPLE_RATE),
@@ -308,6 +432,8 @@ export default async function ninada(input = 'sa', opts = {}) {
 
       // Path 2: Clause-Level Neural Streaming over Monolithic ONNX
       if (tier !== 'klatt' && session && ort) {
+        const sessInNames = Array.isArray(session.inputNames) ? session.inputNames : [];
+        const hasLangId = sessInNames.includes('lang_id');
         for (let cIdx = 0; cIdx < clauses.length; cIdx++) {
           if (signal?.aborted) return;
           const tChunk = nowMs();
@@ -315,9 +441,13 @@ export default async function ninada(input = 'sa', opts = {}) {
           const feeds = {
             input_ids: new ort.Tensor('int64', BigInt64Array.from(parsed.inputIds.map(BigInt)), [1, parsed.inputIds.length]),
             attention_mask: new ort.Tensor('int64', BigInt64Array.from(parsed.attentionMask.map(BigInt)), [1, parsed.attentionMask.length]),
-            lang_id: new ort.Tensor('int64', BigInt64Array.from([BigInt(parsed.langId)]), [1]),
-            scales: new ort.Tensor('float32', Float32Array.from([Number(rate), Number(noise)]), [2]),
           };
+          if (hasLangId) {
+            feeds.lang_id = new ort.Tensor('int64', BigInt64Array.from([BigInt(parsed.langId)]), [1]);
+            feeds.scales = new ort.Tensor('float32', Float32Array.from([Number(rate), Number(noise)]), [2]);
+          } else {
+            feeds.scales = new ort.Tensor('float32', Float32Array.from([Number(rate), Number(noise), Number(noiseDuration)]), [3]);
+          }
           const out = await session.run(feeds);
           if (signal?.aborted) return;
           const raw = out.waveform.data;
@@ -449,6 +579,8 @@ export {
   TOKEN_TO_ID,
   BLANK_ID,
   LANGUAGE_IDS,
+  NATIVE_VOCABS,
+  NATIVE_TOKEN_TO_ID,
   splitProsodicClauses,
   detectScriptAndLang,
   iastToDevanagari,

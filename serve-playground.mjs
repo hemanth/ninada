@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOCS_DIR = path.join(__dirname, "docs");
 const JS_DIST_DIR = path.join(__dirname, "js", "dist");
+const ARTIFACTS_ONNX_DIR = path.join(__dirname, "artifacts", "ninada", "onnx");
 const PORT = Number(process.env.PORT || 4179);
 const gzipCache = new Map();
 
@@ -31,10 +32,16 @@ const server = http.createServer((req, res) => {
   let filePath = path.join(DOCS_DIR, pathname);
   if (pathname.startsWith("/dist/")) {
     filePath = path.join(JS_DIST_DIR, pathname.slice(6));
+  } else if (pathname.startsWith("/onnx/")) {
+    filePath = path.join(ARTIFACTS_ONNX_DIR, pathname.slice(6));
   }
 
   const resolved = path.resolve(filePath);
-  if (!resolved.startsWith(DOCS_DIR) && !resolved.startsWith(JS_DIST_DIR)) {
+  if (
+    !resolved.startsWith(DOCS_DIR) &&
+    !resolved.startsWith(JS_DIST_DIR) &&
+    !resolved.startsWith(ARTIFACTS_ONNX_DIR)
+  ) {
     res.writeHead(403);
     res.end("Forbidden");
     return;

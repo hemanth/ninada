@@ -1,6 +1,6 @@
 # ninada
 
-> Stream Classical Sanskrit and 6 Indic languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser and Node.js via Halo-Chunked VITS+HiFi-GAN ONNX (`178.6 ms` TTFA) or zero-dependency Klatt synthesis.
+> Stream Classical Sanskrit and 6 Indic languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser and Node.js via 6 native Halo-Chunked VITS+HiFi-GAN FP16 ONNX specialists (`54.7 MB` per specialist, persistent `CacheStorage` + `IndexedDB` caching, `123.7 dB` crossfaded seam SNR) or zero-dependency Klatt synthesis.
 
 - **Live Web Worker WASM SIMD Studio:** <https://hemanth.github.io/ninada/>
 - **Hugging Face Model:** <https://huggingface.co/gnumanth/ninada>
@@ -19,8 +19,9 @@ import ninada from 'ninada';
 import * as ort from 'onnxruntime-web';
 
 const voice = await ninada('kannada', {
-  encoderModel: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/encoder_flow_quantized.onnx',
-  vocoderModel: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/vocoder_quantized.onnx',
+  encoderModel: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/kn/encoder_flow_quantized.onnx',
+  vocoderModel: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/kn/vocoder_quantized.onnx',
+  cacheModels: true, // persists in browser CacheStorage / IndexedDB across reloads
   ort,
 });
 
@@ -29,7 +30,8 @@ for await (const chunk of voice.stream('ಕನ್ನಡ ಭಾಷೆಯ ನೈ�
 }
 
 // Or synthesize full 16 kHz RIFF WAV bytes
-const wav = await voice.speak('prajñāpūrvakavyāpāravattvaṁ jīvatvam', { lang: 'sa' });
+const wav = await voice.speak('ಕನ್ನಡವೇ ಸತ್ಯ ಕನ್ನಡವೇ ನಿತ್ಯ', { lang: 'kn' });
+await voice.dispose(); // release WASM session heap when switching languages
 ```
 
 ## CLI

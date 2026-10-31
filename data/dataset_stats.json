@@ -1,121 +1,154 @@
 {
+  "dataset_version": "2.0.0",
   "sample_rate": 16000,
-  "total_clips": 1550,
-  "train_clips": 1240,
-  "val_clips": 155,
-  "test_clips": 155,
-  "total_duration_minutes": 175.19,
+  "speaker_profile": "Male anechoic studio (pitch-matched to native VITS HiFi-GAN vocoders)",
+  "total_clips": 1438,
+  "train_clips": 1150,
+  "val_clips": 144,
+  "test_clips": 144,
+  "total_duration_minutes": 127.55,
   "train_only_stats": {
-    "mean_duration_sec": 6.795,
-    "std_duration_sec": 1.947,
-    "mean_chars_per_sec": 11.456
+    "mean_duration_sec": 5.313,
+    "std_duration_sec": 2.33,
+    "mean_chars_per_sec": 13.052
   },
   "per_language": {
     "sa": {
-      "total": 650,
-      "train": 520,
-      "val": 65,
-      "test": 65,
-      "minutes": 80.54,
-      "mean_duration_sec": 7.43
+      "total": 388,
+      "train": 310,
+      "val": 39,
+      "test": 39,
+      "minutes": 42.22,
+      "mean_duration_sec": 6.53,
+      "mean_f0_hz": 148.5
     },
     "hi": {
-      "total": 180,
-      "train": 144,
-      "val": 18,
-      "test": 18,
-      "minutes": 20.72,
-      "mean_duration_sec": 6.91
+      "total": 210,
+      "train": 168,
+      "val": 21,
+      "test": 21,
+      "minutes": 18.31,
+      "mean_duration_sec": 5.23,
+      "mean_f0_hz": 157.9
     },
     "kn": {
-      "total": 180,
-      "train": 144,
-      "val": 18,
-      "test": 18,
-      "minutes": 21.87,
-      "mean_duration_sec": 7.29
+      "total": 210,
+      "train": 168,
+      "val": 21,
+      "test": 21,
+      "minutes": 18.53,
+      "mean_duration_sec": 5.29,
+      "mean_f0_hz": 143.6
     },
     "ta": {
-      "total": 180,
-      "train": 144,
-      "val": 18,
-      "test": 18,
-      "minutes": 17.71,
-      "mean_duration_sec": 5.9
+      "total": 210,
+      "train": 168,
+      "val": 21,
+      "test": 21,
+      "minutes": 16.61,
+      "mean_duration_sec": 4.75,
+      "mean_f0_hz": 121.7
     },
     "te": {
-      "total": 180,
-      "train": 144,
-      "val": 18,
-      "test": 18,
-      "minutes": 19.96,
-      "mean_duration_sec": 6.65
+      "total": 210,
+      "train": 168,
+      "val": 21,
+      "test": 21,
+      "minutes": 16.08,
+      "mean_duration_sec": 4.6,
+      "mean_f0_hz": 143.3
     },
     "ml": {
-      "total": 180,
-      "train": 144,
-      "val": 18,
-      "test": 18,
-      "minutes": 14.39,
-      "mean_duration_sec": 4.8
+      "total": 210,
+      "train": 168,
+      "val": 21,
+      "test": 21,
+      "minutes": 15.8,
+      "mean_duration_sec": 4.51,
+      "mean_f0_hz": 117.9
     }
   },
   "hygiene_audit": {
     "sources": {
+      "sa_rasa_male": {
+        "repo_id": "ai4bharat/Rasa",
+        "lang": "sa",
+        "scanned": 461,
+        "accepted": 168,
+        "mean_f0_hz": 151.9,
+        "rejected_f0_gate": 12,
+        "rejected_cer_gate": 88
+      },
       "sa_sushrota_recit": {
         "repo_id": "prathoshap/sushrota-sanskrit-asr-data",
         "lang": "sa",
-        "scanned": 962,
-        "accepted": 360,
-        "rejected_cer_gate": 105
+        "scanned": 369,
+        "accepted": 120,
+        "mean_f0_hz": 157.0,
+        "rejected_f0_gate": 0,
+        "rejected_cer_gate": 53
       },
       "sa_sushrota_scholar": {
         "repo_id": "prathoshap/sushrota-sanskrit-asr-data",
         "lang": "sa",
-        "scanned": 540,
-        "accepted": 290,
-        "rejected_cer_gate": 17
+        "scanned": 345,
+        "accepted": 100,
+        "mean_f0_hz": 132.7,
+        "rejected_f0_gate": 44,
+        "rejected_cer_gate": 33
       },
-      "hi_syspin": {
-        "repo_id": "SayantanJoker/SYSPIN_Hindi_Female_TTS",
-        "lang": "hi",
-        "scanned": 232,
-        "accepted": 180,
-        "rejected_cer_gate": 0
-      },
-      "kn_syspin": {
-        "repo_id": "SayantanJoker/original_data_kannada_tts",
+      "kn_rasa_male": {
+        "repo_id": "ai4bharat/Rasa",
         "lang": "kn",
-        "scanned": 514,
-        "accepted": 180,
+        "scanned": 274,
+        "accepted": 210,
+        "mean_f0_hz": 143.6,
+        "rejected_f0_gate": 0,
         "rejected_cer_gate": 0
       },
-      "ta_syspin": {
-        "repo_id": "SayantanJoker/original_data_tamil_tts",
+      "hi_rasa_male": {
+        "repo_id": "ai4bharat/Rasa",
+        "lang": "hi",
+        "scanned": 273,
+        "accepted": 210,
+        "mean_f0_hz": 157.9,
+        "rejected_f0_gate": 4,
+        "rejected_cer_gate": 0
+      },
+      "ta_rasa_male": {
+        "repo_id": "ai4bharat/Rasa",
         "lang": "ta",
-        "scanned": 216,
-        "accepted": 180,
+        "scanned": 280,
+        "accepted": 210,
+        "mean_f0_hz": 121.7,
+        "rejected_f0_gate": 1,
         "rejected_cer_gate": 0
       },
-      "te_syspin": {
-        "repo_id": "arpit-tiwari/syspin-telugu-tts",
+      "te_rasa_male": {
+        "repo_id": "ai4bharat/Rasa",
         "lang": "te",
-        "scanned": 242,
-        "accepted": 180,
+        "scanned": 284,
+        "accepted": 210,
+        "mean_f0_hz": 143.3,
+        "rejected_f0_gate": 0,
         "rejected_cer_gate": 0
       },
-      "ml_iitm": {
-        "repo_id": "thennal/indic_tts_ml",
+      "ml_rasa_male": {
+        "repo_id": "ai4bharat/Rasa",
         "lang": "ml",
-        "scanned": 196,
-        "accepted": 180,
+        "scanned": 254,
+        "accepted": 210,
+        "mean_f0_hz": 117.9,
+        "rejected_f0_gate": 0,
         "rejected_cer_gate": 0
       }
     },
     "rejected_empty_text": 0,
-    "rejected_corrupt_or_silent": 1,
-    "rejected_duration_outlier": 1220,
-    "rejected_duplicate_text": 9,
-    "rejected_transcript_misalignment": 122
+    "rejected_style_or_gender": 899,
+    "rejected_corrupt_or_silent": 15,
+    "rejected_duration_outlier": 849,
+    "rejected_duplicate_or_unk": 3,
+    "rejected_pitch_mismatch": 61,
+    "rejected_transcript_misalignment": 174
   }
 }

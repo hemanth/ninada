@@ -1,4 +1,4 @@
-"""Streaming Halo-Chunked Neural ONNX + Zero-Dep Klatt-Akshara Runtime Engine for Ninada."""
+"""Streaming Halo-Chunked Specialist Neural ONNX + Zero-Dep Klatt-Akshara Runtime Engine for Ninada v2.0."""
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -215,7 +215,7 @@ def encode_wav_bytes(pcm: Any, sr: int = SAMPLE_RATE) -> bytes:
 
 
 class Ninada:
-    """Ninada (निनाद): Streaming Pan-Indic & Classical Sanskrit TTS (Split/Monolithic Neural ONNX + Klatt Tier-2)."""
+    """Ninada (निनाद) v2.0: Streaming Pan-Indic & Classical Sanskrit TTS (Per-Language Specialist ONNX + Klatt Tier-2)."""
 
     def __init__(
         self,
@@ -229,70 +229,117 @@ class Ninada:
         self.enc_session: Any = None
         self.voc_session: Any = None
         self.model_path: Path | None = None
-
-        repo_root = Path(__file__).resolve().parents[3]
-        if encoder_path is None and vocoder_path is None and model_path is None:
-            for base_dir in (repo_root / "artifacts" / "ninada" / "onnx", repo_root / "docs"):
-                ef = base_dir / "encoder_flow_quantized.onnx"
-                vf = base_dir / "vocoder_quantized.onnx"
-                if ef.exists() and vf.exists():
-                    encoder_path, vocoder_path = ef, vf
-                    break
-            if encoder_path is None:
-                for cand in (
-                    repo_root / "artifacts" / "ninada" / "onnx" / "model_quantized.onnx",
-                    repo_root / "docs" / "model_quantized.onnx",
-                ):
-                    if cand.exists():
-                        model_path = cand
-                        break
-            if encoder_path is None and model_path is None:
-                try:
-                    from huggingface_hub import hf_hub_download
-
-                    encoder_path = Path(
-                        hf_hub_download(repo_id="gnumanth/ninada", filename="onnx/encoder_flow_quantized.onnx")
-                    )
-                    vocoder_path = Path(
-                        hf_hub_download(repo_id="gnumanth/ninada", filename="onnx/vocoder_quantized.onnx")
-                    )
-                except Exception:
-                    try:
-                        from huggingface_hub import hf_hub_download
-
-                        model_path = Path(
-                            hf_hub_download(repo_id="gnumanth/ninada", filename="onnx/model_quantized.onnx")
-                        )
-                    except Exception:
-                        model_path = None
+        self._explicit_override = bool(model_path or encoder_path or vocoder_path)
+        self._lang_sessions: dict[str, tuple[Any, Any]] = {}
+        self._repo_root = Path(__file__).resolve().parents[3]
 
         if model_path is not None and Path(model_path).is_dir():
             d = Path(model_path)
-            if (d / "encoder_flow_quantized.onnx").exists() and (d / "vocoder_quantized.onnx").exists():
+            if (d / self.default_lang / "encoder_flow_quantized.onnx").exists():
+                self._explicit_override = False
+                self._onnx_base_dir: Path | None = d
+            elif (d / "encoder_flow_quantized.onnx").exists() and (d / "vocoder_quantized.onnx").exists():
                 encoder_path = d / "encoder_flow_quantized.onnx"
                 vocoder_path = d / "vocoder_quantized.onnx"
                 model_path = None
+                self._onnx_base_dir = None
             elif (d / "model_quantized.onnx").exists():
                 model_path = d / "model_quantized.onnx"
+                self._onnx_base_dir = None
+            else:
+                self._onnx_base_dir = None
+        else:
+            self._onnx_base_dir = None
 
-        try:
-            import onnxruntime as ort
+        if self._explicit_override:
+            try:
+                import onnxruntime as ort
 
-            if encoder_path and vocoder_path and Path(encoder_path).exists() and Path(vocoder_path).exists():
-                self.enc_session = ort.InferenceSession(str(encoder_path), providers=["CPUExecutionProvider"])
-                self.voc_session = ort.InferenceSession(str(vocoder_path), providers=["CPUExecutionProvider"])
-                self.model_path = Path(encoder_path)
-            elif model_path is not None and Path(model_path).exists():
-                self.model_path = Path(model_path)
-                self.session = ort.InferenceSession(str(self.model_path), providers=["CPUExecutionProvider"])
-        except Exception:
-            self.session = None
-            self.enc_session = None
-            self.voc_session = None
+                if encoder_path and vocoder_path and Path(encoder_path).exists() and Path(vocoder_path).exists():
+                    self.enc_session = ort.InferenceSession(str(encoder_path), providers=["CPUExecutionProvider"])
+                    self.voc_session = ort.InferenceSession(str(vocoder_path), providers=["CPUExecutionProvider"])
+                    self.model_path = Path(encoder_path)
+                elif model_path is not None and Path(model_path).exists():
+                    self.model_path = Path(model_path)
+                    self.session = ort.InferenceSession(str(self.model_path), providers=["CPUExecutionProvider"])
+            except Exception:
+                self.session = None
+                self.enc_session = None
+                self.voc_session = None
+        else:
+            pair = self._get_specialist_sessions(self.default_lang)
+            if pair is not None:
+                self.enc_session, self.voc_session = pair
+
+    def _get_specialist_sessions(self, lang: str) -> tuple[Any, Any] | None:
+        lc = lang if lang in LANGUAGE_IDS else "sa"
+        if lc in self._lang_sessions:
+            return self._lang_sessions[lc]
+
+        enc_p: Path | None = None
+        voc_p: Path | None = None
+
+        search_dirs: list[Path] = []
+        if self._onnx_base_dir is not None:
+            search_dirs.append(self._onnx_base_dir / lc)
+            search_dirs.append(self._onnx_base_dir)
+        search_dirs.append(self._repo_root / "artifacts" / "ninada" / "onnx" / lc)
+        if lc == "sa":
+            search_dirs.append(self._repo_root / "artifacts" / "ninada" / "onnx")
+            search_dirs.append(self._repo_root / "docs")
+
+        for d in search_dirs:
+            ef = d / "encoder_flow_quantized.onnx"
+            vf = d / "vocoder_quantized.onnx"
+            if ef.exists() and vf.exists():
+                enc_p, voc_p = ef, vf
+                break
+
+        if enc_p is None:
+            try:
+                from huggingface_hub import hf_hub_download
+
+                enc_p = Path(
+                    hf_hub_download(repo_id="gnumanth/ninada", filename=f"onnx/{lc}/encoder_flow_quantized.onnx")
+                )
+                voc_p = Path(
+                    hf_hub_download(repo_id="gnumanth/ninada", filename=f"onnx/{lc}/vocoder_quantized.onnx")
+                )
+            except Exception:
+                if lc == "sa":
+                    try:
+                        from huggingface_hub import hf_hub_download
+
+                        enc_p = Path(
+                            hf_hub_download(repo_id="gnumanth/ninada", filename="onnx/encoder_flow_quantized.onnx")
+                        )
+                        voc_p = Path(
+                            hf_hub_download(repo_id="gnumanth/ninada", filename="onnx/vocoder_quantized.onnx")
+                        )
+                    except Exception:
+                        enc_p = None
+
+        if enc_p and voc_p and enc_p.exists() and voc_p.exists():
+            try:
+                import onnxruntime as ort
+
+                es = ort.InferenceSession(str(enc_p), providers=["CPUExecutionProvider"])
+                vs = ort.InferenceSession(str(voc_p), providers=["CPUExecutionProvider"])
+                self._lang_sessions[lc] = (es, vs)
+                if self.model_path is None:
+                    self.model_path = enc_p
+                return es, vs
+            except Exception:
+                return None
+        return None
 
     @property
     def is_neural(self) -> bool:
-        return (self.enc_session is not None and self.voc_session is not None) or (self.session is not None)
+        return (
+            bool(self._lang_sessions)
+            or (self.enc_session is not None and self.voc_session is not None)
+            or (self.session is not None)
+        )
 
     def with_lang(self, lang: str) -> "Ninada":
         if lang in LANGUAGE_IDS:
@@ -304,56 +351,115 @@ class Ninada:
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.32,
+        noise: float = 0.667,
+        noise_duration: float = 0.80,
         tier: str = "auto",
-        chunk_frames: int = 40,
-        halo_frames: int = 10,
+        chunk_frames: int = 64,
+        halo_frames: int = 16,
+        crossfade_samples: int = 256,
     ) -> Iterator[dict[str, Any]]:
-        """Stream audio chunks (<200 ms TTFA) via halo-windowed HiFi-GAN vocoding across prosodic clauses."""
-        use_lang = lang or self.default_lang
+        """Stream audio chunks (<200 ms TTFA) via 16-frame halo + 256-sample raised-cosine crossfaded HiFi-GAN."""
+        use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
         clauses = split_prosodic_clauses(text)
         t_start = time.perf_counter()
         ttfa_ms: float | None = None
         chunk_idx = 0
 
-        if tier != "klatt" and self.enc_session is not None and self.voc_session is not None:
+        enc_sess = self.enc_session
+        voc_sess = self.voc_session
+        if not self._explicit_override and tier != "klatt":
+            pair = self._get_specialist_sessions(use_lang)
+            if pair is not None:
+                enc_sess, voc_sess = pair
+
+        if tier != "klatt" and enc_sess is not None and voc_sess is not None:
             import numpy as np
 
-            chunk_f = max(16, int(chunk_frames))
-            halo_f = max(4, int(halo_frames))
+            chunk_f = max(24, int(chunk_frames))
+            halo_f = max(8, int(halo_frames))
+            xfade = max(0, min(int(crossfade_samples), halo_f * HOP_LENGTH // 2))
+
+            enc_in_names = {i.name for i in enc_sess.get_inputs()}
+            voc_in_names = {i.name for i in voc_sess.get_inputs()}
+
+            fade_in = (
+                0.5 * (1.0 - np.cos(math.pi * np.arange(xfade, dtype=np.float32) / max(1, xfade)))
+                if xfade > 0
+                else np.zeros(0, dtype=np.float32)
+            )
+            fade_out = 1.0 - fade_in
 
             for c_idx, clause in enumerate(clauses):
                 parsed = text_to_ids(clause, lang=use_lang)
-                ort_in = {
+                ort_in: dict[str, Any] = {
                     "input_ids": np.array([parsed["input_ids"]], dtype=np.int64),
                     "attention_mask": np.array([parsed["attention_mask"]], dtype=np.int64),
-                    "lang_id": np.array([parsed["lang_id"]], dtype=np.int64),
-                    "scales": np.array([float(rate), float(noise)], dtype=np.float32),
                 }
-                latents, voice_cond, durs = self.enc_session.run(None, ort_in)
-                total_frames = int(latents.shape[2])
-                num_sub = max(1, math.ceil(total_frames / chunk_f))
+                if "lang_id" in enc_in_names:
+                    ort_in["lang_id"] = np.array([parsed["lang_id"]], dtype=np.int64)
+                    ort_in["scales"] = np.array([float(rate), float(noise)], dtype=np.float32)
+                else:
+                    ort_in["scales"] = np.array(
+                        [float(rate), float(noise), float(noise_duration)], dtype=np.float32
+                    )
 
-                for sub_i, st in enumerate(range(0, total_frames, chunk_f)):
+                enc_outs = enc_sess.run(None, ort_in)
+                if len(enc_outs) == 3:
+                    latents, voice_cond, durs = enc_outs
+                else:
+                    latents, durs = enc_outs
+                    voice_cond = None
+
+                total_frames = int(latents.shape[2])
+                bounds = list(range(0, total_frames, chunk_f))
+                num_sub = max(1, len(bounds))
+                prev_tail: np.ndarray | None = None
+
+                for sub_i, st in enumerate(bounds):
                     ed = min(total_frames, st + chunk_f)
+                    is_last_sub = sub_i == num_sub - 1
                     w_st = max(0, st - halo_f)
                     w_ed = min(total_frames, ed + halo_f)
+
                     t_c = time.perf_counter()
-                    wav_win = self.voc_session.run(
-                        None,
-                        {"latents": latents[:, :, w_st:w_ed], "voice_cond": voice_cond},
-                    )[0][0]
+                    voc_in: dict[str, Any] = {"latents": latents[:, :, w_st:w_ed]}
+                    if "voice_cond" in voc_in_names and voice_cond is not None:
+                        voc_in["voice_cond"] = voice_cond
+                    wav_win = voc_sess.run(None, voc_in)[0][0]
+
                     crop_l = (st - w_st) * HOP_LENGTH
                     crop_r = crop_l + (ed - st) * HOP_LENGTH
-                    pcm = wav_win[crop_l:crop_r].astype(np.float32)
+                    extra_r = min(len(wav_win), crop_r + (0 if is_last_sub else xfade))
+                    seg = wav_win[crop_l:extra_r].astype(np.float32).copy()
+
+                    if prev_tail is not None and xfade > 0 and len(prev_tail) == xfade and len(seg) >= xfade:
+                        seg[:xfade] = prev_tail * fade_out + seg[:xfade] * fade_in
+
+                    if not is_last_sub and xfade > 0 and (extra_r - crop_r) == xfade:
+                        prev_tail = seg[-xfade:].copy()
+                        pcm = seg[:-xfade]
+                    else:
+                        prev_tail = None
+                        pcm = seg[: crop_r - crop_l]
+
+                    # Micro-envelope on clause start/end + natural breath pause between multi-clause sentences
+                    if sub_i == 0 and len(pcm) > 192:
+                        r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 192.0))
+                        pcm[:192] *= r_in
+                    if is_last_sub and len(pcm) > 256:
+                        r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 256.0))
+                        pcm[-256:] *= r_out
+                        if c_idx < len(clauses) - 1:
+                            pcm = np.concatenate([pcm, np.zeros(int(0.08 * SAMPLE_RATE), dtype=np.float32)])
+
                     peak = float(np.max(np.abs(pcm))) if len(pcm) > 0 else 0.0
-                    if peak > 1.0:
-                        pcm = (0.92 * (pcm / peak)).astype(np.float32)
+                    if peak > 0.98:
+                        pcm = (0.94 * (pcm / peak)).astype(np.float32)
 
                     now_ms = (time.perf_counter() - t_start) * 1000.0
                     if ttfa_ms is None:
                         ttfa_ms = now_ms
-                    is_final = (c_idx == len(clauses) - 1) and (sub_i == num_sub - 1)
+                    is_final = (c_idx == len(clauses) - 1) and is_last_sub
                     yield {
                         "pcm": pcm,
                         "wav": encode_wav_bytes(pcm, sr=SAMPLE_RATE),
@@ -376,18 +482,22 @@ class Ninada:
         if tier != "klatt" and self.session is not None:
             import numpy as np
 
+            in_names = {i.name for i in self.session.get_inputs()}
             for c_idx, clause in enumerate(clauses):
                 t_c = time.perf_counter()
                 parsed = text_to_ids(clause, lang=use_lang)
-                wav, durs = self.session.run(
-                    None,
-                    {
-                        "input_ids": np.array([parsed["input_ids"]], dtype=np.int64),
-                        "attention_mask": np.array([parsed["attention_mask"]], dtype=np.int64),
-                        "lang_id": np.array([parsed["lang_id"]], dtype=np.int64),
-                        "scales": np.array([float(rate), float(noise)], dtype=np.float32),
-                    },
-                )
+                ort_in = {
+                    "input_ids": np.array([parsed["input_ids"]], dtype=np.int64),
+                    "attention_mask": np.array([parsed["attention_mask"]], dtype=np.int64),
+                }
+                if "lang_id" in in_names:
+                    ort_in["lang_id"] = np.array([parsed["lang_id"]], dtype=np.int64)
+                    ort_in["scales"] = np.array([float(rate), float(noise)], dtype=np.float32)
+                else:
+                    ort_in["scales"] = np.array(
+                        [float(rate), float(noise), float(noise_duration)], dtype=np.float32
+                    )
+                wav, durs = self.session.run(None, ort_in)
                 pcm = wav[0].astype(np.float32)
                 peak = float(np.max(np.abs(pcm))) if len(pcm) > 0 else 0.0
                 if peak > 1e-4:
@@ -441,7 +551,7 @@ class Ninada:
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.32,
+        noise: float = 0.667,
         tier: str = "auto",
     ) -> bytes:
         """Synthesize text into 16 kHz mono WAV bytes."""
@@ -453,14 +563,14 @@ class Ninada:
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.32,
+        noise: float = 0.667,
         tier: str = "auto",
     ) -> tuple[Any, dict[str, Any]]:
-        """Synthesize full waveform array + linguistic metadata using bounded streaming chunks."""
-        use_lang = lang or self.default_lang
+        """Synthesize full waveform array + linguistic metadata using halo-crossfaded streaming chunks."""
+        use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
         parsed = text_to_ids(text, lang=use_lang)
 
-        if tier != "klatt" and self.is_neural:
+        if tier != "klatt" and (self.is_neural or self._get_specialist_sessions(use_lang) is not None):
             import numpy as np
 
             pieces: list[np.ndarray] = []
@@ -494,9 +604,9 @@ def stream(
     text: str,
     lang: str = "sa",
     rate: float = 1.0,
-    noise: float = 0.32,
+    noise: float = 0.667,
     tier: str = "auto",
-    chunk_frames: int = 40,
+    chunk_frames: int = 64,
 ) -> Iterator[dict[str, Any]]:
     """One-line convenience generator to stream 16 kHz audio chunks with <200 ms TTFA."""
     yield from Ninada(lang=lang).stream(

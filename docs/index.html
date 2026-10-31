@@ -227,7 +227,7 @@
       opacity: 0.85;
     }
 
-    .lang-btn:hover {
+    .lang-btn:not(.active):hover:not(:disabled) {
       border-color: var(--ink);
       color: var(--ink);
     }
@@ -236,6 +236,11 @@
       background: var(--ink);
       border-color: var(--ink);
       color: var(--paper);
+    }
+
+    .lang-btn:disabled {
+      opacity: 0.44;
+      cursor: not-allowed;
     }
 
     .preset-row {
@@ -257,7 +262,7 @@
       cursor: pointer;
       transition: all 0.12s ease;
     }
-    .preset-chip:hover {
+    .preset-chip:hover:not(:disabled) {
       border-style: solid;
       border-color: var(--ink);
       color: var(--ink);
@@ -268,6 +273,10 @@
       background: var(--card);
       color: var(--ink);
       font-weight: 600;
+    }
+    .preset-chip:disabled {
+      opacity: 0.44;
+      cursor: not-allowed;
     }
 
     textarea#textInput {
@@ -353,7 +362,11 @@
       gap: 8px;
       transition: opacity 0.14s ease;
     }
-    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+    .btn-primary:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
     .btn-primary.streaming {
       background: var(--signal);
       border-color: var(--signal);
@@ -375,8 +388,26 @@
       gap: 7px;
       text-decoration: none;
     }
-    .btn-secondary:hover:not(:disabled) { background: var(--surface); }
-    .btn-secondary:disabled { opacity: 0.42; cursor: default; }
+    .btn-secondary:hover:not(:disabled):not(.is-disabled) { background: var(--surface); }
+    .btn-secondary:disabled,
+    .btn-secondary.is-disabled {
+      opacity: 0.42;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    textarea#textInput:disabled,
+    .control-field select:disabled,
+    .control-field input[type="range"]:disabled {
+      opacity: 0.56;
+      cursor: not-allowed;
+    }
+
+    .studio-locked audio#audioPlayer,
+    .studio-locked canvas#waveCanvas {
+      opacity: 0.5;
+      pointer-events: none;
+    }
 
     .scope-wrap {
       background: var(--paper);
@@ -532,13 +563,13 @@
         </div>
         <h1>Ninada<span class="title-dev" id="devTitle"></span></h1>
         <p class="subtitle">
-          Sub-second streaming Pan-Indic &amp; Classical Sanskrit neural speech synthesis trained on Google Cloud NVIDIA L4 GPUs (pure Su-srota studio Sanskrit + 5 Indic corpora) and running off-main-thread via Web Worker WebAssembly SIMD.
+          Sub-second streaming Pan-Indic &amp; Classical Sanskrit neural speech synthesis trained on Google Cloud NVIDIA L4 GPUs (anechoic Male studio voices from Su-srota Sanskrit + AI4Bharat Rasa) and running off-main-thread via Web Worker WebAssembly SIMD.
         </p>
       </div>
       <div class="masthead-badges">
-        <span class="pill-stat">6 INDIC LANGUAGES</span>
+        <span class="pill-stat">6 NATIVE SPECIALISTS</span>
         <span class="pill-stat">HALO-STREAMING TTFA</span>
-        <span class="pill-stat">29.0 + 27.6 MB ONNX</span>
+        <span class="pill-stat">27.3 + 27.4 MB ONNX</span>
         <a class="pill-stat" href="https://huggingface.co/gnumanth/ninada" target="_blank" rel="noopener" style="text-decoration:none;">HF MODEL</a>
         <a class="pill-stat" href="https://github.com/hemanth/ninada" target="_blank" rel="noopener" style="text-decoration:none;">GITHUB</a>
       </div>
@@ -554,7 +585,7 @@
       </div>
     </section>
 
-    <main class="studio-grid">
+    <main id="studioMain" class="studio-grid studio-locked" aria-busy="true">
       <section class="panel">
         <div class="panel-header">
           <h2 class="panel-title">01 / Script &amp; Streaming Utterance Input</h2>
@@ -562,62 +593,62 @@
         </div>
 
         <div class="lang-tabs" role="tablist" aria-label="Target Indic Language">
-          <button type="button" role="tab" aria-selected="true" class="lang-btn active" data-lang="sa">
+          <button type="button" role="tab" aria-selected="true" class="lang-btn active" data-lang="sa" disabled>
             <span>Sanskrit</span><span class="lang-native" data-native="sa"></span>
           </button>
-          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="kn">
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="kn" disabled>
             <span>Kannada</span><span class="lang-native" data-native="kn"></span>
           </button>
-          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="hi">
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="hi" disabled>
             <span>Hindi</span><span class="lang-native" data-native="hi"></span>
           </button>
-          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="ta">
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="ta" disabled>
             <span>Tamil</span><span class="lang-native" data-native="ta"></span>
           </button>
-          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="te">
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="te" disabled>
             <span>Telugu</span><span class="lang-native" data-native="te"></span>
           </button>
-          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="ml">
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="ml" disabled>
             <span>Malayalam</span><span class="lang-native" data-native="ml"></span>
           </button>
         </div>
 
         <div class="preset-row" id="presetContainer"></div>
 
-        <textarea id="textInput" spellcheck="false" aria-label="Indic or Sanskrit input text"></textarea>
+        <textarea id="textInput" spellcheck="false" aria-label="Indic or Sanskrit input text" disabled></textarea>
 
         <div class="controls-grid">
           <div class="control-field">
             <label for="tierSelect"><span>ENGINE TIER</span></label>
-            <select id="tierSelect">
+            <select id="tierSelect" disabled>
               <option value="auto">Tier 1 · Streaming Neural ONNX</option>
               <option value="klatt">Tier 2 · Klatt Formant (0 MB)</option>
             </select>
           </div>
           <div class="control-field">
             <label for="rateSlider"><span>SPEAKING RATE</span><span id="rateVal">1.00x</span></label>
-            <input id="rateSlider" type="range" min="0.65" max="1.45" step="0.05" value="1.00" />
+            <input id="rateSlider" type="range" min="0.65" max="1.45" step="0.05" value="1.00" disabled />
           </div>
           <div class="control-field">
-            <label for="noiseSlider"><span>EXPRESSIVENESS</span><span id="noiseVal">0.32</span></label>
-            <input id="noiseSlider" type="range" min="0.00" max="0.75" step="0.02" value="0.32" />
+            <label for="noiseSlider"><span>EXPRESSIVENESS</span><span id="noiseVal">0.66</span></label>
+            <input id="noiseSlider" type="range" min="0.00" max="0.85" step="0.02" value="0.66" disabled />
           </div>
         </div>
 
         <div class="action-row">
-          <button type="button" id="synthBtn" class="btn-primary">
+          <button type="button" id="synthBtn" class="btn-primary" disabled>
             <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-            <span id="synthBtnLabel">Stream Speech</span>
+            <span id="synthBtnLabel">Loading Model...</span>
           </button>
           <button type="button" id="stopBtn" class="btn-secondary" disabled>
             <svg class="icon" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>
             <span>Stop</span>
           </button>
-          <button type="button" id="replayBtn" class="btn-secondary">
+          <button type="button" id="replayBtn" class="btn-secondary" disabled>
             <svg class="icon" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></svg>
             <span>Replay</span>
           </button>
-          <a id="downloadLink" class="btn-secondary" download="ninada_output.wav" href="#">
+          <a id="downloadLink" class="btn-secondary is-disabled" aria-disabled="true" tabindex="-1" download="ninada_output.wav" href="#">
             <svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             <span>16 kHz WAV</span>
           </a>
@@ -754,6 +785,7 @@
       ],
     };
 
+    const studioMain = document.getElementById('studioMain');
     const textInput = document.getElementById('textInput');
     const presetContainer = document.getElementById('presetContainer');
     const langBtns = Array.from(document.querySelectorAll('.lang-btn'));
@@ -782,10 +814,54 @@
     const metricTokens = document.getElementById('metricTokens');
 
     let activeLang = 'sa';
+    let loadedWorkerLang = null;
     let activePresetIdx = 0;
     let lastPcm = null;
     let currentBlobUrl = null;
     let workerReadyInfo = null;
+    let isModelReady = false;
+    window.__ninadaReady = false;
+    window.__ninadaLoadedLang = null;
+    window.__ninadaControlsLocked = true;
+
+    function setDownloadEnabled(enabled) {
+      const ok = Boolean(enabled && isModelReady && currentBlobUrl);
+      downloadLink.classList.toggle('is-disabled', !ok);
+      downloadLink.setAttribute('aria-disabled', ok ? 'false' : 'true');
+      if (ok) {
+        downloadLink.removeAttribute('tabindex');
+      } else {
+        downloadLink.setAttribute('tabindex', '-1');
+      }
+    }
+
+    function setStudioControlsLocked(locked) {
+      isModelReady = !locked;
+      window.__ninadaControlsLocked = Boolean(locked);
+      if (studioMain) {
+        studioMain.classList.toggle('studio-locked', locked);
+        studioMain.setAttribute('aria-busy', locked ? 'true' : 'false');
+      }
+      for (const b of langBtns) {
+        b.disabled = locked;
+      }
+      for (const chip of presetContainer.querySelectorAll('.preset-chip')) {
+        chip.disabled = locked;
+      }
+      textInput.disabled = locked;
+      tierSelect.disabled = locked;
+      rateSlider.disabled = locked;
+      noiseSlider.disabled = locked;
+      synthBtn.disabled = locked;
+      replayBtn.disabled = locked;
+      if (locked) {
+        stopBtn.disabled = true;
+        synthBtnLabel.textContent = 'Loading Model...';
+      } else if (!synthBtn.classList.contains('streaming')) {
+        synthBtnLabel.textContent = 'Stream Speech';
+      }
+      setDownloadEnabled(!locked && Boolean(currentBlobUrl));
+    }
 
     // Gapless Web Audio streaming state
     let audioCtx = null;
@@ -814,7 +890,7 @@
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return null;
       if (!audioCtx) {
-        audioCtx = new Ctx({ sampleRate: SAMPLE_RATE });
+        audioCtx = new Ctx();
       }
       if (audioCtx.state === 'suspended') {
         try { await audioCtx.resume(); } catch {}
@@ -873,8 +949,13 @@
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `preset-chip ${idx === activePresetIdx ? 'active' : ''}`;
+        btn.disabled = !isModelReady;
         btn.textContent = p.label;
         btn.addEventListener('click', () => {
+          if (!isModelReady) return;
+          if (currentPendingReq && !currentPendingReq.autoPlay) {
+            cancelActiveSynthesis();
+          }
           activePresetIdx = idx;
           textInput.value = p.text;
           renderPresetsForLang(langCode);
@@ -902,17 +983,48 @@
       refreshInspection();
     }
 
+    function lockAndLoadWorkerLang(targetLang) {
+      window.__ninadaReady = false;
+      modelDot.classList.remove('ready');
+      modelDot.classList.add('loading');
+      loaderFill.style.width = '8%';
+      loaderLabel.textContent = `Loading ${targetLang.toUpperCase()} Specialist Neural ONNX...`;
+      activeTierBadge.textContent = `LOADING \u00b7 ${targetLang.toUpperCase()}`;
+      setStudioControlsLocked(true);
+      synthWorker.postMessage({ type: 'load_lang', lang: targetLang });
+    }
+
     langBtns.forEach((b) => {
-      b.addEventListener('click', () => setActiveLang(b.dataset.lang, { loadDefaultPreset: true }));
+      b.addEventListener('click', () => {
+        if (!isModelReady) return;
+        cancelActiveSynthesis();
+        setActiveLang(b.dataset.lang, { loadDefaultPreset: true });
+        if (!workerFailed && tierSelect.value !== 'klatt' && loadedWorkerLang !== activeLang) {
+          lockAndLoadWorkerLang(activeLang);
+        }
+      });
+    });
+
+    tierSelect.addEventListener('change', () => {
+      if (!isModelReady) return;
+      if (!workerFailed && tierSelect.value !== 'klatt' && loadedWorkerLang !== activeLang) {
+        cancelActiveSynthesis();
+        lockAndLoadWorkerLang(activeLang);
+      }
     });
 
     rateSlider.addEventListener('input', () => {
+      if (!isModelReady) return;
       rateVal.textContent = `${Number(rateSlider.value).toFixed(2)}x`;
     });
     noiseSlider.addEventListener('input', () => {
+      if (!isModelReady) return;
       noiseVal.textContent = Number(noiseSlider.value).toFixed(2);
     });
-    textInput.addEventListener('input', () => refreshInspection());
+    textInput.addEventListener('input', () => {
+      if (!isModelReady) return;
+      refreshInspection();
+    });
 
     function refreshInspection(durations = null) {
       const fallback = PRESETS_BY_LANG[activeLang]?.[0]?.text || PRESETS_BY_LANG.sa[0].text;
@@ -944,7 +1056,7 @@
         aksharaRibbon.appendChild(card);
       });
 
-      phonemicLine.textContent = `Canonical Devanagari G2P (${info.inputIds.length} blank-interleaved tokens): ${info.normalizedDevanagari}`;
+      phonemicLine.textContent = `Specialist Native Tokens (${info.lang.toUpperCase()}, ${info.inputIds.length} blank-interleaved IDs): ${info.nativeText}  |  Paninian Devanagari: ${info.normalizedDevanagari}`;
       return info;
     }
 
@@ -1020,6 +1132,7 @@
       loaderFill.style.width = '100%';
       loaderLabel.textContent = 'Web Worker unavailable on device — running Zero-Dep Klatt Tier-2';
       activeTierBadge.textContent = 'TIER 2 \u00b7 KLATT ZERO-DEP';
+      setStudioControlsLocked(false);
       window.__ninadaReady = true;
       if (readyResolve) readyResolve({ isNeural: false, isStreamingNeural: false, totalMB: 0 });
       if (currentPendingReq) {
@@ -1035,32 +1148,52 @@
       const msg = ev.data || {};
 
       if (msg.type === 'progress') {
+        const lTag = (msg.lang || activeLang).toUpperCase();
         loaderFill.style.width = `${msg.pct || 0}%`;
         if (msg.phase === 'compile') {
-          loaderLabel.textContent = `Compiling Web Worker WASM SIMD streaming sessions (${msg.totalMB.toFixed(1)} MB)...`;
+          const srcNote = msg.fromCache ? 'from browser cache ' : '';
+          loaderLabel.textContent = `Compiling ${lTag} Web Worker WASM SIMD sessions ${srcNote}(${msg.totalMB.toFixed(1)} MB)...`;
+        } else if (msg.phase === 'cache') {
+          loaderLabel.textContent = `Loading cached Ninada ${lTag} ONNX from browser storage (${msg.loadedMB.toFixed(1)} / ${msg.totalMB.toFixed(1)} MB)...`;
         } else {
-          loaderLabel.textContent = `Streaming GCP-trained Ninada ONNX into Web Worker (${msg.loadedMB.toFixed(1)} / ${msg.totalMB.toFixed(1)} MB)...`;
+          loaderLabel.textContent = `Downloading & caching Ninada ${lTag} ONNX (${msg.loadedMB.toFixed(1)} / ${msg.totalMB.toFixed(1)} MB)...`;
         }
         return;
       }
 
       if (msg.type === 'ready') {
         workerReadyInfo = msg;
+        loadedWorkerLang = msg.lang || activeLang;
+        window.__ninadaLoadedLang = loadedWorkerLang;
+        window.__ninadaReadyInfo = msg;
+        window.__ninadaModelCached = Boolean(msg.cachedPersisted);
+        window.__ninadaCacheHit = Boolean(msg.fromCache);
+        const lTag = loadedWorkerLang.toUpperCase();
         loaderFill.style.width = '100%';
         modelDot.classList.remove('loading');
         modelDot.classList.add('ready');
+        const cacheTag = msg.fromCache
+          ? ' \u00b7 Loaded from Cache'
+          : msg.cachedPersisted
+          ? ' \u00b7 Cached Offline'
+          : '';
         if (msg.isStreamingNeural) {
-          loaderLabel.textContent = `Ninada Halo-Streaming VITS + HiFi-GAN Ready (${msg.totalMB.toFixed(1)} MB Web Worker WASM SIMD)`;
-          activeTierBadge.textContent = 'TIER 1 \u00b7 STREAMING ONNX';
+          loaderLabel.textContent = `Ninada ${lTag} Halo-Streaming VITS + HiFi-GAN Ready (${msg.totalMB.toFixed(1)} MB WASM SIMD${cacheTag})`;
+          activeTierBadge.textContent = `TIER 1 \u00b7 ${lTag} STREAMING ONNX`;
         } else if (msg.isNeural) {
-          loaderLabel.textContent = `Ninada Neural VITS + HiFi-GAN Ready (${msg.totalMB.toFixed(1)} MB Web Worker WASM SIMD)`;
-          activeTierBadge.textContent = 'TIER 1 \u00b7 NEURAL ONNX';
+          loaderLabel.textContent = `Ninada ${lTag} Neural VITS + HiFi-GAN Ready (${msg.totalMB.toFixed(1)} MB WASM SIMD${cacheTag})`;
+          activeTierBadge.textContent = `TIER 1 \u00b7 ${lTag} NEURAL ONNX`;
         } else {
           loaderLabel.textContent = msg.reason || 'Running Zero-Dep Klatt Tier-2 in Web Worker';
           activeTierBadge.textContent = 'TIER 2 \u00b7 KLATT ZERO-DEP';
         }
+        setStudioControlsLocked(false);
         window.__ninadaReady = true;
-        if (readyResolve) readyResolve(msg);
+        if (readyResolve) {
+          const fn = readyResolve;
+          readyResolve = null;
+          fn(msg);
+        }
         return;
       }
 
@@ -1099,7 +1232,7 @@
         const req = currentPendingReq;
         currentPendingReq = null;
         synthBtn.classList.remove('streaming');
-        synthBtnLabel.textContent = 'Stream Speech';
+        synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
         if (activeSources.length === 0) {
           stopBtn.disabled = true;
         }
@@ -1119,6 +1252,7 @@
         audioPlayer.src = currentBlobUrl;
         downloadLink.href = currentBlobUrl;
         downloadLink.download = `ninada_${msg.lang}_${Date.now()}.wav`;
+        setDownloadEnabled(true);
 
         const durationSec = pcm.length / SAMPLE_RATE;
         const rtf = (msg.totalMs / 1000) / Math.max(0.01, durationSec);
@@ -1156,7 +1290,7 @@
         const req = currentPendingReq;
         currentPendingReq = null;
         synthBtn.classList.remove('streaming');
-        synthBtnLabel.textContent = 'Stream Speech';
+        synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
         stopBtn.disabled = true;
         if (req) req.reject(new Error(msg.message || 'Worker synthesis error'));
       }
@@ -1170,11 +1304,12 @@
       }
       stopLiveAudio();
       synthBtn.classList.remove('streaming');
-      synthBtnLabel.textContent = 'Stream Speech';
+      synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
       stopBtn.disabled = true;
     }
 
     async function runSynthesis(autoPlay = true) {
+      if (!isModelReady) return null;
       const txt = textInput.value.trim();
       if (!txt) return null;
 
@@ -1187,12 +1322,12 @@
 
       if (autoPlay) {
         await ensureAudioContext();
+        synthBtn.classList.add('streaming');
+        synthBtnLabel.textContent = 'Streaming...';
+        stopBtn.disabled = false;
       }
 
       const reqId = nextReqSeq++;
-      synthBtn.classList.add('streaming');
-      synthBtnLabel.textContent = 'Streaming...';
-      stopBtn.disabled = false;
 
       return new Promise((resolve, reject) => {
         currentPendingReq = {
@@ -1226,9 +1361,16 @@
       if (lastPcm) drawWaveform(lastPcm, 0);
     });
 
-    synthBtn.addEventListener('click', () => runSynthesis(true));
-    stopBtn.addEventListener('click', () => cancelActiveSynthesis());
+    synthBtn.addEventListener('click', () => {
+      if (!isModelReady) return;
+      runSynthesis(true);
+    });
+    stopBtn.addEventListener('click', () => {
+      if (!isModelReady) return;
+      cancelActiveSynthesis();
+    });
     replayBtn.addEventListener('click', () => {
+      if (!isModelReady) return;
       stopLiveAudio();
       if (audioPlayer.src) {
         audioPlayer.currentTime = 0;
@@ -1237,10 +1379,16 @@
         runSynthesis(true);
       }
     });
+    downloadLink.addEventListener('click', (e) => {
+      if (!isModelReady || !currentBlobUrl) {
+        e.preventDefault();
+      }
+    });
 
     window.__ninadaRunSynthesis = runSynthesis;
     window.__ninadaCancel = cancelActiveSynthesis;
 
+    setStudioControlsLocked(true);
     setActiveLang('sa', { loadDefaultPreset: true });
     synthWorker.postMessage({ type: 'init' });
     await workerReadyPromise;

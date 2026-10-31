@@ -1,34 +1,34 @@
-# `Ninada` v1.1 Scientific Multi-Benchmark & Streaming Report
+# `Ninada` v2.0 Scientific Multi-Benchmark & Halo-Streaming Report
 
-## 1. Experimental Setup & Leakage-Free Studio Corpus
-- **Held-Out Test Split**: `155` studio utterances (`16 kHz` mono PCM) across **6 Indic languages** (`sa` [65], `hi` [18], `kn` [18], `ta` [18], `te` [18], `ml` [18]), featuring **pure human studio Sanskrit** from `prathoshap/sushrota-sanskrit-asr-data` (`recitation_corpus` + `scholar`, synthetic `tts_aug` excluded) + 5 clean studio Indic corpora, strictly disjoint (`0` shared audio hashes or normalized transcripts) from the training and validation splits.
+## 1. Experimental Setup & Leakage-Free Anechoic Studio Corpus
+- **Held-Out Test Split**: `144` anechoic studio Male utterances (`16 kHz` mono PCM) across **6 Indic languages** (`sa` [39], `hi` [21], `kn` [21], `ta` [21], `te` [21], `ml` [21]), curated from **`prathoshap/sushrota-sanskrit-asr-data`** (`recitation_corpus` + `scholar`, `studio_align_cer <= 5.0%`, synthetic `tts_aug` excluded) + **`ai4bharat/Rasa`** neutral studio Male narration (`48 kHz -> 16 kHz`), strictly disjoint (`0` shared audio hashes or normalized transcripts) from the training and validation splits.
 - **Bootstrap Confidence Intervals**: `B = 1,000` non-parametric bootstrap resamples (`95% CI`).
-- **Specialist Baseline Included**: In addition to single-checkpoint `facebook/mms-tts-hin` (`138.8 MB`), we benchmark against the **`694.0 MB` Meta MMS-TTS 5-Specialist Fleet** (`mms-tts-hin` + `mms-tts-kan` + `mms-tts-tam` + `mms-tts-tel` + `mms-tts-mal`, routing every language to its dedicated native-script checkpoint).
-- **Independent Round-Trip Intelligibility Oracle**: `Su-srota` IndicConformer-CTC (`115M` params, `sushrota_sanskrit_ctc_int8.onnx`), completely independent of the VITS generator.
+- **Specialist Fleet Baseline Included**: Benchmarks against both single-checkpoint `facebook/mms-tts-hin` (`138.8 MB`) and the **`694.0 MB` Meta MMS-TTS 5-Specialist Fleet** (`mms-tts-{hin,kan,tam,tel,mal}`, routing each language to its dedicated checkpoint; `sa -> mms-tts-hin`).
+- **Independent Round-Trip Intelligibility Oracle**: `Su-srota` IndicConformer-CTC (`115M` params, `sushrota_sanskrit_ctc_int8.onnx`), completely independent of the VITS + HiFi-GAN generator.
 
-## 2. Overall Pan-Indic & Sanskrit Leaderboard (`N = 155` Test Utterances)
+## 2. Overall Pan-Indic & Sanskrit Leaderboard (`N = 144` Test Utterances)
 
-| System | Footprint (↓) | Coverage (↑) | TTFA p50 (ms, ↓) | MCD (dB, ↓) | Log-F0 RMSE (c, ↓) | Dur MAE (s, ↓) | Sanskrit CER (%, ↓) | Pan-Indic Phonetic CER (%, ↓) |
+| System | Active Footprint (↓) | Coverage (↑) | TTFA p50 (ms, ↓) | MCD (dB, ↓) | Log-F0 RMSE (c, ↓) | Dur MAE (s, ↓) | Sanskrit CER (%, ↓) | Pan-Indic Phonetic CER (%, ↓) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Studio Human Audio (Topline) | — | 100.0% | — | — | — | — | 2.58% [1.84, 3.31] | 14.63% |
-| Base `mms-tts-hin` (Native Tokenizer) | 138.8 MB | 59.4% | 392.6 ms | 6.39 [6.20, 6.61] | 861.6 | 3.54s | 24.65% [22.42, 26.87] | 57.99% |
-| Base `mms-tts-hin` + `Ninada` G2P | 138.8 MB | 100.0% | 738.2 ms | 5.47 [5.38, 5.55] | 714.4 | 1.26s | 24.89% [22.57, 27.20] | 32.60% |
-| Meta MMS 5-Specialist Fleet (`5x` Models) | 694.0 MB | 100.0% | 741.7 ms | 5.16 [5.07, 5.26] | 697.1 | 1.24s | 24.65% [22.42, 26.87] | 26.58% |
-| **`Ninada` Tier-1A (GCP L4 FP32)** | 140.0 MB | 100.0% | 127.8 ms | 4.33 [4.26, 4.42] | 539.1 | 0.82s | 12.77% [11.00, 14.68] | 20.35% |
-| **`Ninada` Tier-1B (Streaming ONNX)** | 56.6 MB | 100.0% | 178.6 ms | 4.33 [4.26, 4.41] | 536.1 | 0.82s | 13.32% [11.53, 15.24] | 20.50% |
-| `Ninada` Tier-2 (Zero-Dep Klatt) | 0.0 MB | 100.0% | 57.8 ms | 10.61 [10.41, 10.83] | 640.9 | 2.32s | 85.95% [84.23, 87.63] | 89.44% |
+| Studio Human Audio (Topline) | — | 100.0% | — | — | — | — | 1.78% [1.14, 2.46] | 18.86% |
+| Base `mms-tts-hin` (Native Tokenizer) | 138.8 MB | 43.1% | 0.6 ms | 6.50 [6.30, 6.71] | 961.1 | 3.10s | 19.48% [16.51, 22.60] | 65.36% |
+| Base `mms-tts-hin` + `Ninada` G2P | 138.8 MB | 100.0% | 463.4 ms | 5.49 [5.40, 5.58] | 654.8 | 0.89s | 20.27% [17.07, 23.62] | 34.44% |
+| Meta MMS 5-Specialist Fleet (`5x` Models) | 694.0 MB | 100.0% | 507.5 ms | 5.09 [5.02, 5.17] | 663.7 | 1.31s | 19.48% [16.51, 22.60] | 26.73% |
+| **`Ninada` v2.0 Tier-1A (GCP L4 FP32)** | 138.4 MB | 100.0% | 150.8 ms | 4.70 [4.63, 4.77] | 628.0 | 0.72s | 16.65% [13.17, 20.36] | 29.49% |
+| **`Ninada` v2.0 Tier-1B (Streaming ONNX)** | 54.7 MB | 100.0% | 180.1 ms | 4.69 [4.61, 4.76] | 626.4 | 0.73s | 16.95% [13.46, 20.28] | 29.61% |
+| `Ninada` Tier-2 (Zero-Dep Klatt) | 0.0 MB | 100.0% | 34.6 ms | 11.32 [11.12, 11.52] | 533.5 | 1.33s | 87.78% [85.78, 89.80] | 89.70% |
 
 ## 3. Per-Language MCD (dB, ↓) Breakdown Across 6 Indic Languages
 
-| Language | Test `N` | `mms-tts-hin` (Raw) | `mms-tts-hin` + G2P | MMS 5-Specialist Fleet (`694 MB`) | **`Ninada` Tier-1A (FP32)** | **`Ninada` Tier-1B (Browser ONNX)** |
+| Language | Test `N` | `mms-tts-hin` (Raw) | `mms-tts-hin` + G2P | MMS 5-Specialist Fleet (`694 MB`) | **`Ninada` v2.0 Tier-1A (FP32)** | **`Ninada` v2.0 Tier-1B (Streaming ONNX)** |
 |---|---:|---:|---:|---:|---:|---:|
-| Sanskrit (`sa`) | 65 | 5.33 | 5.33 | 5.33 | **4.52** | **4.51** |
-| Hindi (`hi`) | 18 | 5.61 | 5.61 | 5.61 | **4.08** | **4.09** |
-| Kannada (`kn`) | 18 | 8.55 | 5.80 | 5.29 | **4.14** | **4.14** |
-| Tamil (`ta`) | 18 | 6.94 | 5.49 | 4.70 | **4.07** | **4.06** |
-| Telugu (`te`) | 18 | 7.80 | 5.60 | 5.15 | **4.39** | **4.39** |
-| Malayalam (`ml`) | 18 | 6.92 | 5.33 | 4.44 | **4.29** | **4.28** |
+| Sanskrit (`sa`) | 39 | 5.35 | 5.34 | 5.35 | **4.90** | **4.87** |
+| Hindi (`hi`) | 21 | 4.90 | 4.88 | 4.90 | **4.26** | **4.25** |
+| Kannada (`kn`) | 21 | 7.70 | 5.51 | 4.86 | **4.51** | **4.59** |
+| Tamil (`ta`) | 21 | 7.33 | 5.30 | 4.81 | **4.59** | **4.59** |
+| Telugu (`te`) | 21 | 7.29 | 6.08 | 5.59 | **5.24** | **5.19** |
+| Malayalam (`ml`) | 21 | 7.42 | 5.95 | 4.81 | **4.51** | **4.47** |
 
-## 4. Browser ONNX Compression & Numerical Parity
-- **FP32 ONNX Size**: `112.61 MB` -> **Browser Single-File ONNX (`model_quantized.onnx`)**: `56.62 MB` (`2.0x` smaller than FP32, `12.6x` smaller than the `694.0 MB` 5-Specialist MMS Fleet, zero external `.data` shards, zero unsupported `ConvInteger` ops in `onnxruntime-web` WASM SIMD).
-- **PyTorch FP32 <-> Browser ONNX Waveform Parity**: Mean SNR = **`41.09 dB`**, Mean Pearson `r` = **`0.999924`**.
+## 4. Browser Streaming ONNX Compression & Seam Parity
+- **Active Browser Specialist ONNX Size**: `54.7 MB` (`27.3 MB` Encoder+SDP+Flow + `27.4 MB` Halo-Windowed HiFi-GAN, `2.5x` smaller than a `138.8 MB` FP32 VITS checkpoint, `12.7x` smaller than the `694.0 MB` 5-Specialist MMS Fleet, zero `ConvInteger` or `NonZero` operators in `onnxruntime-web` WASM SIMD).
+- **PyTorch FP32 <-> Streaming ONNX Waveform Parity**: Mean SNR = **`33.46 dB`**, Stream Seam SNR (`16`-frame halo + `256`-sample raised-cosine crossfade) = **`123.72 dB`**, Mean Pearson `r` = **`0.965623`**.

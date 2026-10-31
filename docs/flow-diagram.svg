@@ -38,11 +38,11 @@
 
   <!-- Stage 2: Pan-Indic G2P -->
   <rect class="node" x="234" y="92" width="188" height="122" rx="6" />
-  <text class="kicker" x="248" y="114">02 / PHONOLOGY</text>
-  <text class="title" x="248" y="135">Akshara G2P (87 tok)</text>
-  <text class="sub" x="248" y="156">0x80 ISCII Alignment</text>
-  <text class="sub" x="248" y="173">Paninian Sandhi + Avagraha</text>
-  <text class="sub" x="248" y="190">Guru / Laghu Weighting</text>
+  <text class="kicker" x="248" y="114">02 / NATIVE AKSHARA G2P</text>
+  <text class="title" x="248" y="135">6-Script Specialist Map</text>
+  <text class="sub" x="248" y="156">0x80 ISCII + Kannada SA</text>
+  <text class="sub" x="248" y="173">Paninian Sandhi + Anusvara</text>
+  <text class="sub" x="248" y="190">CTC Blank + Final Boundary</text>
 
   <!-- Arrow 2->3 (Tier 1) -->
   <line class="wire" x1="422" y1="136" x2="458" y2="136" marker-end="url(#arrow)" />
@@ -52,11 +52,11 @@
   <!-- Stage 3: Focal Node - Streaming Encoder + Flow -->
   <rect class="focal" x="462" y="74" width="252" height="132" rx="6" />
   <text class="focal-sub" x="478" y="96">03 / STAGE-1 ENCODER + FLOW</text>
-  <text class="focal-title" x="478" y="119">Ninada Disentangled VITS</text>
-  <text class="focal-sub" x="478" y="141">Su-srota + 5-Indic GCP L4</text>
-  <text class="focal-sub" x="478" y="159">MAS Duration + 4-Step Flow</text>
-  <text class="focal-sub" x="478" y="177">Global Clause Latents (~35 ms)</text>
-  <text class="focal-sub" x="478" y="194">29.8 MB FP16 ONNX (Worker)</text>
+  <text class="focal-title" x="478" y="119">6x Ninada VITS Specialists</text>
+  <text class="focal-sub" x="478" y="141">MPD + MRD + SDP on GCP L4</text>
+  <text class="focal-sub" x="478" y="159">Su-srota + Rasa Studio Male</text>
+  <text class="focal-sub" x="478" y="177">WiSE-FT Ensembled Latents</text>
+  <text class="focal-sub" x="478" y="194">27.3 MB FP16 ONNX · Cached</text>
 
   <!-- Stage 3B: Tier 2 Zero-Dep Klatt -->
   <rect class="node" x="462" y="232" width="252" height="72" rx="6" />
@@ -72,10 +72,10 @@
   <rect class="node" x="756" y="92" width="192" height="122" rx="6" />
   <text class="kicker" x="770" y="114">04 / STREAMING VOCODER</text>
   <text class="title" x="770" y="135">Halo-Chunk HiFi-GAN</text>
-  <text class="sub" x="770" y="156">40f + 10f Halo (53.6 dB SNR)</text>
-  <text class="sub" x="770" y="173">26.8 MB ONNX · &lt;250 ms TTFA</text>
-  <text class="sub" x="770" y="190">Gapless Web Audio + SDK</text>
+  <text class="sub" x="770" y="156">50f + 16f Halo (123.7 dB SNR)</text>
+  <text class="sub" x="770" y="173">27.4 MB ONNX · 256s Crossfade</text>
+  <text class="sub" x="770" y="190">48 kHz Sinc Web Audio + SDK</text>
 
   <!-- Footer telemetry bar -->
-  <text class="badge" x="32" y="312">RUNTIME: WEB WORKER WASM SIMD + PYTHON + NODE // SUB-SECOND STREAMING // MIT LICENSE</text>
+  <text class="badge" x="32" y="312">RUNTIME: WEB WORKER WASM SIMD + CACHESTORAGE + PYTHON + NODE // GAPLESS STREAMING // MIT LICENSE</text>
 </svg>

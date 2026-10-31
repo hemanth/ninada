@@ -1,7 +1,9 @@
 {
   "model_name": "ninada",
+  "architecture_version": "2.0.0",
+  "architecture": "Native-Script Specialist VITS + ONNX-Safe Stochastic Duration Predictor (SDP) + Adversarial MPD/MRD",
   "project": "hemanth-hm",
-  "cloud_run_execution": "sntts-l4-trainer-rkzx7",
+  "cloud_run_execution": "sntts-l4-trainer-ngfvt",
   "region": "us-east4",
   "hostname": "localhost",
   "platform": "Linux-6.9.12-x86_64-with-glibc2.35",
@@ -10,140 +12,387 @@
   "cuda_version": "12.1",
   "gpu_name": "NVIDIA L4",
   "gpu_vram_gb": 22.03,
-  "train_utterances": 1240,
-  "val_utterances": 155,
-  "epochs": 24,
-  "batch_size": 8,
-  "total_steps": 3720,
-  "best_epoch": 17,
-  "total_elapsed_sec": 807.3,
-  "parameter_counts": {
-    "total_params": 36690242,
-    "trainable_params": 15136898,
-    "frozen_vocoder_posterior_params": 21553344,
-    "head_group_params": 1753730,
-    "backbone_group_params": 13383168
-  },
-  "pretrain_baseline": {
-    "val_loss": 63.15129,
-    "val_kl_loss": 0.05944,
-    "val_latent_loss": 0.55317,
-    "val_dur_loss": 19.86177,
-    "val_mel_l1": 1.25883,
-    "val_mr_stft": 2.80474,
-    "val_dur_mae_frames": 8.67484,
-    "val_utt_dur_mae_sec": 19.30029,
-    "per_lang": {
-      "sa": {
-        "n": 65,
-        "val_kl": 0.0609,
-        "val_latent": 0.5387,
-        "val_dur_mae_frames": 8.8036,
-        "val_mel_l1": 1.291
+  "languages_trained": [
+    "sa",
+    "kn",
+    "hi",
+    "ta",
+    "te",
+    "ml"
+  ],
+  "train_utterances": 1150,
+  "val_utterances": 144,
+  "epochs": 16,
+  "indic_epochs": 10,
+  "batch_size": 10,
+  "total_steps": 1346,
+  "total_elapsed_sec": 1346.99,
+  "specialists": {
+    "sa": {
+      "lang": "sa",
+      "base_checkpoint": "facebook/mms-tts-kan",
+      "vocab_size": 79,
+      "train_utterances": 310,
+      "val_utterances": 39,
+      "epochs": 16,
+      "disc_warmup_epochs": 2,
+      "total_steps": 496,
+      "best_epoch": 15,
+      "selected_wise_ft_alpha": 0.25,
+      "wise_ft_validation_grid": [
+        {
+          "alpha": 0.0,
+          "synth_val_mcd_db": 5.1313,
+          "synth_val_dur_mae_sec": 1.2903,
+          "synth_val_composite": 5.97
+        },
+        {
+          "alpha": 0.25,
+          "synth_val_mcd_db": 4.9459,
+          "synth_val_dur_mae_sec": 1.2017,
+          "synth_val_composite": 5.727
+        },
+        {
+          "alpha": 0.5,
+          "synth_val_mcd_db": 4.7744,
+          "synth_val_dur_mae_sec": 2.8973,
+          "synth_val_composite": 6.6577
+        },
+        {
+          "alpha": 0.75,
+          "synth_val_mcd_db": 4.6853,
+          "synth_val_dur_mae_sec": 3.8392,
+          "synth_val_composite": 7.1808
+        },
+        {
+          "alpha": 1.0,
+          "synth_val_mcd_db": 4.6568,
+          "synth_val_dur_mae_sec": 4.2167,
+          "synth_val_composite": 7.3976
+        }
+      ],
+      "pretrain_synth_val": {
+        "synth_val_mcd_db": 5.1313,
+        "synth_val_dur_mae_sec": 1.2903,
+        "synth_val_composite": 5.97
       },
-      "hi": {
-        "n": 18,
-        "val_kl": 0.0561,
-        "val_latent": 0.5335,
-        "val_dur_mae_frames": 8.694,
-        "val_mel_l1": 1.2192
+      "selected_synth_val": {
+        "alpha": 0.25,
+        "synth_val_mcd_db": 4.9459,
+        "synth_val_dur_mae_sec": 1.2017,
+        "synth_val_composite": 5.727
       },
-      "kn": {
-        "n": 18,
-        "val_kl": 0.0603,
-        "val_latent": 0.5838,
-        "val_dur_mae_frames": 8.5311,
-        "val_mel_l1": 1.2898
+      "parameter_counts": {
+        "total_params": 36268848,
+        "trainable_generator_params": 14715504,
+        "frozen_vocoder_posterior_params": 21553344
       },
-      "ta": {
-        "n": 18,
-        "val_kl": 0.0564,
-        "val_latent": 0.5747,
-        "val_dur_mae_frames": 8.5342,
-        "val_mel_l1": 1.2094
+      "elapsed_sec": 529.21
+    },
+    "kn": {
+      "lang": "kn",
+      "base_checkpoint": "facebook/mms-tts-kan",
+      "vocab_size": 76,
+      "train_utterances": 168,
+      "val_utterances": 21,
+      "epochs": 10,
+      "disc_warmup_epochs": 2,
+      "total_steps": 170,
+      "best_epoch": 8,
+      "selected_wise_ft_alpha": 0.5,
+      "wise_ft_validation_grid": [
+        {
+          "alpha": 0.0,
+          "synth_val_mcd_db": 4.9292,
+          "synth_val_dur_mae_sec": 2.2752,
+          "synth_val_composite": 6.4082
+        },
+        {
+          "alpha": 0.25,
+          "synth_val_mcd_db": 4.801,
+          "synth_val_dur_mae_sec": 1.071,
+          "synth_val_composite": 5.4971
+        },
+        {
+          "alpha": 0.5,
+          "synth_val_mcd_db": 4.6255,
+          "synth_val_dur_mae_sec": 0.669,
+          "synth_val_composite": 5.0604
+        },
+        {
+          "alpha": 0.75,
+          "synth_val_mcd_db": 4.3513,
+          "synth_val_dur_mae_sec": 1.4097,
+          "synth_val_composite": 5.2676
+        },
+        {
+          "alpha": 1.0,
+          "synth_val_mcd_db": 4.2616,
+          "synth_val_dur_mae_sec": 2.0204,
+          "synth_val_composite": 5.5749
+        }
+      ],
+      "pretrain_synth_val": {
+        "synth_val_mcd_db": 4.9292,
+        "synth_val_dur_mae_sec": 2.2752,
+        "synth_val_composite": 6.4082
       },
-      "te": {
-        "n": 18,
-        "val_kl": 0.0609,
-        "val_latent": 0.5659,
-        "val_dur_mae_frames": 8.7632,
-        "val_mel_l1": 1.2837
+      "selected_synth_val": {
+        "alpha": 0.5,
+        "synth_val_mcd_db": 4.6255,
+        "synth_val_dur_mae_sec": 0.669,
+        "synth_val_composite": 5.0604
       },
-      "ml": {
-        "n": 18,
-        "val_kl": 0.0585,
-        "val_latent": 0.5603,
-        "val_dur_mae_frames": 8.3868,
-        "val_mel_l1": 1.176
-      }
-    }
-  },
-  "best_epoch_metrics": {
-    "epoch": 17,
-    "step": 2635,
-    "epoch_sec": 31.82,
-    "lr_head": 9.77e-05,
-    "lr_backbone": 1.47e-05,
-    "is_best": true,
-    "train_loss": 7.62151,
-    "train_kl_loss": 0.02972,
-    "train_latent_loss": 0.13001,
-    "train_dur_loss": 0.74978,
-    "train_mel_l1": 0.82314,
-    "train_mr_stft": 2.02689,
-    "train_dur_mae_frames": 1.76021,
-    "train_utt_dur_mae_sec": 0.51408,
-    "val_loss": 10.13588,
-    "val_kl_loss": 0.04177,
-    "val_latent_loss": 0.23261,
-    "val_dur_loss": 0.99594,
-    "val_mel_l1": 0.92574,
-    "val_mr_stft": 2.22752,
-    "val_dur_mae_frames": 1.84857,
-    "val_utt_dur_mae_sec": 0.79519,
-    "per_lang": {
-      "sa": {
-        "n": 65,
-        "val_kl": 0.0442,
-        "val_latent": 0.231,
-        "val_dur_mae_frames": 2.1476,
-        "val_mel_l1": 0.9439
+      "parameter_counts": {
+        "total_params": 36268272,
+        "trainable_generator_params": 14714928,
+        "frozen_vocoder_posterior_params": 21553344
       },
-      "hi": {
-        "n": 18,
-        "val_kl": 0.0407,
-        "val_latent": 0.2299,
-        "val_dur_mae_frames": 1.6668,
-        "val_mel_l1": 0.9247
+      "elapsed_sec": 159.08
+    },
+    "hi": {
+      "lang": "hi",
+      "base_checkpoint": "facebook/mms-tts-hin",
+      "vocab_size": 73,
+      "train_utterances": 168,
+      "val_utterances": 21,
+      "epochs": 10,
+      "disc_warmup_epochs": 2,
+      "total_steps": 170,
+      "best_epoch": 10,
+      "selected_wise_ft_alpha": 0.75,
+      "wise_ft_validation_grid": [
+        {
+          "alpha": 0.0,
+          "synth_val_mcd_db": 4.9598,
+          "synth_val_dur_mae_sec": 0.4412,
+          "synth_val_composite": 5.2466
+        },
+        {
+          "alpha": 0.25,
+          "synth_val_mcd_db": 4.7647,
+          "synth_val_dur_mae_sec": 0.4698,
+          "synth_val_composite": 5.0701
+        },
+        {
+          "alpha": 0.5,
+          "synth_val_mcd_db": 4.4265,
+          "synth_val_dur_mae_sec": 0.5856,
+          "synth_val_composite": 4.8072
+        },
+        {
+          "alpha": 0.75,
+          "synth_val_mcd_db": 4.2411,
+          "synth_val_dur_mae_sec": 0.7653,
+          "synth_val_composite": 4.7386
+        },
+        {
+          "alpha": 1.0,
+          "synth_val_mcd_db": 4.1615,
+          "synth_val_dur_mae_sec": 0.9017,
+          "synth_val_composite": 4.7476
+        }
+      ],
+      "pretrain_synth_val": {
+        "synth_val_mcd_db": 4.9598,
+        "synth_val_dur_mae_sec": 0.4412,
+        "synth_val_composite": 5.2466
       },
-      "kn": {
-        "n": 18,
-        "val_kl": 0.0376,
-        "val_latent": 0.1963,
-        "val_dur_mae_frames": 1.7427,
-        "val_mel_l1": 0.9109
+      "selected_synth_val": {
+        "alpha": 0.75,
+        "synth_val_mcd_db": 4.2411,
+        "synth_val_dur_mae_sec": 0.7653,
+        "synth_val_composite": 4.7386
       },
-      "ta": {
-        "n": 18,
-        "val_kl": 0.0384,
-        "val_latent": 0.2282,
-        "val_dur_mae_frames": 1.5553,
-        "val_mel_l1": 0.8899
+      "parameter_counts": {
+        "total_params": 36267696,
+        "trainable_generator_params": 14714352,
+        "frozen_vocoder_posterior_params": 21553344
       },
-      "te": {
-        "n": 18,
-        "val_kl": 0.0426,
-        "val_latent": 0.2501,
-        "val_dur_mae_frames": 1.7226,
-        "val_mel_l1": 0.955
+      "elapsed_sec": 162.12
+    },
+    "ta": {
+      "lang": "ta",
+      "base_checkpoint": "facebook/mms-tts-tam",
+      "vocab_size": 59,
+      "train_utterances": 168,
+      "val_utterances": 21,
+      "epochs": 10,
+      "disc_warmup_epochs": 2,
+      "total_steps": 170,
+      "best_epoch": 8,
+      "selected_wise_ft_alpha": 0.5,
+      "wise_ft_validation_grid": [
+        {
+          "alpha": 0.0,
+          "synth_val_mcd_db": 4.9118,
+          "synth_val_dur_mae_sec": 1.4419,
+          "synth_val_composite": 5.849
+        },
+        {
+          "alpha": 0.25,
+          "synth_val_mcd_db": 4.8038,
+          "synth_val_dur_mae_sec": 0.8616,
+          "synth_val_composite": 5.3638
+        },
+        {
+          "alpha": 0.5,
+          "synth_val_mcd_db": 4.7341,
+          "synth_val_dur_mae_sec": 0.662,
+          "synth_val_composite": 5.1645
+        },
+        {
+          "alpha": 0.75,
+          "synth_val_mcd_db": 4.6362,
+          "synth_val_dur_mae_sec": 0.7637,
+          "synth_val_composite": 5.1325
+        },
+        {
+          "alpha": 1.0,
+          "synth_val_mcd_db": 4.5316,
+          "synth_val_dur_mae_sec": 0.883,
+          "synth_val_composite": 5.1056
+        }
+      ],
+      "pretrain_synth_val": {
+        "synth_val_mcd_db": 4.9118,
+        "synth_val_dur_mae_sec": 1.4419,
+        "synth_val_composite": 5.849
       },
-      "ml": {
-        "n": 18,
-        "val_kl": 0.0406,
-        "val_latent": 0.2643,
-        "val_dur_mae_frames": 1.4757,
-        "val_mel_l1": 0.8828
-      }
+      "selected_synth_val": {
+        "alpha": 0.5,
+        "synth_val_mcd_db": 4.7341,
+        "synth_val_dur_mae_sec": 0.662,
+        "synth_val_composite": 5.1645
+      },
+      "parameter_counts": {
+        "total_params": 36265008,
+        "trainable_generator_params": 14711664,
+        "frozen_vocoder_posterior_params": 21553344
+      },
+      "elapsed_sec": 165.28
+    },
+    "te": {
+      "lang": "te",
+      "base_checkpoint": "facebook/mms-tts-tel",
+      "vocab_size": 66,
+      "train_utterances": 168,
+      "val_utterances": 21,
+      "epochs": 10,
+      "disc_warmup_epochs": 2,
+      "total_steps": 170,
+      "best_epoch": 10,
+      "selected_wise_ft_alpha": 0.5,
+      "wise_ft_validation_grid": [
+        {
+          "alpha": 0.0,
+          "synth_val_mcd_db": 5.4787,
+          "synth_val_dur_mae_sec": 1.463,
+          "synth_val_composite": 6.4297
+        },
+        {
+          "alpha": 0.25,
+          "synth_val_mcd_db": 5.3553,
+          "synth_val_dur_mae_sec": 0.822,
+          "synth_val_composite": 5.8896
+        },
+        {
+          "alpha": 0.5,
+          "synth_val_mcd_db": 5.225,
+          "synth_val_dur_mae_sec": 0.5809,
+          "synth_val_composite": 5.6026
+        },
+        {
+          "alpha": 0.75,
+          "synth_val_mcd_db": 5.0297,
+          "synth_val_dur_mae_sec": 0.89,
+          "synth_val_composite": 5.6082
+        },
+        {
+          "alpha": 1.0,
+          "synth_val_mcd_db": 4.9686,
+          "synth_val_dur_mae_sec": 1.2303,
+          "synth_val_composite": 5.7683
+        }
+      ],
+      "pretrain_synth_val": {
+        "synth_val_mcd_db": 5.4787,
+        "synth_val_dur_mae_sec": 1.463,
+        "synth_val_composite": 6.4297
+      },
+      "selected_synth_val": {
+        "alpha": 0.5,
+        "synth_val_mcd_db": 5.225,
+        "synth_val_dur_mae_sec": 0.5809,
+        "synth_val_composite": 5.6026
+      },
+      "parameter_counts": {
+        "total_params": 36266352,
+        "trainable_generator_params": 14713008,
+        "frozen_vocoder_posterior_params": 21553344
+      },
+      "elapsed_sec": 162.49
+    },
+    "ml": {
+      "lang": "ml",
+      "base_checkpoint": "facebook/mms-tts-mal",
+      "vocab_size": 85,
+      "train_utterances": 168,
+      "val_utterances": 21,
+      "epochs": 10,
+      "disc_warmup_epochs": 2,
+      "total_steps": 170,
+      "best_epoch": 8,
+      "selected_wise_ft_alpha": 0.5,
+      "wise_ft_validation_grid": [
+        {
+          "alpha": 0.0,
+          "synth_val_mcd_db": 4.6931,
+          "synth_val_dur_mae_sec": 1.178,
+          "synth_val_composite": 5.4588
+        },
+        {
+          "alpha": 0.25,
+          "synth_val_mcd_db": 4.5043,
+          "synth_val_dur_mae_sec": 0.7178,
+          "synth_val_composite": 4.9708
+        },
+        {
+          "alpha": 0.5,
+          "synth_val_mcd_db": 4.3294,
+          "synth_val_dur_mae_sec": 0.4324,
+          "synth_val_composite": 4.6105
+        },
+        {
+          "alpha": 0.75,
+          "synth_val_mcd_db": 4.2316,
+          "synth_val_dur_mae_sec": 0.37,
+          "synth_val_composite": 4.4721
+        },
+        {
+          "alpha": 1.0,
+          "synth_val_mcd_db": 4.1943,
+          "synth_val_dur_mae_sec": 0.4057,
+          "synth_val_composite": 4.4579
+        }
+      ],
+      "pretrain_synth_val": {
+        "synth_val_mcd_db": 4.6931,
+        "synth_val_dur_mae_sec": 1.178,
+        "synth_val_composite": 5.4588
+      },
+      "selected_synth_val": {
+        "alpha": 0.5,
+        "synth_val_mcd_db": 4.3294,
+        "synth_val_dur_mae_sec": 0.4324,
+        "synth_val_composite": 4.6105
+      },
+      "parameter_counts": {
+        "total_params": 36270000,
+        "trainable_generator_params": 14716656,
+        "frozen_vocoder_posterior_params": 21553344
+      },
+      "elapsed_sec": 168.35
     }
   }
 }

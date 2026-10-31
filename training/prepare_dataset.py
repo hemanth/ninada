@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """
-Curate the Ninada Pan-Indic & Classical/Vedic Sanskrit studio TTS corpus from
-9 real Hugging Face datasets (including 4 distinct Sanskrit speech domains: IISc Su-srota
-Vedanta prose, All India Radio Shrutilipi Sanskrit broadcasts, IITB Sanskrit-ASR-84, and
-IITK Bhagavad-Gita shlokas), apply LibriTTS / IndicVoices-R Studio Transcript-Alignment
-and WadaSNR quality gates, and create leakage-free domain-stratified Train (80%) /
-Validation (10%) / Held-Out Test (10%) splits.
+Curate the Ninada v2.0 Male-Matched Studio Pan-Indic & Classical/Vedic Sanskrit TTS Corpus.
+
+Sources strictly single-speaker/pitch-matched Male neutral studio speech (48 kHz -> 16 kHz)
+aligned with the Male acoustic priors (102-170 Hz) of the native VITS HiFi-GAN vocoders:
+  1. `prathoshap/sushrota-sanskrit-asr-data` (`recitation_corpus` + `scholar`, gated by
+     Su-srota Conformer-CTC `studio_align_cer <= 5.0%` AND Male F0 `115 <= median_f0 <= 195 Hz`)
+  2. `ai4bharat/Rasa` 48 kHz anechoic studio Male narration (`Sanskrit`, `Kannada`, `Hindi`,
+     `Tamil`, `Telugu`, `Malayalam`; strictly `gender == "Male"` and neutral narration styles
+     `BOOK, WIKI, NEWS, CONV, INDIC, ALEXA, BB, UMANG, DIGI`, excluding theatrical emotions)
+
+Produces leakage-free domain-stratified Train (80%) / Validation (10%) / Held-Out Test (10%) splits.
 """
 from __future__ import annotations
 
@@ -20,6 +25,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+import librosa
 import numpy as np
 import onnxruntime as ort
 import pyarrow.parquet as pq
@@ -30,27 +36,56 @@ from scipy.signal import resample_poly
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
-from ninada.g2p import LANGUAGE_IDS, text_to_ids
+from ninada.g2p import LANGUAGE_IDS, NATIVE_VOCABS, text_to_ids
 
 DATA_DIR = ROOT / "data"
 WAV_DIR = DATA_DIR / "wavs"
 TARGET_SR = 16000
 SUSHROTA_DIR = Path("/Users/lika/labs/sushrota-sanskrit-asr/models")
 
+NEUTRAL_RASA_STYLES = {
+    "BOOK",
+    "WIKI",
+    "NEWS",
+    "CONV",
+    "INDIC",
+    "ALEXA",
+    "BB",
+    "UMANG",
+    "DIGI",
+}
+
 HF_SOURCES: list[dict[str, Any]] = [
+    {
+        "tag": "sa_rasa_male",
+        "lang": "sa",
+        "domain": "rasa_sanskrit_studio",
+        "repo_id": "ai4bharat/Rasa",
+        "format": "rasa",
+        "shards": [
+            "Sanskrit/test-00000-of-00007.parquet",
+            "Sanskrit/test-00001-of-00007.parquet",
+        ],
+        "max_human_cer": 7.5,
+        "f0_range": (110.0, 205.0),
+        "target_count": 230,
+        "max_scan": 700,
+    },
     {
         "tag": "sa_sushrota_recit",
         "lang": "sa",
         "domain": "sushrota_recitation_corpus",
         "repo_id": "prathoshap/sushrota-sanskrit-asr-data",
+        "format": "audio_dict",
         "shards": [
             "data/train-00000-of-00005.parquet",
             "data/train-00001-of-00005.parquet",
         ],
         "allowed_subsources": {"recitation_corpus"},
         "text_col": "text",
-        "max_human_cer": 10.0,
-        "target_count": 360,
+        "max_human_cer": 5.0,
+        "f0_range": (115.0, 195.0),
+        "target_count": 120,
         "max_scan": 1800,
     },
     {
@@ -58,68 +93,86 @@ HF_SOURCES: list[dict[str, Any]] = [
         "lang": "sa",
         "domain": "sushrota_scholar_prose",
         "repo_id": "prathoshap/sushrota-sanskrit-asr-data",
+        "format": "audio_dict",
         "shards": [
             "data/train-00000-of-00005.parquet",
             "data/train-00001-of-00005.parquet",
         ],
         "allowed_subsources": {"scholar"},
         "text_col": "text",
-        "max_human_cer": 10.0,
-        "target_count": 290,
+        "max_human_cer": 5.0,
+        "f0_range": (115.0, 195.0),
+        "target_count": 100,
         "max_scan": 1800,
     },
     {
-        "tag": "hi_syspin",
-        "lang": "hi",
-        "domain": "hindi_studio",
-        "repo_id": "SayantanJoker/SYSPIN_Hindi_Female_TTS",
-        "shards": ["data/train-00000-of-00035.parquet"],
-        "text_col": "transcription",
-        "target_count": 180,
-        "max_scan": 400,
-    },
-    {
-        "tag": "kn_syspin",
+        "tag": "kn_rasa_male",
         "lang": "kn",
-        "domain": "kannada_studio",
-        "repo_id": "SayantanJoker/original_data_kannada_tts",
+        "domain": "rasa_kannada_studio",
+        "repo_id": "ai4bharat/Rasa",
+        "format": "rasa",
         "shards": [
-            "data/train-00000-of-00016.parquet",
-            "data/train-00001-of-00016.parquet",
+            "Kannada/test-00006-of-00007.parquet",
+            "Kannada/test-00005-of-00007.parquet",
         ],
-        "text_col": "transcription",
-        "target_count": 180,
-        "max_scan": 600,
+        "f0_range": (95.0, 205.0),
+        "target_count": 210,
+        "max_scan": 900,
     },
     {
-        "tag": "ta_syspin",
+        "tag": "hi_rasa_male",
+        "lang": "hi",
+        "domain": "rasa_hindi_studio",
+        "repo_id": "ai4bharat/Rasa",
+        "format": "rasa",
+        "shards": [
+            "Hindi/test-00000-of-00003.parquet",
+        ],
+        "f0_range": (95.0, 205.0),
+        "target_count": 210,
+        "max_scan": 950,
+    },
+    {
+        "tag": "ta_rasa_male",
         "lang": "ta",
-        "domain": "tamil_studio",
-        "repo_id": "SayantanJoker/original_data_tamil_tts",
-        "shards": ["data/train-00000-of-00019.parquet"],
-        "text_col": "transcription",
-        "target_count": 180,
-        "max_scan": 400,
+        "domain": "rasa_tamil_studio",
+        "repo_id": "ai4bharat/Rasa",
+        "format": "rasa",
+        "shards": [
+            "Tamil/test-00007-of-00008.parquet",
+            "Tamil/test-00006-of-00008.parquet",
+        ],
+        "f0_range": (95.0, 205.0),
+        "target_count": 210,
+        "max_scan": 900,
     },
     {
-        "tag": "te_syspin",
+        "tag": "te_rasa_male",
         "lang": "te",
-        "domain": "telugu_studio",
-        "repo_id": "arpit-tiwari/syspin-telugu-tts",
-        "shards": ["data/test-00000-of-00011.parquet"],
-        "text_col": "sentence",
-        "target_count": 180,
-        "max_scan": 400,
+        "domain": "rasa_telugu_studio",
+        "repo_id": "ai4bharat/Rasa",
+        "format": "rasa",
+        "shards": [
+            "Telugu/test-00006-of-00007.parquet",
+            "Telugu/test-00005-of-00007.parquet",
+        ],
+        "f0_range": (95.0, 205.0),
+        "target_count": 210,
+        "max_scan": 900,
     },
     {
-        "tag": "ml_iitm",
+        "tag": "ml_rasa_male",
         "lang": "ml",
-        "domain": "malayalam_studio",
-        "repo_id": "thennal/indic_tts_ml",
-        "shards": ["data/train-00000-of-00010-4368680559ac82fd.parquet"],
-        "text_col": "text",
-        "target_count": 180,
-        "max_scan": 400,
+        "domain": "rasa_malayalam_studio",
+        "repo_id": "ai4bharat/Rasa",
+        "format": "rasa",
+        "shards": [
+            "Malayalam/test-00006-of-00007.parquet",
+            "Malayalam/test-00005-of-00007.parquet",
+        ],
+        "f0_range": (85.0, 200.0),
+        "target_count": 210,
+        "max_scan": 950,
     },
 ]
 
@@ -149,7 +202,7 @@ def _norm_sa_cer(s: str) -> str:
 
 
 class StudioAlignmentGate:
-    """LibriTTS / IndicVoices-R style transcript-alignment gate via Su-srota Conformer-CTC."""
+    """Transcript-alignment gate via independent Su-srota Conformer-CTC."""
 
     def __init__(self, model_dir: Path) -> None:
         self.enabled = (model_dir / "sushrota_sanskrit_ctc_int8.onnx").exists()
@@ -203,82 +256,70 @@ def resample_to_16k(wav: np.ndarray, orig_sr: int) -> np.ndarray:
     return out.astype(np.float32)
 
 
-def trim_and_normalize(wav: np.ndarray, sr: int = TARGET_SR) -> np.ndarray | None:
-    if wav.size < int(0.8 * sr):
+def trim_and_normalize(wav: np.ndarray, sr: int = TARGET_SR, trim_edges: bool = True) -> np.ndarray | None:
+    if wav.size < int(1.0 * sr):
         return None
     wav = wav - float(np.mean(wav))
     peak = float(np.max(np.abs(wav)))
-    if peak < 0.01 or not np.isfinite(peak):
+    if peak < 0.015 or not np.isfinite(peak):
         return None
     wav = wav / peak
 
     win = int(0.02 * sr)
-    if wav.size > 4 * win:
+    if trim_edges and wav.size > 4 * win:
         abs_w = np.abs(wav)
         kernel = np.ones(win, dtype=np.float32) / win
         env = np.convolve(abs_w, kernel, mode="same")
-        active = np.where(env > 0.014)[0]
-        if active.size < int(0.6 * sr):
+        active = np.where(env > 0.0015)[0]
+        if active.size < int(0.8 * sr):
             return None
-        pad = int(0.045 * sr)
+        pad = int(0.180 * sr)
         start = max(0, int(active[0]) - pad)
         end = min(wav.size, int(active[-1]) + pad)
         wav = wav[start:end]
 
+    # Soft 10ms fade-in/out at boundaries to eliminate truncation clicks
+    fade = min(int(0.010 * sr), wav.size // 8)
+    if fade > 4:
+        ramp = np.linspace(0.0, 1.0, fade, dtype=np.float32)
+        wav[:fade] *= ramp
+        wav[-fade:] *= ramp[::-1]
+
     rms = float(np.sqrt(np.mean(wav * wav)))
-    if rms < 0.012:
+    if rms < 0.018:
         return None
-    wav = 0.84 * (wav / max(1e-6, float(np.max(np.abs(wav)))))
+    wav = 0.85 * (wav / max(1e-6, float(np.max(np.abs(wav)))))
     return wav.astype(np.float32)
 
 
-def split_gita_half_shloka(wav: np.ndarray, text: str, sr: int = TARGET_SR) -> tuple[np.ndarray, str] | None:
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip() and "\u0909\u0935\u093e\u091a" not in ln]
-    if not lines:
-        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    if not lines:
+def estimate_median_f0(wav: np.ndarray, sr: int = TARGET_SR) -> float | None:
+    f0 = librosa.yin(wav, fmin=70, fmax=360, sr=sr, frame_length=1024, hop_length=256)
+    rms = librosa.feature.rms(y=wav, frame_length=1024, hop_length=256)[0]
+    n = min(len(f0), len(rms))
+    valid = (rms[:n] > 0.025) & (f0[:n] > 75.0) & (f0[:n] < 340.0)
+    if int(np.sum(valid)) < 8:
         return None
-
-    dur = wav.size / sr
-    if dur <= 9.5:
-        return wav, " ".join(lines)
-
-    first_line = lines[0]
-    total_chars = max(1, sum(len(x) for x in lines))
-    ratio = max(0.24, min(0.58, len(first_line) / total_chars))
-    center = int(ratio * wav.size)
-    lo = max(int(1.6 * sr), center - int(1.4 * sr))
-    hi = min(wav.size - int(1.0 * sr), center + int(1.4 * sr))
-    if hi <= lo:
-        return None
-
-    hop = 256
-    energies = []
-    for pos in range(lo, hi, hop):
-        seg = wav[pos : pos + 1024]
-        energies.append((float(np.mean(seg * seg)), pos))
-    if not energies:
-        return None
-    _, best_cut = min(energies, key=lambda x: x[0])
-    sub_wav = wav[:best_cut]
-    if 1.4 <= (sub_wav.size / sr) <= 9.8:
-        return sub_wav, first_line
-    return None
+    return float(np.median(f0[:n][valid]))
 
 
 def main() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     WAV_DIR.mkdir(parents=True, exist_ok=True)
+    # Remove stale wavs from prior dataset version so local directory is 100% clean Male studio wavs
+    for old_wav in WAV_DIR.glob("*.wav"):
+        old_wav.unlink(missing_ok=True)
 
     align_gate = StudioAlignmentGate(SUSHROTA_DIR)
-    print(f"Studio Alignment Gate enabled={align_gate.enabled}")
+    print(f"Studio Alignment Gate enabled={align_gate.enabled}", flush=True)
 
     audit: dict[str, Any] = {
         "sources": {},
         "rejected_empty_text": 0,
+        "rejected_style_or_gender": 0,
         "rejected_corrupt_or_silent": 0,
         "rejected_duration_outlier": 0,
-        "rejected_duplicate_text": 0,
+        "rejected_duplicate_or_unk": 0,
+        "rejected_pitch_mismatch": 0,
         "rejected_transcript_misalignment": 0,
     }
 
@@ -289,16 +330,21 @@ def main() -> None:
         tag = spec["tag"]
         lang = spec["lang"]
         repo_id = spec["repo_id"]
-        shards = spec.get("shards") or [spec["shard"]]
+        fmt = spec["format"]
+        shards = spec["shards"]
         allowed_sub = spec.get("allowed_subsources")
-        text_col = spec["text_col"]
+        text_col = spec.get("text_col", "text")
         target_n = spec["target_count"]
         max_scan = spec.get("max_scan", 1000)
         max_cer = spec.get("max_human_cer")
+        f0_lo, f0_hi = spec.get("f0_range", (85.0, 210.0))
+        unk_id = len(NATIVE_VOCABS[lang]) - 1
 
         collected = 0
         scanned = 0
         cer_rejected = 0
+        f0_rejected = 0
+        f0_vals: list[float] = []
         by_source_tag[tag] = []
 
         for shard in shards:
@@ -309,36 +355,36 @@ def main() -> None:
 
             for batch in pf.iter_batches(batch_size=32):
                 cols = batch.to_pydict()
-                n_rows = len(cols["audio"])
+                n_rows = len(cols[text_col])
                 for i in range(n_rows):
                     if collected >= target_n or scanned >= max_scan:
                         break
-                    if allowed_sub is not None and "source" in cols:
+
+                    if fmt == "rasa":
+                        gender = str(cols.get("gender", [""])[i] or "").strip()
+                        style = str(cols.get("style", [""])[i] or "").strip().upper()
+                        if gender != "Male" or style not in NEUTRAL_RASA_STYLES:
+                            audit["rejected_style_or_gender"] += 1
+                            continue
+                    elif allowed_sub is not None and "source" in cols:
                         if str(cols["source"][i] or "") not in allowed_sub:
                             continue
+
                     scanned += 1
                     raw_text = str(cols[text_col][i] or "").strip()
                     if not raw_text:
                         audit["rejected_empty_text"] += 1
                         continue
 
-                    aud = cols["audio"][i]
-                    min_snr = spec.get("min_wada_snr")
-                    if min_snr is not None and "snr" in cols and cols["snr"][i]:
-                        try:
-                            wada = float(cols["snr"][i].get("methodDetails", {}).get("snr", 0.0))
-                            if wada < min_snr:
-                                audit["rejected_corrupt_or_silent"] += 1
-                                continue
-                        except Exception:
-                            pass
-
                     try:
-                        if aud.get("bytes"):
+                        aud = cols["audio"][i]
+                        if isinstance(aud, dict) and aud.get("bytes"):
                             raw_wav, orig_sr = sf.read(io.BytesIO(aud["bytes"]), dtype="float32")
-                        elif aud.get("array") is not None:
+                        elif isinstance(aud, dict) and aud.get("array") is not None:
                             raw_wav = np.asarray(aud["array"], dtype=np.float32)
                             orig_sr = int(aud.get("sampling_rate") or TARGET_SR)
+                        elif "bytes" in cols and cols["bytes"][i]:
+                            raw_wav, orig_sr = sf.read(io.BytesIO(cols["bytes"][i]), dtype="float32")
                         else:
                             audit["rejected_corrupt_or_silent"] += 1
                             continue
@@ -347,34 +393,34 @@ def main() -> None:
                         continue
 
                     wav_16k = resample_to_16k(raw_wav, int(orig_sr))
-                    if tag == "sa_gita":
-                        seg = split_gita_half_shloka(wav_16k, raw_text, sr=TARGET_SR)
-                        if seg is None:
-                            audit["rejected_duration_outlier"] += 1
-                            continue
-                        wav_16k, raw_text = seg
-
-                    clean_wav = trim_and_normalize(wav_16k, sr=TARGET_SR)
+                    clean_wav = trim_and_normalize(wav_16k, sr=TARGET_SR, trim_edges=(fmt != "rasa"))
                     if clean_wav is None:
                         audit["rejected_corrupt_or_silent"] += 1
                         continue
 
                     dur_s = round(clean_wav.size / TARGET_SR, 3)
-                    if dur_s < 1.2 or dur_s > 9.8:
+                    if dur_s < 1.35 or dur_s > 9.6:
                         audit["rejected_duration_outlier"] += 1
                         continue
 
                     g2p = text_to_ids(raw_text, lang=lang)
-                    norm_key = f"{lang}:{g2p['normalized_devanagari']}"
-                    if norm_key in seen_texts:
-                        audit["rejected_duplicate_text"] += 1
+                    norm_key = f"{lang}:{g2p['native_text']}"
+                    if norm_key in seen_texts or unk_id in g2p["input_ids"]:
+                        audit["rejected_duplicate_or_unk"] += 1
                         continue
-                    if len(g2p["tokens"]) < 6 or len(g2p["input_ids"]) > 360:
+                    n_native_toks = len(g2p["native_tokens"])
+                    if n_native_toks < 8 or len(g2p["input_ids"]) > 360:
                         audit["rejected_duration_outlier"] += 1
                         continue
-                    cps = len(g2p["tokens"]) / dur_s
-                    if cps < 2.8 or cps > 24.5:
+                    cps = n_native_toks / dur_s
+                    if cps < 3.5 or cps > 24.0:
                         audit["rejected_duration_outlier"] += 1
+                        continue
+
+                    med_f0 = estimate_median_f0(clean_wav, sr=TARGET_SR)
+                    if med_f0 is None or not (f0_lo <= med_f0 <= f0_hi):
+                        audit["rejected_pitch_mismatch"] += 1
+                        f0_rejected += 1
                         continue
 
                     human_cer_val = None
@@ -391,43 +437,54 @@ def main() -> None:
                     fpath = WAV_DIR / fname
                     sf.write(str(fpath), clean_wav, TARGET_SR, subtype="PCM_16")
 
+                    f0_vals.append(med_f0)
                     rms = round(float(np.sqrt(np.mean(clean_wav * clean_wav))), 4)
-                    rec = {
+                    rec: dict[str, Any] = {
                         "id": f"{tag}_{uid}",
                         "wav_relpath": f"data/wavs/{fname}",
                         "lang": lang,
                         "lang_id": LANGUAGE_IDS[lang],
+                        "gender": "Male",
+                        "median_f0_hz": round(med_f0, 2),
                         "domain": spec["domain"],
                         "source_repo": repo_id,
                         "text": raw_text,
+                        "native_text": g2p["native_text"],
                         "normalized_devanagari": g2p["normalized_devanagari"],
                         "input_ids": g2p["input_ids"],
-                        "num_tokens": len(g2p["tokens"]),
+                        "num_tokens": n_native_toks,
                         "num_aksharas": len(g2p["aksharas"]),
                         "duration_sec": dur_s,
                         "rms": rms,
                     }
+                    if fmt == "rasa":
+                        rec["style"] = str(cols.get("style", [""])[i] or "").strip().upper()
                     if human_cer_val is not None:
                         rec["studio_align_cer"] = human_cer_val
                     by_source_tag[tag].append(rec)
                     collected += 1
+
                 if collected >= target_n or scanned >= max_scan:
                     break
 
+        mean_f0 = round(float(np.mean(f0_vals)), 1) if f0_vals else 0.0
         audit["sources"][tag] = {
             "repo_id": repo_id,
             "lang": lang,
             "scanned": scanned,
             "accepted": collected,
+            "mean_f0_hz": mean_f0,
+            "rejected_f0_gate": f0_rejected,
             "rejected_cer_gate": cer_rejected,
         }
         print(
-            f"[{tag:13s}] accepted={collected:3d} / scanned={scanned:4d} "
-            f"(cer_rejected={cer_rejected:3d}) from {repo_id}"
+            f"[{tag:19s}] accepted={collected:3d} / scanned={scanned:4d} "
+            f"(mean_f0={mean_f0:5.1f} Hz, f0_rej={f0_rejected:3d}, cer_rej={cer_rejected:3d}) from {repo_id}",
+            flush=True,
         )
 
-    # Strict deterministic domain-stratified split (80% train / 10% val / 10% test) BEFORE fitting any stats
-    rng = random.Random(20261030)
+    # Deterministic domain-stratified split (80% train / 10% val / 10% test) BEFORE fitting any stats
+    rng = random.Random(20261031)
     train_rows: list[dict[str, Any]] = []
     val_rows: list[dict[str, Any]] = []
     test_rows: list[dict[str, Any]] = []
@@ -465,6 +522,7 @@ def main() -> None:
     for lang, items in by_lang_all.items():
         n = len(items)
         total_dur_min = round(sum(r["duration_sec"] for r in items) / 60.0, 2)
+        mean_f0_lang = round(float(np.mean([r["median_f0_hz"] for r in items])), 1) if items else 0.0
         per_lang_summary[lang] = {
             "total": n,
             "train": by_lang_splits[lang]["train"],
@@ -472,6 +530,7 @@ def main() -> None:
             "test": by_lang_splits[lang]["test"],
             "minutes": total_dur_min,
             "mean_duration_sec": round(sum(r["duration_sec"] for r in items) / max(1, n), 2),
+            "mean_f0_hz": mean_f0_lang,
         }
 
     for split_name, rows in (("train", train_rows), ("val", val_rows), ("test", test_rows)):
@@ -483,7 +542,9 @@ def main() -> None:
     train_durs = [r["duration_sec"] for r in train_rows]
     train_cps = [r["num_tokens"] / r["duration_sec"] for r in train_rows]
     stats = {
+        "dataset_version": "2.0.0",
         "sample_rate": TARGET_SR,
+        "speaker_profile": "Male anechoic studio (pitch-matched to native VITS HiFi-GAN vocoders)",
         "total_clips": len(train_rows) + len(val_rows) + len(test_rows),
         "train_clips": len(train_rows),
         "val_clips": len(val_rows),
@@ -500,8 +561,8 @@ def main() -> None:
         "hygiene_audit": audit,
     }
     (DATA_DIR / "dataset_stats.json").write_text(json.dumps(stats, indent=2, ensure_ascii=False))
-    print("\n=== Ninada Studio Dataset Curation Complete ===")
-    print(json.dumps(stats, indent=2, ensure_ascii=False))
+    print("\n=== Ninada v2.0 Male Studio Dataset Curation Complete ===", flush=True)
+    print(json.dumps(stats, indent=2, ensure_ascii=False), flush=True)
 
 
 if __name__ == "__main__":
