@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ninada — Pan-Indic &amp; Classical Sanskrit Neural TTS Studio</title>
-  <meta name="description" content="Ninada: In-browser Pan-Indic and Classical Sanskrit Neural VITS + HiFi-GAN speech synthesizer powered by ONNX Runtime WebAssembly SIMD and Paninian Akshara G2P." />
+  <title>Ninada — Streaming Pan-Indic &amp; Classical Sanskrit Neural TTS Studio</title>
+  <meta name="description" content="Ninada: Sub-second streaming Pan-Indic and Classical Sanskrit Neural VITS + HiFi-GAN speech synthesizer powered by Web Worker ONNX Runtime WebAssembly SIMD and Paninian Akshara G2P." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23121210'/%3E%3Cpath d='M7 16h3l2.5-7 4 14 3.5-10 2.5 3H25' fill='none' stroke='%23fbfaf7' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <script src="./ort/ort.wasm.min.js"></script>
   <style>
     :root {
       --paper: #fbfaf7;
@@ -99,7 +99,7 @@
       margin: 0;
       font-size: 15px;
       color: var(--ink-muted);
-      max-width: 650px;
+      max-width: 660px;
       line-height: 1.55;
     }
 
@@ -200,7 +200,7 @@
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
 
     .lang-btn {
@@ -211,10 +211,20 @@
       font-family: var(--sans);
       font-size: 12.5px;
       font-weight: 600;
-      padding: 7px 12px;
+      padding: 7px 11px;
       border-radius: 5px;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       transition: all 0.14s ease;
+    }
+
+    .lang-btn .lang-native {
+      font-family: var(--indic);
+      font-weight: 500;
+      font-size: 12.5px;
+      opacity: 0.85;
     }
 
     .lang-btn:hover {
@@ -242,19 +252,27 @@
       color: var(--ink-muted);
       font-family: var(--mono);
       font-size: 11px;
-      padding: 4px 9px;
+      padding: 5px 10px;
       border-radius: 4px;
       cursor: pointer;
+      transition: all 0.12s ease;
     }
     .preset-chip:hover {
       border-style: solid;
       border-color: var(--ink);
       color: var(--ink);
     }
+    .preset-chip.active {
+      border-style: solid;
+      border-color: var(--ink);
+      background: var(--card);
+      color: var(--ink);
+      font-weight: 600;
+    }
 
     textarea#textInput {
       width: 100%;
-      min-height: 118px;
+      min-height: 120px;
       resize: vertical;
       padding: 14px 15px;
       font-family: var(--indic);
@@ -314,7 +332,7 @@
 
     .action-row {
       display: flex;
-      gap: 10px;
+      gap: 9px;
       flex-wrap: wrap;
       align-items: center;
     }
@@ -325,7 +343,7 @@
       color: var(--paper);
       border: 1.2px solid var(--ink);
       border-radius: 6px;
-      padding: 11px 20px;
+      padding: 11px 18px;
       font-family: var(--sans);
       font-size: 13.5px;
       font-weight: 600;
@@ -336,7 +354,10 @@
       transition: opacity 0.14s ease;
     }
     .btn-primary:hover { opacity: 0.9; }
-    .btn-primary:disabled { opacity: 0.5; cursor: wait; }
+    .btn-primary.streaming {
+      background: var(--signal);
+      border-color: var(--signal);
+    }
 
     .btn-secondary {
       appearance: none;
@@ -344,7 +365,7 @@
       color: var(--ink);
       border: 1.2px solid var(--line-strong);
       border-radius: 6px;
-      padding: 10px 14px;
+      padding: 10px 13px;
       font-family: var(--mono);
       font-size: 12px;
       font-weight: 500;
@@ -354,7 +375,8 @@
       gap: 7px;
       text-decoration: none;
     }
-    .btn-secondary:hover { background: var(--surface); }
+    .btn-secondary:hover:not(:disabled) { background: var(--surface); }
+    .btn-secondary:disabled { opacity: 0.42; cursor: default; }
 
     .scope-wrap {
       background: var(--paper);
@@ -506,17 +528,17 @@
       <div>
         <div class="kicker">
           <span id="modelDot" class="status-dot loading"></span>
-          <span id="modelStatusKicker">NINADA // PAN-INDIC &amp; CLASSICAL SANSKRIT NEURAL VITS + HIFI-GAN</span>
+          <span id="modelStatusKicker">NINADA // STREAMING PAN-INDIC &amp; CLASSICAL SANSKRIT NEURAL VITS + HIFI-GAN</span>
         </div>
         <h1>Ninada<span class="title-dev" id="devTitle"></span></h1>
         <p class="subtitle">
-          Single-checkpoint Pan-Indic &amp; Classical Sanskrit neural speech synthesis trained on Google Cloud NVIDIA L4 GPUs across 9 studio Hugging Face corpora (including 4 Sanskrit speech domains) and running 100% client-side via WebAssembly SIMD.
+          Sub-second streaming Pan-Indic &amp; Classical Sanskrit neural speech synthesis trained on Google Cloud NVIDIA L4 GPUs (pure Su-srota studio Sanskrit + 5 Indic corpora) and running off-main-thread via Web Worker WebAssembly SIMD.
         </p>
       </div>
       <div class="masthead-badges">
         <span class="pill-stat">6 INDIC LANGUAGES</span>
-        <span class="pill-stat">87 AKSHARA TOKENS</span>
-        <span class="pill-stat">56.6 MB FP16 ONNX</span>
+        <span class="pill-stat">HALO-STREAMING TTFA</span>
+        <span class="pill-stat">29.0 + 27.6 MB ONNX</span>
         <a class="pill-stat" href="https://huggingface.co/gnumanth/ninada" target="_blank" rel="noopener" style="text-decoration:none;">HF MODEL</a>
         <a class="pill-stat" href="https://github.com/hemanth/ninada" target="_blank" rel="noopener" style="text-decoration:none;">GITHUB</a>
       </div>
@@ -525,7 +547,7 @@
     <section class="loader-bar" aria-label="Neural ONNX Runtime Status">
       <div class="loader-info">
         <svg class="icon" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" /></svg>
-        <span id="loaderLabel">Initializing ONNX Runtime WebAssembly SIMD...</span>
+        <span id="loaderLabel">Initializing Web Worker ONNX Runtime WebAssembly SIMD...</span>
       </div>
       <div class="progress-track">
         <div id="loaderFill" class="progress-fill"></div>
@@ -535,17 +557,29 @@
     <main class="studio-grid">
       <section class="panel">
         <div class="panel-header">
-          <h2 class="panel-title">01 / Script &amp; Utterance Input</h2>
+          <h2 class="panel-title">01 / Script &amp; Streaming Utterance Input</h2>
           <span id="detectedBadge" class="pill-stat">SCRIPT: DEVANAGARI · SA</span>
         </div>
 
         <div class="lang-tabs" role="tablist" aria-label="Target Indic Language">
-          <button type="button" class="lang-btn active" data-lang="sa">Sanskrit (sa)</button>
-          <button type="button" class="lang-btn" data-lang="hi">Hindi (hi)</button>
-          <button type="button" class="lang-btn" data-lang="kn">Kannada (kn)</button>
-          <button type="button" class="lang-btn" data-lang="ta">Tamil (ta)</button>
-          <button type="button" class="lang-btn" data-lang="te">Telugu (te)</button>
-          <button type="button" class="lang-btn" data-lang="ml">Malayalam (ml)</button>
+          <button type="button" role="tab" aria-selected="true" class="lang-btn active" data-lang="sa">
+            <span>Sanskrit</span><span class="lang-native" data-native="sa"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="kn">
+            <span>Kannada</span><span class="lang-native" data-native="kn"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="hi">
+            <span>Hindi</span><span class="lang-native" data-native="hi"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="ta">
+            <span>Tamil</span><span class="lang-native" data-native="ta"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="te">
+            <span>Telugu</span><span class="lang-native" data-native="te"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="ml">
+            <span>Malayalam</span><span class="lang-native" data-native="ml"></span>
+          </button>
         </div>
 
         <div class="preset-row" id="presetContainer"></div>
@@ -556,7 +590,7 @@
           <div class="control-field">
             <label for="tierSelect"><span>ENGINE TIER</span></label>
             <select id="tierSelect">
-              <option value="auto">Tier 1 · Neural VITS (ONNX)</option>
+              <option value="auto">Tier 1 · Streaming Neural ONNX</option>
               <option value="klatt">Tier 2 · Klatt Formant (0 MB)</option>
             </select>
           </div>
@@ -573,11 +607,15 @@
         <div class="action-row">
           <button type="button" id="synthBtn" class="btn-primary">
             <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-            <span id="synthBtnLabel">Synthesize Speech</span>
+            <span id="synthBtnLabel">Stream Speech</span>
+          </button>
+          <button type="button" id="stopBtn" class="btn-secondary" disabled>
+            <svg class="icon" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>
+            <span>Stop</span>
           </button>
           <button type="button" id="replayBtn" class="btn-secondary">
             <svg class="icon" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></svg>
-            <span>Play</span>
+            <span>Replay</span>
           </button>
           <a id="downloadLink" class="btn-secondary" download="ninada_output.wav" href="#">
             <svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -588,8 +626,8 @@
 
       <section class="panel">
         <div class="panel-header">
-          <h2 class="panel-title">02 / Acoustic Waveform &amp; Telemetry</h2>
-          <span id="activeTierBadge" class="pill-stat">READY</span>
+          <h2 class="panel-title">02 / Live Streaming Waveform &amp; Telemetry</h2>
+          <span id="activeTierBadge" class="pill-stat">INITIALIZING</span>
         </div>
 
         <div class="scope-wrap">
@@ -598,15 +636,15 @@
 
         <div class="telemetry-grid">
           <div class="metric-box">
-            <div class="metric-label">SYNTHESIS LATENCY</div>
-            <div class="metric-val" id="metricLatency">—</div>
+            <div class="metric-label">TIME TO FIRST AUDIO (TTFA)</div>
+            <div class="metric-val" id="metricTtfa">—</div>
           </div>
           <div class="metric-box">
-            <div class="metric-label">REAL-TIME FACTOR</div>
+            <div class="metric-label">STREAM / REAL-TIME FACTOR</div>
             <div class="metric-val" id="metricRtf">—</div>
           </div>
           <div class="metric-box">
-            <div class="metric-label">AUDIO DURATION</div>
+            <div class="metric-label">AUDIO DURATION &amp; CHUNKS</div>
             <div class="metric-val" id="metricDuration">—</div>
           </div>
           <div class="metric-box">
@@ -631,15 +669,15 @@
     <section class="lower-grid">
       <div class="panel">
         <div class="panel-header">
-          <h2 class="panel-title">04 / Architecture Blueprint</h2>
-          <span class="pill-stat">DISENTANGLED VITS + MAS + 16 KHZ HIFI-GAN</span>
+          <h2 class="panel-title">04 / Streaming Architecture Blueprint</h2>
+          <span class="pill-stat">HALO-CHUNKED VITS + 16 KHZ HIFI-GAN</span>
         </div>
-        <img src="./flow-diagram.svg" alt="Ninada Pan-Indic Neural TTS Architecture Diagram" class="blueprint-img" />
+        <img src="./flow-diagram.svg" alt="Ninada Streaming Pan-Indic Neural TTS Architecture Diagram" class="blueprint-img" />
       </div>
 
       <div class="panel">
         <div class="panel-header">
-          <h2 class="panel-title">05 / 3-Line SDK (JS &amp; Python)</h2>
+          <h2 class="panel-title">05 / Streaming SDK (JS &amp; Python)</h2>
           <span class="pill-stat">MIT LICENSE</span>
         </div>
         <pre class="code-block"><code id="sdkSnippet"></code></pre>
@@ -648,72 +686,73 @@
   </div>
 
   <script type="module">
-    import ninada, { textToIds } from './ninada.mjs';
+    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs';
+
+    const NATIVE_NAMES = {
+      sa: '\u0938\u0902\u0938\u094d\u0915\u0943\u0924\u092e\u094d',
+      kn: '\u0c95\u0ca8\u0ccd\u0ca8\u0ca1',
+      hi: '\u0939\u093f\u0928\u094d\u0926\u0940',
+      ta: '\u0ba4\u0bae\u0bbf\u0bb4\u0bcd',
+      te: '\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41',
+      ml: '\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02',
+    };
 
     document.getElementById('devTitle').textContent = '\u0928\u093f\u0928\u093e\u0926';
+    for (const el of document.querySelectorAll('[data-native]')) {
+      el.textContent = NATIVE_NAMES[el.dataset.native] || '';
+    }
+
     document.getElementById('sdkSnippet').textContent = [
-      "// JavaScript / Browser / Node.js",
+      "// JavaScript / Browser / Node.js (Streaming)",
       "import ninada from 'ninada';",
-      "const voice = await ninada('sanskrit', { model: './model_quantized.onnx' });",
-      "const wav = await voice.speak('praj\\u00f1\\u0101p\\u016brvakavy\\u0101p\\u0101ravattva\\u1e41 j\\u012bvatvam');",
+      "const voice = await ninada('kannada', {",
+      "  encoderModel: './encoder_flow_quantized.onnx',",
+      "  vocoderModel: './vocoder_quantized.onnx',",
+      "});",
+      "for await (const chunk of voice.stream(text)) {",
+      "  playPcm16k(chunk.pcm); // <250ms TTFA!",
+      "}",
       "",
-      "# Python 3.10+",
+      "# Python 3.10+ (Streaming)",
       "from ninada import Ninada",
-      'wav = Ninada(lang="sa").speak("\\u092a\\u094d\\u0930\\u091c\\u094d\\u091e\\u093e\\u092a\\u0942\\u0930\\u094d\\u0935\\u0915\\u0935\\u094d\\u092f\\u093e\\u092a\\u093e\\u0930\\u0935\\u0924\\u094d\\u0924\\u094d\\u0935\\u0902 \\u091c\\u0940\\u0935\\u0924\\u094d\\u0935\\u092e\\u094d")'
-    ].join('\n').replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+      'for chunk in Ninada(lang="sa").stream(shloka):',
+      '    play(chunk["pcm"], chunk["sample_rate"])',
+    ].join('\n');
 
-    const PRESETS = [
-      {
-        label: 'Sanskrit · Madhvacharya',
-        lang: 'sa',
-        text: '\u092a\u094d\u0930\u091c\u094d\u091e\u093e\u092a\u0942\u0930\u094d\u0935\u0915\u0935\u094d\u092f\u093e\u092a\u093e\u0930\u0935\u0924\u094d\u0924\u094d\u0935\u0902 \u091c\u0940\u0935\u0924\u094d\u0935\u092e\u094d \u0964',
-      },
-      {
-        label: 'Sanskrit · Rigveda & Vedanta',
-        lang: 'sa',
-        text: '\u090b\u0924\u0902 \u091a \u0938\u0924\u094d\u092f\u0902 \u091a\u093e\u092d\u0940\u0926\u094d\u0927\u093e\u0924\u094d \u0924\u092a\u0938\u094b\u093d\u0927\u094d\u092f\u091c\u093e\u092f\u0924 \u0964 \u0936\u0902\u0915\u0930\u0902 \u0932\u094b\u0915\u0936\u0902\u0915\u0930\u092e\u094d \u0965',
-      },
-      {
-        label: 'Sanskrit · IAST',
-        lang: 'sa',
-        text: 'karma\u1e47yev\u0101dhik\u0101raste m\u0101 phale\u1e63u kad\u0101cana | \u092f\u094b\u0917\u0903 \u0915\u0930\u094d\u092e\u0938\u0941 \u0915\u094c\u0936\u0932\u092e\u094d \u0965',
-      },
-      {
-        label: 'Hindi · Studio',
-        lang: 'hi',
-        text: '\u0928\u092e\u0938\u094d\u0924\u0947 \u092d\u093e\u0930\u0924, \u092f\u0939 \u092c\u0939\u0941\u092d\u093e\u0937\u0940 \u0924\u0902\u0924\u094d\u0930\u093f\u0915\u093e \u0935\u093e\u0915\u094d \u0938\u0902\u0936\u094d\u0932\u0947\u0937\u0923 \u092a\u094d\u0930\u0923\u093e\u0932\u0940 \u0939\u0948 \u0964',
-      },
-      {
-        label: 'Kannada · Studio',
-        lang: 'kn',
-        text: '\u0c95\u0ca8\u0ccd\u0ca8\u0ca1 \u0cad\u0cbe\u0cb7\u0cc6\u0caf \u0ca8\u0cc8\u0cb8\u0cb0\u0ccd\u0c97\u0cbf\u0c95 \u0ca7\u0ccd\u0cb5\u0ca8\u0cbf \u0cb8\u0c82\u0cb6\u0ccd\u0cb2\u0cc7\u0cb7\u0ca3\u0cc6\u0c97\u0cc6 \u0cb8\u0ccd\u0cb5\u0cbe\u0c97\u0ca4.',
-      },
-      {
-        label: 'Tamil · Studio',
-        lang: 'ta',
-        text: '\u0ba4\u0bae\u0bbf\u0bb4\u0bcd \u0bae\u0bca\u0bb4\u0bbf\u0baf\u0bbf\u0ba9\u0bcd \u0b87\u0baf\u0bb1\u0bcd\u0b95\u0bc8 \u0b92\u0bb2\u0bbf \u0b89\u0bb0\u0bc1\u0bb5\u0bbe\u0b95\u0bcd\u0b95\u0bae\u0bcd.',
-      },
-      {
-        label: 'Telugu · Studio',
-        lang: 'te',
-        text: '\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 \u0c2d\u0c3e\u0c37\u0c3e \u0c27\u0c4d\u0c35\u0c28\u0c3f \u0c38\u0c02\u0c36\u0c4d\u0c32\u0c47\u0c37\u0c23 \u0c2a\u0c4d\u0c30\u0c2f\u0c4b\u0c17\u0c36\u0c3e\u0c32.',
-      },
-      {
-        label: 'Malayalam · Studio',
-        lang: 'ml',
-        text: '\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02 \u0d2d\u0d3e\u0d37\u0d3e \u0d36\u0d2c\u0d4d\u0d26 \u0d38\u0d02\u0d2f\u0d4b\u0d1c\u0d28 \u0d2a\u0d30\u0d40\u0d15\u0d4d\u0d37\u0d23\u0d02.',
-      },
-    ];
-
-    const MODEL_URLS = [
-      './model_quantized.onnx',
-      'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/model_quantized.onnx',
-    ];
-
-    let activeLang = 'sa';
-    let voiceEngine = await ninada('sa');
-    let lastPcm = null;
-    let currentBlobUrl = null;
+    const PRESETS_BY_LANG = {
+      sa: [
+        { label: 'Sanskrit \u00b7 Madhvacharya', lang: 'sa', text: '\u092a\u094d\u0930\u091c\u094d\u091e\u093e\u092a\u0942\u0930\u094d\u0935\u0915\u0935\u094d\u092f\u093e\u092a\u093e\u0930\u0935\u0924\u094d\u0924\u094d\u0935\u0902 \u091c\u0940\u0935\u0924\u094d\u0935\u092e\u094d \u0964 \u092f\u0925\u093e\u0930\u094d\u0925\u091c\u094d\u091e\u093e\u0928\u0902 \u092a\u094d\u0930\u092e\u093e\u0923\u092e\u094d \u0965' },
+        { label: 'Sanskrit \u00b7 Su-srota Shloka', lang: 'sa', text: '\u0935\u093e\u0917\u0930\u094d\u0925\u093e\u0935\u093f\u0935 \u0938\u0902\u092a\u0943\u0915\u094d\u0924\u094c \u0935\u093e\u0917\u0930\u094d\u0925\u092a\u094d\u0930\u0924\u093f\u092a\u0924\u094d\u0924\u092f\u0947 \u0964 \u091c\u0917\u0924\u0903 \u092a\u093f\u0924\u0930\u094c \u0935\u0928\u094d\u0926\u0947 \u092a\u093e\u0930\u094d\u0935\u0924\u0940\u092a\u0930\u092e\u0947\u0936\u094d\u0935\u0930\u094c \u0965' },
+        { label: 'Sanskrit \u00b7 Rigveda & Vedanta', lang: 'sa', text: '\u090b\u0924\u0902 \u091a \u0938\u0924\u094d\u092f\u0902 \u091a\u093e\u092d\u0940\u0926\u094d\u0927\u093e\u0924\u094d \u0924\u092a\u0938\u094b\u093d\u0927\u094d\u092f\u091c\u093e\u092f\u0924 \u0964 \u0924\u0924\u094b \u0930\u093e\u0924\u094d\u0930\u094d\u092f\u091c\u093e\u092f\u0924 \u0924\u0924\u0903 \u0938\u092e\u0941\u0926\u094d\u0930\u094b \u0905\u0930\u094d\u0923\u0935\u0903 \u0965' },
+        { label: 'Sanskrit \u00b7 IAST Streaming', lang: 'sa', text: 'karma\u1e47yev\u0101dhik\u0101raste m\u0101 phale\u1e63u kad\u0101cana | m\u0101 karmaphalaheturbh\u016brm\u0101 te sa\u1e45go\'stvakarmani || yogastha\u1e25 kuru karm\u0101\u1e47i sa\u1e45ga\u1e43 tyaktv\u0101 dhana\u00f1jaya |' },
+      ],
+      kn: [
+        { label: 'Kannada \u00b7 Studio', lang: 'kn', text: '\u0c95\u0ca8\u0ccd\u0ca8\u0ca1 \u0cad\u0cbe\u0cb7\u0cc6\u0caf \u0ca8\u0cc8\u0cb8\u0cb0\u0ccd\u0c97\u0cbf\u0c95 \u0ca7\u0ccd\u0cb5\u0ca8\u0cbf \u0cb8\u0c82\u0cb6\u0ccd\u0cb2\u0cc7\u0cb7\u0ca3\u0cc6\u0c97\u0cc6 \u0cb8\u0ccd\u0cb5\u0cbe\u0c97\u0ca4. \u0ca8\u0cbf\u0ca8\u0cbe\u0ca6 \u0ca4\u0c82\u0ca4\u0ccd\u0cb0\u0c9c\u0ccd\u0c9e\u0cbe\u0ca8\u0cb5\u0cc1 \u0cb8\u0ccd\u0caa\u0cb7\u0ccd\u0c9f \u0cae\u0ca4\u0ccd\u0ca4\u0cc1 \u0cb8\u0cc1\u0c82\u0ca6\u0cb0\u0cb5\u0cbe\u0ca6 \u0c89\u0c9a\u0ccd\u0c9a\u0cbe\u0cb0\u0ca3\u0cc6\u0caf\u0ca8\u0ccd\u0ca8\u0cc1 \u0ca8\u0cc0\u0ca1\u0cc1\u0ca4\u0ccd\u0ca4\u0ca6\u0cc6.' },
+        { label: 'Kannada \u00b7 Sarvajna Tripadi', lang: 'kn', text: '\u0c8e\u0cb2\u0ccd\u0cb2\u0cbe\u0ca6\u0cb0\u0cc2 \u0c87\u0cb0\u0cc1 \u0c8e\u0c82\u0ca4\u0cbe\u0ca6\u0cb0\u0cc2 \u0c87\u0cb0\u0cc1 \u0c8e\u0c82\u0ca6\u0cc6\u0c82\u0ca6\u0cbf\u0c97\u0cc2 \u0ca8\u0cc0 \u0c95\u0ca8\u0ccd\u0ca8\u0ca1\u0cb5\u0cbe\u0c97\u0cbf\u0cb0\u0cc1 \u0964 \u0c95\u0ca8\u0ccd\u0ca8\u0ca1\u0cb5\u0cc7 \u0cb8\u0ca4\u0ccd\u0caf \u0c95\u0ca8\u0ccd\u0ca8\u0ca1\u0cb5\u0cc7 \u0ca8\u0cbf\u0ca4\u0ccd\u0caf \u0965' },
+        { label: 'Kannada \u00b7 Sahitya', lang: 'kn', text: '\u0cae\u0ca8\u0cc1\u0c9c\u0cae\u0ca4 \u0cb5\u0cbf\u0cb6\u0ccd\u0cb5\u0caa\u0ca5 \u0cb8\u0cb0\u0ccd\u0cb5\u0ccb\u0ca6\u0caf \u0cb8\u0cae\u0ca8\u0ccd\u0cb5\u0caf \u0caa\u0cc2\u0cb0\u0ccd\u0ca3\u0ca6\u0cc3\u0cb7\u0ccd\u0c9f\u0cbf \u0c87\u0ca6\u0cc1 \u0c95\u0cc1\u0cb5\u0cc6\u0c82\u0caa\u0cc1 \u0c85\u0cb5\u0cb0 \u0cb8\u0c82\u0ca6\u0cc7\u0cb6.' },
+        { label: 'Kannada \u00b7 Streaming Passage', lang: 'kn', text: '\u0c95\u0cb0\u0ccd\u0ca8\u0cbe\u0c9f\u0c95\u0cb5\u0cc1 \u0cb6\u0ccd\u0cb0\u0cc0\u0cae\u0c82\u0ca4 \u0cb8\u0cbe\u0cb9\u0cbf\u0ca4\u0ccd\u0caf \u0cae\u0ca4\u0ccd\u0ca4\u0cc1 \u0cb8\u0c82\u0c97\u0cc0\u0ca4 \u0caa\u0cb0\u0c82\u0caa\u0cb0\u0cc6\u0caf\u0ca8\u0ccd\u0ca8\u0cc1 \u0cb9\u0cca\u0c82\u0ca6\u0cbf\u0ca6\u0cc6. \u0caa\u0c82\u0caa, \u0cb0\u0ca8\u0ccd\u0ca8, \u0caa\u0cc1\u0cb0\u0c82\u0ca6\u0cb0\u0ca6\u0cbe\u0cb8\u0cb0\u0cc1 \u0cae\u0ca4\u0ccd\u0ca4\u0cc1 \u0c95\u0cc1\u0cb5\u0cc6\u0c82\u0caa\u0cc1 \u0c95\u0ca8\u0ccd\u0ca8\u0ca1 \u0ca8\u0cbe\u0ca1\u0cbf\u0ca8 \u0cb0\u0ca4\u0ccd\u0ca8\u0c97\u0cb3\u0cc1. \u0c88 \u0ca7\u0ccd\u0cb5\u0ca8\u0cbf \u0ca4\u0c82\u0ca4\u0ccd\u0cb0\u0c9c\u0ccd\u0c9e\u0cbe\u0ca8\u0cb5\u0cc1 \u0cac\u0ccd\u0cb0\u0ccc\u0cb8\u0cb0\u0ccd \u0c92\u0cb3\u0c97\u0cc6 \u0ca8\u0cc7\u0cb0\u0cb5\u0cbe\u0c97\u0cbf \u0c95\u0cbe\u0cb0\u0ccd\u0caf\u0ca8\u0cbf\u0cb0\u0ccd\u0cb5\u0cb9\u0cbf\u0cb8\u0cc1\u0ca4\u0ccd\u0ca4\u0ca6\u0cc6.' },
+      ],
+      hi: [
+        { label: 'Hindi \u00b7 Studio', lang: 'hi', text: '\u0928\u092e\u0938\u094d\u0924\u0947 \u092d\u093e\u0930\u0924, \u0928\u093f\u0928\u093e\u0926 \u092c\u0939\u0941\u092d\u093e\u0937\u0940 \u0924\u0902\u0924\u094d\u0930\u093f\u0915\u093e \u0935\u093e\u0915\u094d \u0938\u0902\u0936\u094d\u0932\u0947\u0937\u0923 \u092a\u094d\u0930\u0923\u093e\u0932\u0940 \u092e\u0947\u0902 \u0906\u092a\u0915\u093e \u0938\u094d\u0935\u093e\u0917\u0924 \u0939\u0948 \u0964' },
+        { label: 'Hindi \u00b7 Kabir Doha', lang: 'hi', text: '\u092c\u0921\u093c\u093e \u0939\u0941\u0906 \u0924\u094b \u0915\u094d\u092f\u093e \u0939\u0941\u0906, \u091c\u0948\u0938\u0947 \u092a\u0947\u0921\u093c \u0916\u091c\u0942\u0930 \u0964 \u092a\u0902\u0925\u0940 \u0915\u094b \u091b\u093e\u092f\u093e \u0928\u0939\u0940\u0902, \u092b\u0932 \u0932\u093e\u0917\u0947 \u0905\u0924\u093f \u0926\u0942\u0930 \u0965' },
+        { label: 'Hindi \u00b7 Streaming Passage', lang: 'hi', text: '\u092d\u093e\u0930\u0924\u0940\u092f \u092d\u093e\u0937\u093e\u0913\u0902 \u0915\u0940 \u0927\u094d\u0935\u0928\u094d\u092f\u093e\u0924\u094d\u092e\u0915 \u0938\u0902\u0930\u091a\u0928\u093e \u0905\u0924\u094d\u092f\u0902\u0924 \u0935\u0948\u091c\u094d\u091e\u093e\u0928\u093f\u0915 \u0914\u0930 \u0938\u0941\u0938\u094d\u092a\u0937\u094d\u091f \u0939\u0948 \u0964 \u092f\u0939 \u092a\u094d\u0930\u0923\u093e\u0932\u0940 \u092c\u093f\u0928\u093e \u0915\u093f\u0938\u0940 \u092c\u093e\u0939\u0930\u0940 \u0938\u0930\u094d\u0935\u0930 \u0915\u0947 \u0938\u0940\u0927\u0947 \u0906\u092a\u0915\u0947 \u092c\u094d\u0930\u093e\u0909\u091c\u093c\u0930 \u092e\u0947\u0902 \u0927\u093e\u0930\u093e\u092a\u094d\u0930\u0935\u093e\u0939 \u0935\u093e\u0923\u0940 \u0909\u0924\u094d\u092a\u0928\u094d\u0928 \u0915\u0930\u0924\u0940 \u0939\u0948 \u0964' },
+      ],
+      ta: [
+        { label: 'Tamil \u00b7 Studio', lang: 'ta', text: '\u0ba4\u0bae\u0bbf\u0bb4\u0bcd \u0bae\u0bca\u0bb4\u0bbf\u0baf\u0bbf\u0ba9\u0bcd \u0b87\u0baf\u0bb1\u0bcd\u0b95\u0bc8 \u0b92\u0bb2\u0bbf \u0b89\u0bb0\u0bc1\u0bb5\u0bbe\u0b95\u0bcd\u0b95\u0ba4\u0bcd\u0ba4\u0bbf\u0bb1\u0bcd\u0b95\u0bc1 \u0ba8\u0bb2\u0bcd\u0bb5\u0bb0\u0bb5\u0bc1. \u0ba8\u0bbf\u0ba8\u0bbe\u0ba4\u0bae\u0bcd \u0ba4\u0bc6\u0bb3\u0bbf\u0bb5\u0bbe\u0ba9 \u0b89\u0b9a\u0bcd\u0b9a\u0bb0\u0bbf\u0baa\u0bcd\u0baa\u0bc8 \u0bb5\u0bb4\u0b99\u0bcd\u0b95\u0bc1\u0b95\u0bbf\u0bb1\u0ba4\u0bc1.' },
+        { label: 'Tamil \u00b7 Tirukkural', lang: 'ta', text: '\u0b85\u0b95\u0bb0 \u0bae\u0bc1\u0ba4\u0bb2 \u0b8e\u0bb4\u0bc1\u0ba4\u0bcd\u0ba4\u0bc6\u0bb2\u0bcd\u0bb2\u0bbe\u0bae\u0bcd \u0b86\u0ba4\u0bbf \u0baa\u0b95\u0bb5\u0ba9\u0bcd \u0bae\u0bc1\u0ba4\u0bb1\u0bcd\u0bb1\u0bc7 \u0b89\u0bb2\u0b95\u0bc1. \u0b95\u0bb1\u0bcd\u0b95 \u0b95\u0b9a\u0b9f\u0bb1\u0b95\u0bcd \u0b95\u0bb1\u0bcd\u0baa\u0bb5\u0bc8 \u0b95\u0bb1\u0bcd\u0bb1\u0baa\u0bbf\u0ba9\u0bcd \u0ba8\u0bbf\u0bb1\u0bcd\u0b95 \u0b85\u0ba4\u0bb1\u0bcd\u0b95\u0bc1\u0ba4\u0bcd \u0ba4\u0b95.' },
+        { label: 'Tamil \u00b7 Streaming Passage', lang: 'ta', text: '\u0b9a\u0bc6\u0bae\u0bcd\u0bae\u0bca\u0bb4\u0bbf\u0baf\u0bbe\u0ba9 \u0ba4\u0bae\u0bbf\u0bb4\u0bcd \u0b87\u0bb2\u0b95\u0bcd\u0b95\u0bbf\u0baf \u0bb5\u0bb3\u0bae\u0bc1\u0bae\u0bcd \u0b87\u0b9a\u0bc8 \u0ba8\u0baf\u0bae\u0bc1\u0bae\u0bcd \u0b95\u0bca\u0ba3\u0bcd\u0b9f\u0ba4\u0bc1. \u0b87\u0ba8\u0bcd\u0ba4 \u0ba8\u0bb0\u0bae\u0bcd\u0baa\u0bbf\u0baf\u0bb2\u0bcd \u0b92\u0bb2\u0bbf \u0b85\u0bae\u0bc8\u0baa\u0bcd\u0baa\u0bc1 \u0b89\u0bb2\u0bbe\u0bb5\u0bbf\u0baf\u0bbf\u0bb2\u0bcd \u0ba8\u0bc7\u0bb0\u0b9f\u0bbf\u0baf\u0bbe\u0b95\u0ba4\u0bcd \u0ba4\u0b9f\u0bc8\u0baf\u0bbf\u0ba9\u0bcd\u0bb1\u0bbf \u0b87\u0baf\u0b99\u0bcd\u0b95\u0bc1\u0b95\u0bbf\u0bb1\u0ba4\u0bc1.' },
+      ],
+      te: [
+        { label: 'Telugu \u00b7 Studio', lang: 'te', text: '\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 \u0c2d\u0c3e\u0c37\u0c3e \u0c27\u0c4d\u0c35\u0c28\u0c3f \u0c38\u0c02\u0c36\u0c4d\u0c32\u0c47\u0c37\u0c23 \u0c2a\u0c4d\u0c30\u0c2f\u0c4b\u0c17\u0c36\u0c3e\u0c32\u0c15\u0c41 \u0c38\u0c4d\u0c35\u0c3e\u0c17\u0c24\u0c02. \u0c28\u0c3f\u0c28\u0c3e\u0c26 \u0c38\u0c4d\u0c2a\u0c37\u0c4d\u0c1f\u0c2e\u0c48\u0c28 \u0c09\u0c1a\u0c4d\u0c1a\u0c3e\u0c30\u0c23\u0c28\u0c41 \u0c05\u0c02\u0c26\u0c3f\u0c38\u0c4d\u0c24\u0c41\u0c02\u0c26\u0c3f.' },
+        { label: 'Telugu \u00b7 Vemana Padyam', lang: 'te', text: '\u0c26\u0c47\u0c36\u0c2d\u0c3e\u0c37\u0c32\u0c02\u0c26\u0c41 \u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 \u0c32\u0c46\u0c38\u0c4d\u0c38 \u0c05\u0c28\u0c3f \u0c36\u0c4d\u0c30\u0c40\u0c15\u0c43\u0c37\u0c4d\u0c23\u0c26\u0c47\u0c35\u0c30\u0c3e\u0c2f\u0c32\u0c41 \u0c15\u0c4a\u0c28\u0c3f\u0c2f\u0c3e\u0c21\u0c3e\u0c30\u0c41. \u0c09\u0c2a\u0c4d\u0c2a\u0c41 \u0c15\u0c2a\u0c4d\u0c2a\u0c41\u0c30\u0c02\u0c2c\u0c41 \u0c28\u0c4a\u0c15\u0c4d\u0c15 \u0c2a\u0c4b\u0c32\u0c3f\u0c15\u0c28\u0c41\u0c02\u0c21\u0c41.' },
+        { label: 'Telugu \u00b7 Streaming Passage', lang: 'te', text: '\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 \u0c2d\u0c3e\u0c37\u0c32\u0c4b\u0c28\u0c3f \u0c05\u0c15\u0c4d\u0c37\u0c30\u0c3e\u0c32 \u0c2e\u0c3e\u0c27\u0c41\u0c30\u0c4d\u0c2f\u0c02 \u0c38\u0c02\u0c17\u0c40\u0c24\u0c3e\u0c28\u0c3f\u0c15\u0c3f \u0c0e\u0c02\u0c24\u0c4b \u0c05\u0c28\u0c41\u0c15\u0c42\u0c32\u0c2e\u0c48\u0c28\u0c26\u0c3f. \u0c08 \u0c35\u0c4d\u0c2f\u0c35\u0c38\u0c4d\u0c25 \u0c2c\u0c4d\u0c30\u0c4c\u0c1c\u0c30\u0c4d \u0c32\u0c4b\u0c28\u0c47 \u0c35\u0c47\u0c17\u0c02\u0c17\u0c3e \u0c27\u0c4d\u0c35\u0c28\u0c3f\u0c28\u0c3f \u0c2a\u0c4d\u0c30\u0c35\u0c3e\u0c39\u0c02\u0c32\u0c3e \u0c05\u0c02\u0c26\u0c3f\u0c38\u0c4d\u0c24\u0c41\u0c02\u0c26\u0c3f.' },
+      ],
+      ml: [
+        { label: 'Malayalam \u00b7 Studio', lang: 'ml', text: '\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02 \u0d2d\u0d3e\u0d37\u0d3e \u0d36\u0d2c\u0d4d\u0d26 \u0d38\u0d02\u0d2f\u0d4b\u0d1c\u0d28 \u0d2a\u0d30\u0d40\u0d15\u0d4d\u0d37\u0d23\u0d36\u0d3e\u0d32\u0d2f\u0d3f\u0d32\u0d47\u0d15\u0d4d\u0d15\u0d4d \u0d38\u0d4d\u0d35\u0d3e\u0d17\u0d24\u0d02. \u0d28\u0d3f\u0d28\u0d3e\u0d26\u0d02 \u0d38\u0d4d\u0d35\u0d3e\u0d2d\u0d3e\u0d35\u0d3f\u0d15\u0d2e\u0d3e\u0d2f \u0d36\u0d2c\u0d4d\u0d26\u0d02 \u0d28\u0d7d\u0d15\u0d41\u0d28\u0d4d\u0d28\u0d41.' },
+        { label: 'Malayalam \u00b7 Sahitya', lang: 'ml', text: '\u0d2e\u0d32\u0d2f\u0d3e\u0d33 \u0d2d\u0d3e\u0d37\u0d2f\u0d41\u0d1f\u0d46 \u0d05\u0d15\u0d4d\u0d37\u0d30\u0d38\u0d4d\u0d2b\u0d41\u0d1f\u0d24\u0d2f\u0d41\u0d02 \u0d24\u0d3e\u0d33\u0d2c\u0d4b\u0d27\u0d35\u0d41\u0d02 \u0d05\u0d24\u0d40\u0d35 \u0d38\u0d41\u0d28\u0d4d\u0d26\u0d30\u0d2e\u0d3e\u0d23\u0d4d.' },
+        { label: 'Malayalam \u00b7 Streaming Passage', lang: 'ml', text: '\u0d15\u0d47\u0d30\u0d33\u0d24\u0d4d\u0d24\u0d3f\u0d28\u0d4d\u0d31\u0d46 \u0d38\u0d3e\u0d39\u0d3f\u0d24\u0d4d\u0d2f \u0d2a\u0d3e\u0d30\u0d2e\u0d4d\u0d2a\u0d30\u0d4d\u0d2f\u0d35\u0d41\u0d02 \u0d38\u0d02\u0d38\u0d4d\u0d15\u0d43\u0d24 \u0d38\u0d4d\u0d35\u0d3e\u0d27\u0d40\u0d28\u0d35\u0d41\u0d02 \u0d2e\u0d32\u0d2f\u0d3e\u0d33 \u0d2d\u0d3e\u0d37\u0d2f\u0d46 \u0d38\u0d2e\u0d4d\u0d2a\u0d28\u0d4d\u0d28\u0d2e\u0d3e\u0d15\u0d4d\u0d15\u0d41\u0d28\u0d4d\u0d28\u0d41. \u0d08 \u0d36\u0d2c\u0d4d\u0d26 \u0d38\u0d02\u0d35\u0d3f\u0d27\u0d3e\u0d28\u0d02 \u0d2c\u0d4d\u0d30\u0d57\u0d38\u0d31\u0d3f\u0d7d \u0d28\u0d47\u0d30\u0d3f\u0d1f\u0d4d\u0d1f\u0d4d \u0d2a\u0d4d\u0d30\u0d35\u0d7c\u0d24\u0d4d\u0d24\u0d3f\u0d15\u0d4d\u0d15\u0d41\u0d28\u0d4d\u0d28\u0d41.' },
+      ],
+    };
 
     const textInput = document.getElementById('textInput');
     const presetContainer = document.getElementById('presetContainer');
@@ -725,6 +764,7 @@
     const noiseVal = document.getElementById('noiseVal');
     const synthBtn = document.getElementById('synthBtn');
     const synthBtnLabel = document.getElementById('synthBtnLabel');
+    const stopBtn = document.getElementById('stopBtn');
     const replayBtn = document.getElementById('replayBtn');
     const downloadLink = document.getElementById('downloadLink');
     const audioPlayer = document.getElementById('audioPlayer');
@@ -736,29 +776,134 @@
     const modelDot = document.getElementById('modelDot');
     const aksharaRibbon = document.getElementById('aksharaRibbon');
     const phonemicLine = document.getElementById('phonemicLine');
+    const metricTtfa = document.getElementById('metricTtfa');
+    const metricRtf = document.getElementById('metricRtf');
+    const metricDuration = document.getElementById('metricDuration');
+    const metricTokens = document.getElementById('metricTokens');
 
-    function setActiveLang(langCode) {
-      activeLang = langCode;
-      for (const b of langBtns) {
-        b.classList.toggle('active', b.dataset.lang === langCode);
+    let activeLang = 'sa';
+    let activePresetIdx = 0;
+    let lastPcm = null;
+    let currentBlobUrl = null;
+    let workerReadyInfo = null;
+
+    // Gapless Web Audio streaming state
+    let audioCtx = null;
+    let activeSources = [];
+    let nextPlayTime = 0;
+    let streamPlayStartCtxTime = 0;
+    let totalScheduledSec = 0;
+    let rafPlayhead = 0;
+
+    function stopLiveAudio() {
+      if (rafPlayhead) {
+        cancelAnimationFrame(rafPlayhead);
+        rafPlayhead = 0;
       }
+      for (const src of activeSources) {
+        try { src.stop(); } catch {}
+        try { src.disconnect(); } catch {}
+      }
+      activeSources = [];
+      nextPlayTime = 0;
+      totalScheduledSec = 0;
+      audioPlayer.pause();
+    }
+
+    async function ensureAudioContext() {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      if (!audioCtx) {
+        audioCtx = new Ctx({ sampleRate: SAMPLE_RATE });
+      }
+      if (audioCtx.state === 'suspended') {
+        try { await audioCtx.resume(); } catch {}
+      }
+      return audioCtx;
+    }
+
+    function schedulePcmChunk(pcm, sampleRate = SAMPLE_RATE) {
+      if (!audioCtx || audioCtx.state !== 'running') return;
+      const buf = audioCtx.createBuffer(1, pcm.length, sampleRate);
+      buf.copyToChannel(pcm, 0);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(audioCtx.destination);
+
+      const now = audioCtx.currentTime;
+      const startAt = nextPlayTime > now ? nextPlayTime : now + 0.015;
+      if (activeSources.length === 0) {
+        streamPlayStartCtxTime = startAt;
+      }
+      nextPlayTime = startAt + buf.duration;
+      totalScheduledSec += buf.duration;
+
+      activeSources.push(src);
+      src.onended = () => {
+        const i = activeSources.indexOf(src);
+        if (i >= 0) activeSources.splice(i, 1);
+        if (activeSources.length === 0 && currentPendingReq === null) {
+          stopBtn.disabled = true;
+          if (lastPcm) drawWaveform(lastPcm, 0);
+        }
+      };
+      src.start(startAt);
+
+      if (!rafPlayhead) {
+        const tick = () => {
+          if (!audioCtx || (activeSources.length === 0 && currentPendingReq === null)) {
+            rafPlayhead = 0;
+            return;
+          }
+          const played = Math.max(0, audioCtx.currentTime - streamPlayStartCtxTime);
+          const denom = Math.max(0.05, totalScheduledSec);
+          if (livePreviewPcm && livePreviewPcm.length > 0) {
+            drawWaveform(livePreviewPcm, Math.min(1, played / denom));
+          }
+          rafPlayhead = requestAnimationFrame(tick);
+        };
+        rafPlayhead = requestAnimationFrame(tick);
+      }
+    }
+
+    function renderPresetsForLang(langCode) {
+      const list = PRESETS_BY_LANG[langCode] || PRESETS_BY_LANG.sa;
+      presetContainer.innerHTML = '';
+      list.forEach((p, idx) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `preset-chip ${idx === activePresetIdx ? 'active' : ''}`;
+        btn.textContent = p.label;
+        btn.addEventListener('click', () => {
+          activePresetIdx = idx;
+          textInput.value = p.text;
+          renderPresetsForLang(langCode);
+          refreshInspection();
+        });
+        presetContainer.appendChild(btn);
+      });
+    }
+
+    function setActiveLang(langCode, { loadDefaultPreset = true } = {}) {
+      activeLang = PRESETS_BY_LANG[langCode] ? langCode : 'sa';
+      for (const b of langBtns) {
+        const isMatch = b.dataset.lang === activeLang;
+        b.classList.toggle('active', isMatch);
+        b.setAttribute('aria-selected', isMatch ? 'true' : 'false');
+      }
+      if (loadDefaultPreset) {
+        activePresetIdx = 0;
+        const defaultPreset = PRESETS_BY_LANG[activeLang][0];
+        if (defaultPreset) {
+          textInput.value = defaultPreset.text;
+        }
+      }
+      renderPresetsForLang(activeLang);
       refreshInspection();
     }
 
-    PRESETS.forEach((p) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'preset-chip';
-      btn.textContent = p.label;
-      btn.addEventListener('click', () => {
-        textInput.value = p.text;
-        setActiveLang(p.lang);
-      });
-      presetContainer.appendChild(btn);
-    });
-
     langBtns.forEach((b) => {
-      b.addEventListener('click', () => setActiveLang(b.dataset.lang));
+      b.addEventListener('click', () => setActiveLang(b.dataset.lang, { loadDefaultPreset: true }));
     });
 
     rateSlider.addEventListener('input', () => {
@@ -770,13 +915,16 @@
     textInput.addEventListener('input', () => refreshInspection());
 
     function refreshInspection(durations = null) {
-      const txt = textInput.value.trim() || PRESETS[0].text;
+      const fallback = PRESETS_BY_LANG[activeLang]?.[0]?.text || PRESETS_BY_LANG.sa[0].text;
+      const txt = textInput.value.trim() || fallback;
       const info = textToIds(txt, { lang: activeLang });
-      detectedBadge.textContent = `SCRIPT: ${info.script.toUpperCase()} · ${info.lang.toUpperCase()}`;
+      detectedBadge.textContent = `SCRIPT: ${info.script.toUpperCase()} \u00b7 ${info.lang.toUpperCase()}`;
+      metricTokens.textContent = `${info.aksharas.length} ak / ${info.inputIds.length} id`;
 
       aksharaRibbon.innerHTML = '';
       const aks = info.aksharas || [];
-      aks.forEach((ak, idx) => {
+      const maxCards = 96;
+      aks.slice(0, maxCards).forEach((ak, idx) => {
         const card = document.createElement('div');
         card.className = `akshara-card ${ak.weight === 'G' ? 'guru' : ''}`;
         const g = document.createElement('div');
@@ -788,7 +936,7 @@
         if (durations && durations.length > 0) {
           const tokIdx = Math.min(durations.length - 1, idx * 2 + 1);
           const ms = Math.round(durations[tokIdx] * 16);
-          durTag = `${ak.weight} · ${ms}ms`;
+          durTag = `${ak.weight} \u00b7 ${ms}ms`;
         }
         m.textContent = durTag;
         card.appendChild(g);
@@ -845,134 +993,228 @@
       }
     }
 
-    async function fetchModelBufferWithProgress() {
-      for (const url of MODEL_URLS) {
-        try {
-          const res = await fetch(url);
-          if (!res.ok) continue;
-          const total = Number(res.headers.get('content-length')) || 57000000;
-          if (!res.body) {
-            const ab = await res.arrayBuffer();
-            loaderFill.style.width = '100%';
-            return new Uint8Array(ab);
-          }
-          const reader = res.body.getReader();
-          const chunks = [];
-          let received = 0;
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            received += value.byteLength;
-            const pct = Math.min(99, Math.round((received / total) * 100));
-            loaderFill.style.width = `${pct}%`;
-            loaderLabel.textContent = `Loading GCP-trained Ninada VITS ONNX (${(received / 1048576).toFixed(1)} MB)...`;
-          }
-          const merged = new Uint8Array(received);
-          let offset = 0;
-          for (const c of chunks) {
-            merged.set(c, offset);
-            offset += c.byteLength;
-          }
-          loaderFill.style.width = '100%';
-          return merged;
-        } catch (_err) {
-          // Try next mirror
-        }
+    function concatFloat32(chunks) {
+      let total = 0;
+      for (const c of chunks) total += c.length;
+      const out = new Float32Array(Math.max(1, total));
+      let off = 0;
+      for (const c of chunks) {
+        out.set(c, off);
+        off += c.length;
       }
-      return null;
+      return out;
     }
 
-    async function initNeuralSession() {
-      if (!globalThis.ort) {
-        loaderLabel.textContent = 'ONNX Runtime unavailable — running Zero-Dep Klatt Tier-2';
-        return;
-      }
-      globalThis.ort.env.wasm.wasmPaths = new URL('./ort/', window.location.href).href;
-      globalThis.ort.env.wasm.numThreads =
-        typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated
-          ? Math.min(4, navigator.hardwareConcurrency || 2)
-          : 1;
+    // Dedicated off-main-thread Web Worker for ONNX Runtime WASM SIMD
+    const synthWorker = new Worker('./synth-worker.mjs', { type: 'module' });
+    let nextReqSeq = 1;
+    let currentPendingReq = null;
+    let livePreviewPcm = null;
 
-      const bytes = await fetchModelBufferWithProgress();
-      if (!bytes) {
-        loaderLabel.textContent = 'Model weights not found locally — running Zero-Dep Klatt Tier-2';
-        return;
-      }
+    let readyResolve;
+    const workerReadyPromise = new Promise((res) => { readyResolve = res; });
 
-      loaderLabel.textContent = 'Compiling WebAssembly SIMD neural session...';
-      voiceEngine = await ninada(activeLang, {
-        model: bytes,
-        ort: globalThis.ort,
-        providers: ['wasm'],
-      });
-      modelDot.classList.remove('loading');
-      modelDot.classList.add('ready');
-      loaderLabel.textContent = `Ninada Neural VITS + HiFi-GAN Ready (${(bytes.byteLength / 1048576).toFixed(1)} MB WASM SIMD)`;
-      activeTierBadge.textContent = 'TIER 1 · NEURAL ONNX';
+    let workerFailed = false;
+    synthWorker.addEventListener('error', (err) => {
+      workerFailed = true;
+      loaderFill.style.width = '100%';
+      loaderLabel.textContent = 'Web Worker unavailable on device — running Zero-Dep Klatt Tier-2';
+      activeTierBadge.textContent = 'TIER 2 \u00b7 KLATT ZERO-DEP';
       window.__ninadaReady = true;
+      if (readyResolve) readyResolve({ isNeural: false, isStreamingNeural: false, totalMB: 0 });
+      if (currentPendingReq) {
+        const req = currentPendingReq;
+        currentPendingReq = null;
+        const { pcm } = synthesizeKlattPcm(textInput.value.trim(), { lang: activeLang, rate: Number(rateSlider.value) });
+        const wavBytesArr = encodeWavBuffer(pcm, SAMPLE_RATE);
+        req.resolve({ tier: 'klatt_zero_dep', isNeural: false, lang: activeLang, samples: pcm.length, wavBytes: wavBytesArr.byteLength });
+      }
+    });
+
+    synthWorker.addEventListener('message', (ev) => {
+      const msg = ev.data || {};
+
+      if (msg.type === 'progress') {
+        loaderFill.style.width = `${msg.pct || 0}%`;
+        if (msg.phase === 'compile') {
+          loaderLabel.textContent = `Compiling Web Worker WASM SIMD streaming sessions (${msg.totalMB.toFixed(1)} MB)...`;
+        } else {
+          loaderLabel.textContent = `Streaming GCP-trained Ninada ONNX into Web Worker (${msg.loadedMB.toFixed(1)} / ${msg.totalMB.toFixed(1)} MB)...`;
+        }
+        return;
+      }
+
+      if (msg.type === 'ready') {
+        workerReadyInfo = msg;
+        loaderFill.style.width = '100%';
+        modelDot.classList.remove('loading');
+        modelDot.classList.add('ready');
+        if (msg.isStreamingNeural) {
+          loaderLabel.textContent = `Ninada Halo-Streaming VITS + HiFi-GAN Ready (${msg.totalMB.toFixed(1)} MB Web Worker WASM SIMD)`;
+          activeTierBadge.textContent = 'TIER 1 \u00b7 STREAMING ONNX';
+        } else if (msg.isNeural) {
+          loaderLabel.textContent = `Ninada Neural VITS + HiFi-GAN Ready (${msg.totalMB.toFixed(1)} MB Web Worker WASM SIMD)`;
+          activeTierBadge.textContent = 'TIER 1 \u00b7 NEURAL ONNX';
+        } else {
+          loaderLabel.textContent = msg.reason || 'Running Zero-Dep Klatt Tier-2 in Web Worker';
+          activeTierBadge.textContent = 'TIER 2 \u00b7 KLATT ZERO-DEP';
+        }
+        window.__ninadaReady = true;
+        if (readyResolve) readyResolve(msg);
+        return;
+      }
+
+      if (!currentPendingReq || msg.reqId !== currentPendingReq.reqId) {
+        return;
+      }
+
+      if (msg.type === 'chunk') {
+        currentPendingReq.chunks.push(msg.pcm);
+        if (msg.durations && msg.durations.length > 0) {
+          currentPendingReq.durations.push(...msg.durations);
+        }
+        if (currentPendingReq.ttfaMs === null) {
+          currentPendingReq.ttfaMs = msg.ttfaMs;
+          metricTtfa.textContent = `${msg.ttfaMs.toFixed(1)} ms`;
+        }
+        livePreviewPcm = concatFloat32(currentPendingReq.chunks);
+        const curSec = livePreviewPcm.length / SAMPLE_RATE;
+        metricDuration.textContent = `${curSec.toFixed(2)} s (${currentPendingReq.chunks.length} ch)`;
+        activeTierBadge.textContent =
+          msg.tier === 'neural_onnx' ? 'STREAMING \u00b7 NEURAL ONNX' : 'STREAMING \u00b7 KLATT';
+
+        if (!rafPlayhead) {
+          drawWaveform(livePreviewPcm, 0);
+        }
+        if (currentPendingReq.durations.length > 0 && msg.index === 0) {
+          refreshInspection(currentPendingReq.durations);
+        }
+        if (currentPendingReq.autoPlay) {
+          schedulePcmChunk(msg.pcm, msg.sampleRate || SAMPLE_RATE);
+        }
+        return;
+      }
+
+      if (msg.type === 'done') {
+        const req = currentPendingReq;
+        currentPendingReq = null;
+        synthBtn.classList.remove('streaming');
+        synthBtnLabel.textContent = 'Stream Speech';
+        if (activeSources.length === 0) {
+          stopBtn.disabled = true;
+        }
+
+        const pcm = concatFloat32(req.chunks);
+        lastPcm = pcm;
+        livePreviewPcm = pcm;
+
+        let rmsSq = 0;
+        for (let i = 0; i < pcm.length; i++) rmsSq += pcm[i] * pcm[i];
+        const rms = Math.sqrt(rmsSq / Math.max(1, pcm.length));
+
+        const wavBytesArr = encodeWavBuffer(pcm, SAMPLE_RATE);
+        if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+        const blob = new Blob([wavBytesArr], { type: 'audio/wav' });
+        currentBlobUrl = URL.createObjectURL(blob);
+        audioPlayer.src = currentBlobUrl;
+        downloadLink.href = currentBlobUrl;
+        downloadLink.download = `ninada_${msg.lang}_${Date.now()}.wav`;
+
+        const durationSec = pcm.length / SAMPLE_RATE;
+        const rtf = (msg.totalMs / 1000) / Math.max(0.01, durationSec);
+        metricTtfa.textContent = `${msg.ttfaMs.toFixed(1)} ms`;
+        metricRtf.textContent = `${rtf.toFixed(3)}x (${(msg.totalMs / 1000).toFixed(2)}s)`;
+        metricDuration.textContent = `${durationSec.toFixed(2)} s (${msg.chunkCount} ch)`;
+        activeTierBadge.textContent =
+          msg.tier === 'neural_onnx' ? 'TIER 1 \u00b7 STREAMING ONNX' : 'TIER 2 \u00b7 KLATT ZERO-DEP';
+
+        refreshInspection(req.durations.length > 0 ? req.durations : null);
+        if (!rafPlayhead) {
+          drawWaveform(pcm, 0);
+        }
+
+        const summary = {
+          tier: msg.tier,
+          isNeural: msg.isNeural,
+          isStreamingNeural: msg.isStreamingNeural,
+          lang: msg.lang,
+          samples: pcm.length,
+          durationSec,
+          ttfaMs: msg.ttfaMs,
+          latencyMs: msg.totalMs,
+          chunkCount: msg.chunkCount,
+          rtf,
+          rms,
+          wavBytes: wavBytesArr.byteLength,
+        };
+        window.__ninadaLastResult = summary;
+        req.resolve(summary);
+        return;
+      }
+
+      if (msg.type === 'error') {
+        const req = currentPendingReq;
+        currentPendingReq = null;
+        synthBtn.classList.remove('streaming');
+        synthBtnLabel.textContent = 'Stream Speech';
+        stopBtn.disabled = true;
+        if (req) req.reject(new Error(msg.message || 'Worker synthesis error'));
+      }
+    });
+
+    function cancelActiveSynthesis() {
+      if (currentPendingReq) {
+        synthWorker.postMessage({ type: 'cancel', reqId: currentPendingReq.reqId });
+        currentPendingReq.resolve(null);
+        currentPendingReq = null;
+      }
+      stopLiveAudio();
+      synthBtn.classList.remove('streaming');
+      synthBtnLabel.textContent = 'Stream Speech';
+      stopBtn.disabled = true;
     }
 
     async function runSynthesis(autoPlay = true) {
       const txt = textInput.value.trim();
       if (!txt) return null;
 
-      synthBtn.disabled = true;
-      synthBtnLabel.textContent = 'Synthesizing...';
-      try {
-        const tier = tierSelect.value;
-        const rate = Number(rateSlider.value);
-        const noise = Number(noiseSlider.value);
-
-        const result = await voiceEngine.synthesize(txt, {
-          lang: activeLang,
-          rate,
-          noise,
-          tier,
-        });
-
-        lastPcm = result.pcm;
-        let rmsSq = 0;
-        for (let i = 0; i < lastPcm.length; i++) rmsSq += lastPcm[i] * lastPcm[i];
-        const rms = Math.sqrt(rmsSq / Math.max(1, lastPcm.length));
-
-        if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-        const blob = new Blob([result.wav], { type: 'audio/wav' });
-        currentBlobUrl = URL.createObjectURL(blob);
-        audioPlayer.src = currentBlobUrl;
-        downloadLink.href = currentBlobUrl;
-        downloadLink.download = `ninada_${result.meta.lang}_${Date.now()}.wav`;
-
-        document.getElementById('metricLatency').textContent = `${result.meta.latencyMs.toFixed(1)} ms`;
-        document.getElementById('metricRtf').textContent = `${result.meta.rtf.toFixed(3)}x`;
-        document.getElementById('metricDuration').textContent = `${result.meta.durationSec.toFixed(2)} s`;
-        document.getElementById('metricTokens').textContent = `${result.meta.aksharas.length} ak / ${result.meta.inputIds.length} id`;
-        activeTierBadge.textContent =
-          result.meta.tier === 'neural_onnx' ? 'TIER 1 · NEURAL ONNX' : 'TIER 2 · KLATT ZERO-DEP';
-
-        refreshInspection(result.meta.durations || null);
-        drawWaveform(lastPcm, 0);
-
-        window.__ninadaLastResult = {
-          tier: result.meta.tier,
-          isNeural: voiceEngine.isNeural,
-          lang: result.meta.lang,
-          samples: lastPcm.length,
-          durationSec: result.meta.durationSec,
-          latencyMs: result.meta.latencyMs,
-          rtf: result.meta.rtf,
-          rms,
-          wavBytes: result.wav.byteLength,
-        };
-
-        if (autoPlay) {
-          audioPlayer.play().catch(() => {});
-        }
-        return window.__ninadaLastResult;
-      } finally {
-        synthBtn.disabled = false;
-        synthBtnLabel.textContent = 'Synthesize Speech';
+      if (currentPendingReq) {
+        synthWorker.postMessage({ type: 'cancel', reqId: currentPendingReq.reqId });
+        currentPendingReq.resolve(null);
+        currentPendingReq = null;
       }
+      stopLiveAudio();
+
+      if (autoPlay) {
+        await ensureAudioContext();
+      }
+
+      const reqId = nextReqSeq++;
+      synthBtn.classList.add('streaming');
+      synthBtnLabel.textContent = 'Streaming...';
+      stopBtn.disabled = false;
+
+      return new Promise((resolve, reject) => {
+        currentPendingReq = {
+          reqId,
+          autoPlay,
+          chunks: [],
+          durations: [],
+          ttfaMs: null,
+          resolve,
+          reject,
+        };
+        synthWorker.postMessage({
+          type: 'stream',
+          reqId,
+          text: txt,
+          lang: activeLang,
+          rate: Number(rateSlider.value),
+          noise: Number(noiseSlider.value),
+          tier: tierSelect.value,
+          chunkFrames: 96,
+        });
+      });
     }
 
     audioPlayer.addEventListener('timeupdate', () => {
@@ -985,7 +1227,9 @@
     });
 
     synthBtn.addEventListener('click', () => runSynthesis(true));
+    stopBtn.addEventListener('click', () => cancelActiveSynthesis());
     replayBtn.addEventListener('click', () => {
+      stopLiveAudio();
       if (audioPlayer.src) {
         audioPlayer.currentTime = 0;
         audioPlayer.play().catch(() => {});
@@ -995,10 +1239,11 @@
     });
 
     window.__ninadaRunSynthesis = runSynthesis;
+    window.__ninadaCancel = cancelActiveSynthesis;
 
-    textInput.value = PRESETS[0].text;
-    refreshInspection();
-    await initNeuralSession();
+    setActiveLang('sa', { loadDefaultPreset: true });
+    synthWorker.postMessage({ type: 'init' });
+    await workerReadyPromise;
     await runSynthesis(false);
   </script>
 </body>

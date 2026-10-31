@@ -40,6 +40,7 @@ from ninada.g2p import LANGUAGE_IDS, VOCAB_TOKENS, WARMSTART_DONOR_MAP, text_to_
 from training.modeling_ninada import NinadaConfig, NinadaModel
 
 PRIMARY_STUDIO_DOMAINS = {
+    "sushrota_recitation_corpus",
     "sanskrit_recitation_prose",
     "hindi_studio",
     "kannada_studio",

@@ -624,9 +624,61 @@ class NinadaModel(nn.Module):
 
         eps = torch.randn_like(m_p) * scales[1]
         z_p = (m_p + eps * torch.exp(logs_p)) * out_mask
-        z = self.flow(z_p, out_mask, global_conditioning=g_cond, reverse=True)
-        waveform = self._decode_conditioned(z * out_mask, g_vec)
+        z = self.flow(z_p, out_mask, global_conditioning=g_cond, reverse=True) * out_mask
+        waveform = self._decode_conditioned(z, g_vec)
         return waveform, dur.squeeze(1)
+
+    def encode_flow_infer(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        lang_id: torch.Tensor,
+        scales: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Streaming Stage-1 Forward Pass: Akshara IDs -> Conditioned Flow Latents [B, 192, T_frames] (~35 ms)."""
+        g_lang = self.lang_embed(lang_id)
+        g_voice = F.embedding(lang_id, self.lang_voice_embed)
+        g_vec = g_lang + g_voice
+        g_cond = g_vec.unsqueeze(-1)
+
+        h_text, prior_means, prior_log_vars, pad_mask = self._encode_text_conditioned(
+            input_ids, attention_mask, g_lang
+        )
+        pm_t = pad_mask.transpose(1, 2)
+        log_dur = self.dur_predictor(h_text.transpose(1, 2), pm_t, global_conditioning=g_cond)
+
+        length_scale = 1.0 / torch.clamp_min(scales[0], 0.25)
+        dur = torch.floor(torch.exp(log_dur) * pm_t * length_scale + 0.5)
+        dur = torch.clamp_min(dur, 1.0) * pm_t
+
+        pred_lengths = torch.clamp_min(torch.sum(dur, dim=[1, 2]), 1.0).long()
+        max_len = pred_lengths.max()
+        idx = torch.arange(max_len, device=input_ids.device).unsqueeze(0)
+        out_mask = (idx < pred_lengths.unsqueeze(1)).unsqueeze(1).to(pad_mask.dtype)
+
+        attn_mask = pm_t.unsqueeze(2) * out_mask.unsqueeze(-1)
+        bsz, _, out_len, in_len = attn_mask.shape
+        cum_dur = torch.cumsum(dur, dim=-1).reshape(bsz * in_len, 1)
+        out_idx = torch.arange(out_len, device=input_ids.device, dtype=dur.dtype).unsqueeze(0)
+        valid = (out_idx < cum_dur).to(pad_mask.dtype).reshape(bsz, in_len, out_len)
+        padded = valid - F.pad(valid, [0, 0, 1, 0])[:, :-1, :]
+        attn = padded.unsqueeze(1).transpose(2, 3) * attn_mask
+
+        m_p = torch.matmul(attn.squeeze(1), prior_means).transpose(1, 2)
+        logs_p = torch.matmul(attn.squeeze(1), prior_log_vars).transpose(1, 2)
+
+        eps = torch.randn_like(m_p) * scales[1]
+        z_p = (m_p + eps * torch.exp(logs_p)) * out_mask
+        latents = self.flow(z_p, out_mask, global_conditioning=g_cond, reverse=True) * out_mask
+        return latents, g_vec, dur.squeeze(1)
+
+    def decode_latents_infer(
+        self,
+        latents: torch.Tensor,
+        voice_cond: torch.Tensor,
+    ) -> torch.Tensor:
+        """Streaming Stage-2 Forward Pass: Halo-Windowed Latents [B, 192, W] -> 16 kHz HiFi-GAN Audio [B, W*256]."""
+        return self._decode_conditioned(latents, voice_cond)
 
     def forward(
         self,

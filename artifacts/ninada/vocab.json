@@ -97,5 +97,11 @@
     "ml": 5
   },
   "sampling_rate": 16000,
-  "hop_length": 256
+  "hop_length": 256,
+  "streaming": {
+    "chunk_frames": 40,
+    "halo_frames": 10,
+    "encoder_flow_onnx": "encoder_flow_quantized.onnx",
+    "vocoder_onnx": "vocoder_quantized.onnx"
+  }
 }

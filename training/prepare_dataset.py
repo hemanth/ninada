@@ -39,56 +39,41 @@ SUSHROTA_DIR = Path("/Users/lika/labs/sushrota-sanskrit-asr/models")
 
 HF_SOURCES: list[dict[str, Any]] = [
     {
-        "tag": "sa_sushrota",
+        "tag": "sa_sushrota_recit",
         "lang": "sa",
-        "domain": "sanskrit_recitation_prose",
+        "domain": "sushrota_recitation_corpus",
         "repo_id": "prathoshap/sushrota-sanskrit-asr-data",
-        "shard": "data/train-00000-of-00005.parquet",
+        "shards": [
+            "data/train-00000-of-00005.parquet",
+            "data/train-00001-of-00005.parquet",
+        ],
+        "allowed_subsources": {"recitation_corpus"},
         "text_col": "text",
-        "max_human_cer": 14.0,
-        "target_count": 250,
-        "max_scan": 550,
+        "max_human_cer": 10.0,
+        "target_count": 360,
+        "max_scan": 1800,
     },
     {
-        "tag": "sa_shrutilipi",
+        "tag": "sa_sushrota_scholar",
         "lang": "sa",
-        "domain": "sanskrit_air_broadcast",
-        "repo_id": "surajp/shrutilipi_sanskrit",
-        "shard": "data/train-00000-of-00016-ea3baf304efe85e3.parquet",
-        "text_col": "transcriptions",
-        "max_human_cer": 14.0,
-        "target_count": 140,
-        "max_scan": 750,
-    },
-    {
-        "tag": "sa_asr84",
-        "lang": "sa",
-        "domain": "sanskrit_iitb_spoken",
-        "repo_id": "addy88/sanskrit-asr-84",
-        "shard": "data/train-00000-of-00030.parquet",
+        "domain": "sushrota_scholar_prose",
+        "repo_id": "prathoshap/sushrota-sanskrit-asr-data",
+        "shards": [
+            "data/train-00000-of-00005.parquet",
+            "data/train-00001-of-00005.parquet",
+        ],
+        "allowed_subsources": {"scholar"},
         "text_col": "text",
-        "min_wada_snr": 32.0,
-        "max_human_cer": 14.0,
-        "target_count": 110,
-        "max_scan": 800,
-    },
-    {
-        "tag": "sa_gita",
-        "lang": "sa",
-        "domain": "sanskrit_shloka",
-        "repo_id": "yashnbx/gita_supersite_sanskrit_tts",
-        "shard": "data/train-00000-of-00001-8c41fcd66e4d371c.parquet",
-        "text_col": "text",
-        "max_human_cer": 22.0,
-        "target_count": 60,
-        "max_scan": 320,
+        "max_human_cer": 10.0,
+        "target_count": 290,
+        "max_scan": 1800,
     },
     {
         "tag": "hi_syspin",
         "lang": "hi",
         "domain": "hindi_studio",
         "repo_id": "SayantanJoker/SYSPIN_Hindi_Female_TTS",
-        "shard": "data/train-00000-of-00035.parquet",
+        "shards": ["data/train-00000-of-00035.parquet"],
         "text_col": "transcription",
         "target_count": 180,
         "max_scan": 400,
@@ -98,17 +83,20 @@ HF_SOURCES: list[dict[str, Any]] = [
         "lang": "kn",
         "domain": "kannada_studio",
         "repo_id": "SayantanJoker/original_data_kannada_tts",
-        "shard": "data/train-00000-of-00016.parquet",
+        "shards": [
+            "data/train-00000-of-00016.parquet",
+            "data/train-00001-of-00016.parquet",
+        ],
         "text_col": "transcription",
         "target_count": 180,
-        "max_scan": 400,
+        "max_scan": 600,
     },
     {
         "tag": "ta_syspin",
         "lang": "ta",
         "domain": "tamil_studio",
         "repo_id": "SayantanJoker/original_data_tamil_tts",
-        "shard": "data/train-00000-of-00019.parquet",
+        "shards": ["data/train-00000-of-00019.parquet"],
         "text_col": "transcription",
         "target_count": 180,
         "max_scan": 400,
@@ -118,7 +106,7 @@ HF_SOURCES: list[dict[str, Any]] = [
         "lang": "te",
         "domain": "telugu_studio",
         "repo_id": "arpit-tiwari/syspin-telugu-tts",
-        "shard": "data/test-00000-of-00011.parquet",
+        "shards": ["data/test-00000-of-00011.parquet"],
         "text_col": "sentence",
         "target_count": 180,
         "max_scan": 400,
@@ -128,7 +116,7 @@ HF_SOURCES: list[dict[str, Any]] = [
         "lang": "ml",
         "domain": "malayalam_studio",
         "repo_id": "thennal/indic_tts_ml",
-        "shard": "data/train-00000-of-00010-4368680559ac82fd.parquet",
+        "shards": ["data/train-00000-of-00010-4368680559ac82fd.parquet"],
         "text_col": "text",
         "target_count": 180,
         "max_scan": 400,
@@ -301,122 +289,130 @@ def main() -> None:
         tag = spec["tag"]
         lang = spec["lang"]
         repo_id = spec["repo_id"]
-        shard = spec["shard"]
+        shards = spec.get("shards") or [spec["shard"]]
+        allowed_sub = spec.get("allowed_subsources")
         text_col = spec["text_col"]
         target_n = spec["target_count"]
         max_scan = spec.get("max_scan", 1000)
         max_cer = spec.get("max_human_cer")
 
-        parquet_path = hf_hub_download(repo_id=repo_id, filename=shard, repo_type="dataset")
-        pf = pq.ParquetFile(parquet_path)
         collected = 0
         scanned = 0
         cer_rejected = 0
         by_source_tag[tag] = []
 
-        for batch in pf.iter_batches(batch_size=32):
-            cols = batch.to_pydict()
-            n_rows = len(cols["audio"])
-            for i in range(n_rows):
-                if collected >= target_n or scanned >= max_scan:
-                    break
-                scanned += 1
-                raw_text = str(cols[text_col][i] or "").strip()
-                if not raw_text:
-                    audit["rejected_empty_text"] += 1
-                    continue
+        for shard in shards:
+            if collected >= target_n or scanned >= max_scan:
+                break
+            parquet_path = hf_hub_download(repo_id=repo_id, filename=shard, repo_type="dataset")
+            pf = pq.ParquetFile(parquet_path)
 
-                aud = cols["audio"][i]
-                min_snr = spec.get("min_wada_snr")
-                if min_snr is not None and "snr" in cols and cols["snr"][i]:
+            for batch in pf.iter_batches(batch_size=32):
+                cols = batch.to_pydict()
+                n_rows = len(cols["audio"])
+                for i in range(n_rows):
+                    if collected >= target_n or scanned >= max_scan:
+                        break
+                    if allowed_sub is not None and "source" in cols:
+                        if str(cols["source"][i] or "") not in allowed_sub:
+                            continue
+                    scanned += 1
+                    raw_text = str(cols[text_col][i] or "").strip()
+                    if not raw_text:
+                        audit["rejected_empty_text"] += 1
+                        continue
+
+                    aud = cols["audio"][i]
+                    min_snr = spec.get("min_wada_snr")
+                    if min_snr is not None and "snr" in cols and cols["snr"][i]:
+                        try:
+                            wada = float(cols["snr"][i].get("methodDetails", {}).get("snr", 0.0))
+                            if wada < min_snr:
+                                audit["rejected_corrupt_or_silent"] += 1
+                                continue
+                        except Exception:
+                            pass
+
                     try:
-                        wada = float(cols["snr"][i].get("methodDetails", {}).get("snr", 0.0))
-                        if wada < min_snr:
+                        if aud.get("bytes"):
+                            raw_wav, orig_sr = sf.read(io.BytesIO(aud["bytes"]), dtype="float32")
+                        elif aud.get("array") is not None:
+                            raw_wav = np.asarray(aud["array"], dtype=np.float32)
+                            orig_sr = int(aud.get("sampling_rate") or TARGET_SR)
+                        else:
                             audit["rejected_corrupt_or_silent"] += 1
                             continue
                     except Exception:
-                        pass
-
-                try:
-                    if aud.get("bytes"):
-                        raw_wav, orig_sr = sf.read(io.BytesIO(aud["bytes"]), dtype="float32")
-                    elif aud.get("array") is not None:
-                        raw_wav = np.asarray(aud["array"], dtype=np.float32)
-                        orig_sr = int(aud.get("sampling_rate") or TARGET_SR)
-                    else:
                         audit["rejected_corrupt_or_silent"] += 1
                         continue
-                except Exception:
-                    audit["rejected_corrupt_or_silent"] += 1
-                    continue
 
-                wav_16k = resample_to_16k(raw_wav, int(orig_sr))
-                if tag == "sa_gita":
-                    seg = split_gita_half_shloka(wav_16k, raw_text, sr=TARGET_SR)
-                    if seg is None:
+                    wav_16k = resample_to_16k(raw_wav, int(orig_sr))
+                    if tag == "sa_gita":
+                        seg = split_gita_half_shloka(wav_16k, raw_text, sr=TARGET_SR)
+                        if seg is None:
+                            audit["rejected_duration_outlier"] += 1
+                            continue
+                        wav_16k, raw_text = seg
+
+                    clean_wav = trim_and_normalize(wav_16k, sr=TARGET_SR)
+                    if clean_wav is None:
+                        audit["rejected_corrupt_or_silent"] += 1
+                        continue
+
+                    dur_s = round(clean_wav.size / TARGET_SR, 3)
+                    if dur_s < 1.2 or dur_s > 9.8:
                         audit["rejected_duration_outlier"] += 1
                         continue
-                    wav_16k, raw_text = seg
 
-                clean_wav = trim_and_normalize(wav_16k, sr=TARGET_SR)
-                if clean_wav is None:
-                    audit["rejected_corrupt_or_silent"] += 1
-                    continue
-
-                dur_s = round(clean_wav.size / TARGET_SR, 3)
-                if dur_s < 1.2 or dur_s > 9.8:
-                    audit["rejected_duration_outlier"] += 1
-                    continue
-
-                g2p = text_to_ids(raw_text, lang=lang)
-                norm_key = f"{lang}:{g2p['normalized_devanagari']}"
-                if norm_key in seen_texts:
-                    audit["rejected_duplicate_text"] += 1
-                    continue
-                if len(g2p["tokens"]) < 6 or len(g2p["input_ids"]) > 360:
-                    audit["rejected_duration_outlier"] += 1
-                    continue
-                cps = len(g2p["tokens"]) / dur_s
-                if cps < 2.8 or cps > 24.5:
-                    audit["rejected_duration_outlier"] += 1
-                    continue
-
-                human_cer_val = None
-                if max_cer is not None and align_gate.enabled:
-                    human_cer_val = round(align_gate.human_cer(clean_wav, raw_text), 2)
-                    if human_cer_val > max_cer:
-                        audit["rejected_transcript_misalignment"] += 1
-                        cer_rejected += 1
+                    g2p = text_to_ids(raw_text, lang=lang)
+                    norm_key = f"{lang}:{g2p['normalized_devanagari']}"
+                    if norm_key in seen_texts:
+                        audit["rejected_duplicate_text"] += 1
+                        continue
+                    if len(g2p["tokens"]) < 6 or len(g2p["input_ids"]) > 360:
+                        audit["rejected_duration_outlier"] += 1
+                        continue
+                    cps = len(g2p["tokens"]) / dur_s
+                    if cps < 2.8 or cps > 24.5:
+                        audit["rejected_duration_outlier"] += 1
                         continue
 
-                seen_texts.add(norm_key)
-                uid = hashlib.sha1(norm_key.encode("utf-8")).hexdigest()[:12]
-                fname = f"{tag}_{uid}.wav"
-                fpath = WAV_DIR / fname
-                sf.write(str(fpath), clean_wav, TARGET_SR, subtype="PCM_16")
+                    human_cer_val = None
+                    if max_cer is not None and align_gate.enabled:
+                        human_cer_val = round(align_gate.human_cer(clean_wav, raw_text), 2)
+                        if human_cer_val > max_cer:
+                            audit["rejected_transcript_misalignment"] += 1
+                            cer_rejected += 1
+                            continue
 
-                rms = round(float(np.sqrt(np.mean(clean_wav * clean_wav))), 4)
-                rec = {
-                    "id": f"{tag}_{uid}",
-                    "wav_relpath": f"data/wavs/{fname}",
-                    "lang": lang,
-                    "lang_id": LANGUAGE_IDS[lang],
-                    "domain": spec["domain"],
-                    "source_repo": repo_id,
-                    "text": raw_text,
-                    "normalized_devanagari": g2p["normalized_devanagari"],
-                    "input_ids": g2p["input_ids"],
-                    "num_tokens": len(g2p["tokens"]),
-                    "num_aksharas": len(g2p["aksharas"]),
-                    "duration_sec": dur_s,
-                    "rms": rms,
-                }
-                if human_cer_val is not None:
-                    rec["studio_align_cer"] = human_cer_val
-                by_source_tag[tag].append(rec)
-                collected += 1
-            if collected >= target_n or scanned >= max_scan:
-                break
+                    seen_texts.add(norm_key)
+                    uid = hashlib.sha1(norm_key.encode("utf-8")).hexdigest()[:12]
+                    fname = f"{tag}_{uid}.wav"
+                    fpath = WAV_DIR / fname
+                    sf.write(str(fpath), clean_wav, TARGET_SR, subtype="PCM_16")
+
+                    rms = round(float(np.sqrt(np.mean(clean_wav * clean_wav))), 4)
+                    rec = {
+                        "id": f"{tag}_{uid}",
+                        "wav_relpath": f"data/wavs/{fname}",
+                        "lang": lang,
+                        "lang_id": LANGUAGE_IDS[lang],
+                        "domain": spec["domain"],
+                        "source_repo": repo_id,
+                        "text": raw_text,
+                        "normalized_devanagari": g2p["normalized_devanagari"],
+                        "input_ids": g2p["input_ids"],
+                        "num_tokens": len(g2p["tokens"]),
+                        "num_aksharas": len(g2p["aksharas"]),
+                        "duration_sec": dur_s,
+                        "rms": rms,
+                    }
+                    if human_cer_val is not None:
+                        rec["studio_align_cer"] = human_cer_val
+                    by_source_tag[tag].append(rec)
+                    collected += 1
+                if collected >= target_n or scanned >= max_scan:
+                    break
 
         audit["sources"][tag] = {
             "repo_id": repo_id,

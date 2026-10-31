@@ -48,7 +48,7 @@ if str(ROOT / "python" / "src") not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ninada.engine import synthesize_klatt_pcm
+from ninada.engine import HOP_LENGTH, Ninada, synthesize_klatt_pcm
 from ninada.g2p import LANGUAGE_IDS, apply_phonological_rules, brahmic_to_devanagari, text_to_ids
 from training.modeling_ninada import NinadaModel, strip_all_weight_norm
 
@@ -216,17 +216,17 @@ def write_science_report(results: dict[str, Any], out_md: Path) -> None:
     pl = sys_map["ninada_onnx_quant"]["per_lang"]
     lang_counts_str = ", ".join(f"`{lc}` [{pl[lc]['n']}]" for lc in ("sa", "hi", "kn", "ta", "te", "ml") if lc in pl)
     lines = [
-        "# `Ninada` Scientific Multi-Benchmark & Ablation Report",
+        "# `Ninada` v1.1 Scientific Multi-Benchmark & Streaming Report",
         "",
         "## 1. Experimental Setup & Leakage-Free Studio Corpus",
-        f"- **Held-Out Test Split**: `{results['num_test_utterances']}` studio utterances (`16 kHz` mono PCM) across **6 Indic languages** ({lang_counts_str}), including **4 distinct Sanskrit speech domains** (IISc Vedanta prose, All India Radio Sanskrit news, IITB high-SNR spoken Sanskrit, and IITK Bhagavad-Gita shlokas), strictly disjoint (`0` shared audio hashes or normalized transcripts) from the training and validation splits.",
+        f"- **Held-Out Test Split**: `{results['num_test_utterances']}` studio utterances (`16 kHz` mono PCM) across **6 Indic languages** ({lang_counts_str}), featuring **pure human studio Sanskrit** from `prathoshap/sushrota-sanskrit-asr-data` (`recitation_corpus` + `scholar`, synthetic `tts_aug` excluded) + 5 clean studio Indic corpora, strictly disjoint (`0` shared audio hashes or normalized transcripts) from the training and validation splits.",
         "- **Bootstrap Confidence Intervals**: `B = 1,000` non-parametric bootstrap resamples (`95% CI`).",
         "- **Specialist Baseline Included**: In addition to single-checkpoint `facebook/mms-tts-hin` (`138.8 MB`), we benchmark against the **`694.0 MB` Meta MMS-TTS 5-Specialist Fleet** (`mms-tts-hin` + `mms-tts-kan` + `mms-tts-tam` + `mms-tts-tel` + `mms-tts-mal`, routing every language to its dedicated native-script checkpoint).",
         "- **Independent Round-Trip Intelligibility Oracle**: `Su-srota` IndicConformer-CTC (`115M` params, `sushrota_sanskrit_ctc_int8.onnx`), completely independent of the VITS generator.",
         "",
         f"## 2. Overall Pan-Indic & Sanskrit Leaderboard (`N = {results['num_test_utterances']}` Test Utterances)",
         "",
-        "| System | Footprint (↓) | Coverage (↑) | MCD (dB, ↓) | Log-F0 RMSE (c, ↓) | Dur MAE (s, ↓) | Sanskrit CER (%, ↓) | Pan-Indic Phonetic CER (%, ↓) | RTF (↓) |",
+        "| System | Footprint (↓) | Coverage (↑) | TTFA p50 (ms, ↓) | MCD (dB, ↓) | Log-F0 RMSE (c, ↓) | Dur MAE (s, ↓) | Sanskrit CER (%, ↓) | Pan-Indic Phonetic CER (%, ↓) |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
 
@@ -236,7 +236,7 @@ def write_science_report(results: dict[str, Any], out_md: Path) -> None:
         ("mms_hin_g2p", "Base `mms-tts-hin` + `Ninada` G2P"),
         ("mms_5_fleet", "Meta MMS 5-Specialist Fleet (`5x` Models)"),
         ("ninada_pytorch_fp32", "**`Ninada` Tier-1A (GCP L4 FP32)**"),
-        ("ninada_onnx_quant", "**`Ninada` Tier-1B (Browser ONNX)**"),
+        ("ninada_onnx_quant", "**`Ninada` Tier-1B (Streaming ONNX)**"),
         ("ninada_klatt_tier2", "`Ninada` Tier-2 (Zero-Dep Klatt)"),
     ]
 
@@ -246,6 +246,7 @@ def write_science_report(results: dict[str, Any], out_md: Path) -> None:
         s = sys_map[key]
         fp = f"{s['size_mb']:.1f} MB" if s.get("size_mb") is not None else "—"
         cov = f"{s['voiced_rate_pct']:.1f}%" if "voiced_rate_pct" in s else "100.0%"
+        ttfa = f"{s['ttfa_ms']['p50']:.1f} ms" if "ttfa_ms" in s else "—"
         mcd = f"{s['mcd_db']['mean']:.2f} [{s['mcd_db']['ci95_low']:.2f}, {s['mcd_db']['ci95_high']:.2f}]" if "mcd_db" in s else "—"
         f0 = f"{s['f0_rmse_cents']['mean']:.1f}" if "f0_rmse_cents" in s else "—"
         dur = f"{s['dur_mae_sec']['mean']:.2f}s" if "dur_mae_sec" in s else "—"
@@ -255,8 +256,7 @@ def write_science_report(results: dict[str, Any], out_md: Path) -> None:
             else "—"
         )
         pcer = f"{s['pan_indic_phonetic_cer_pct']['mean']:.2f}%" if "pan_indic_phonetic_cer_pct" in s else "—"
-        rtf = f"{s['rtf_mean']:.3f}x" if "rtf_mean" in s else "—"
-        lines.append(f"| {label} | {fp} | {cov} | {mcd} | {f0} | {dur} | {cer} | {pcer} | {rtf} |")
+        lines.append(f"| {label} | {fp} | {cov} | {ttfa} | {mcd} | {f0} | {dur} | {cer} | {pcer} |")
 
     lines.extend(
         [
@@ -342,10 +342,22 @@ def main() -> None:
     strip_all_weight_norm(ninada_pt)
     ninada_pt.eval()
 
-    # 3. Load Browser Quantized ONNX
+    # 3. Load Browser Streaming Quantized ONNX (Encoder+Flow + Halo-Chunked Vocoder)
     quant_onnx_path = args.checkpoint_dir / "onnx" / "model_quantized.onnx"
+    enc_onnx_path = args.checkpoint_dir / "onnx" / "encoder_flow_quantized.onnx"
+    voc_onnx_path = args.checkpoint_dir / "onnx" / "vocoder_quantized.onnx"
     fp32_onnx_path = args.checkpoint_dir / "onnx" / "model.onnx"
     ort_sess = ort.InferenceSession(str(quant_onnx_path), providers=["CPUExecutionProvider"])
+    enc_sess = (
+        ort.InferenceSession(str(enc_onnx_path), providers=["CPUExecutionProvider"])
+        if enc_onnx_path.exists()
+        else None
+    )
+    voc_sess = (
+        ort.InferenceSession(str(voc_onnx_path), providers=["CPUExecutionProvider"])
+        if voc_onnx_path.exists()
+        else None
+    )
 
     # 4. Load Independent Su-srota Conformer-CTC ASR
     asr = SushrotaSanskritAsr(args.asr_dir) if (args.asr_dir / "sushrota_sanskrit_ctc_int8.onnx").exists() else None
@@ -428,7 +440,7 @@ def main() -> None:
                 wav_flt = spec_vits(**spec_inputs).waveform[0].cpu().numpy()
         lat_flt = (time.perf_counter() - t0) * 1000.0
 
-        # --- System 4: GCP-Trained Ninada PyTorch FP32 ---
+        # --- System 4: GCP-Trained Ninada PyTorch FP32 (Halo-Chunked Stream TTFA) ---
         ids_t = torch.tensor([parsed["input_ids"]], dtype=torch.long)
         mask_t = torch.tensor([parsed["attention_mask"]], dtype=torch.long)
         lid_t = torch.tensor([LANGUAGE_IDS[lang]], dtype=torch.long)
@@ -436,11 +448,24 @@ def main() -> None:
         t0 = time.perf_counter()
         with torch.no_grad():
             torch.manual_seed(42 + idx)
-            wav_pt_t, _ = ninada_pt(ids_t, mask_t, lid_t, scales_eval)
-        wav_pt = wav_pt_t[0].cpu().numpy()
+            z_pt, g_pt, _ = ninada_pt.encode_flow_infer(ids_t, mask_t, lid_t, scales_eval)
+            tot_f_pt = int(z_pt.shape[2])
+            pt_parts: list[np.ndarray] = []
+            ttfa_pt = 0.0
+            for st in range(0, tot_f_pt, 40):
+                ed = min(tot_f_pt, st + 40)
+                w_st = max(0, st - 10)
+                w_ed = min(tot_f_pt, ed + 10)
+                w_win = ninada_pt.decode_latents_infer(z_pt[:, :, w_st:w_ed], g_pt)[0].cpu().numpy()
+                c_l = (st - w_st) * HOP_LENGTH
+                c_r = c_l + (ed - st) * HOP_LENGTH
+                pt_parts.append(w_win[c_l:c_r])
+                if st == 0:
+                    ttfa_pt = (time.perf_counter() - t0) * 1000.0
+        wav_pt = np.concatenate(pt_parts).astype(np.float32) if pt_parts else np.zeros(1600, dtype=np.float32)
         lat_pt = (time.perf_counter() - t0) * 1000.0
 
-        # --- System 5: Ninada Browser Quantized ONNX ---
+        # --- System 5: Ninada Streaming Browser Quantized ONNX ---
         ort_in = {
             "input_ids": ids_t.numpy(),
             "attention_mask": mask_t.numpy(),
@@ -448,21 +473,60 @@ def main() -> None:
             "scales": scales_eval.numpy(),
         }
         t0 = time.perf_counter()
-        wav_ox = ort_sess.run(None, ort_in)[0][0].astype(np.float32)
+        if enc_sess is not None and voc_sess is not None:
+            lat_ox_arr, g_ox_arr, _ = enc_sess.run(None, ort_in)
+            tot_f_ox = int(lat_ox_arr.shape[2])
+            ox_parts: list[np.ndarray] = []
+            ttfa_ox = 0.0
+            for st in range(0, tot_f_ox, 40):
+                ed = min(tot_f_ox, st + 40)
+                w_st = max(0, st - 10)
+                w_ed = min(tot_f_ox, ed + 10)
+                w_win = voc_sess.run(None, {"latents": lat_ox_arr[:, :, w_st:w_ed], "voice_cond": g_ox_arr})[0][0]
+                c_l = (st - w_st) * HOP_LENGTH
+                c_r = c_l + (ed - st) * HOP_LENGTH
+                ox_parts.append(w_win[c_l:c_r])
+                if st == 0:
+                    ttfa_ox = (time.perf_counter() - t0) * 1000.0
+            wav_ox = np.concatenate(ox_parts).astype(np.float32) if ox_parts else np.zeros(1600, dtype=np.float32)
+        else:
+            wav_ox = ort_sess.run(None, ort_in)[0][0].astype(np.float32)
+            ttfa_ox = (time.perf_counter() - t0) * 1000.0
         lat_ox = (time.perf_counter() - t0) * 1000.0
 
         if idx < 24:
             with torch.no_grad():
                 w_pt_det = ninada_pt(ids_t, mask_t, lid_t, scales_det)[0][0].cpu().numpy()
-            w_ox_det = ort_sess.run(
-                None,
-                {
-                    "input_ids": ids_t.numpy(),
-                    "attention_mask": mask_t.numpy(),
-                    "lang_id": lid_t.numpy(),
-                    "scales": scales_det.numpy(),
-                },
-            )[0][0]
+            if enc_sess is not None and voc_sess is not None:
+                z_d, g_d, _ = enc_sess.run(
+                    None,
+                    {
+                        "input_ids": ids_t.numpy(),
+                        "attention_mask": mask_t.numpy(),
+                        "lang_id": lid_t.numpy(),
+                        "scales": scales_det.numpy(),
+                    },
+                )
+                tf_d = int(z_d.shape[2])
+                d_parts = []
+                for st in range(0, tf_d, 40):
+                    ed = min(tf_d, st + 40)
+                    w_st = max(0, st - 10)
+                    w_ed = min(tf_d, ed + 10)
+                    ww = voc_sess.run(None, {"latents": z_d[:, :, w_st:w_ed], "voice_cond": g_d})[0][0]
+                    c_l = (st - w_st) * HOP_LENGTH
+                    d_parts.append(ww[c_l : c_l + (ed - st) * HOP_LENGTH])
+                w_ox_det = np.concatenate(d_parts).astype(np.float32)
+            else:
+                w_ox_det = ort_sess.run(
+                    None,
+                    {
+                        "input_ids": ids_t.numpy(),
+                        "attention_mask": mask_t.numpy(),
+                        "lang_id": lid_t.numpy(),
+                        "scales": scales_det.numpy(),
+                    },
+                )[0][0]
             if len(w_pt_det) == len(w_ox_det):
                 snr = 10.0 * math.log10(
                     (float(np.sum(w_pt_det**2)) + 1e-12) / (float(np.sum((w_pt_det - w_ox_det) ** 2)) + 1e-12)
@@ -478,15 +542,15 @@ def main() -> None:
         lat_kl = (time.perf_counter() - t0) * 1000.0
 
         candidates = [
-            ("mms_hin_raw", wav_raw, lat_raw),
-            ("mms_hin_g2p", wav_g2p, lat_g2p),
-            ("mms_5_fleet", wav_flt, lat_flt),
-            ("ninada_pytorch_fp32", wav_pt, lat_pt),
-            ("ninada_onnx_quant", wav_ox, lat_ox),
-            ("ninada_klatt_tier2", wav_kl, lat_kl),
+            ("mms_hin_raw", wav_raw, lat_raw, lat_raw),
+            ("mms_hin_g2p", wav_g2p, lat_g2p, lat_g2p),
+            ("mms_5_fleet", wav_flt, lat_flt, lat_flt),
+            ("ninada_pytorch_fp32", wav_pt, lat_pt, ttfa_pt),
+            ("ninada_onnx_quant", wav_ox, lat_ox, ttfa_ox),
+            ("ninada_klatt_tier2", wav_kl, lat_kl, lat_kl),
         ]
 
-        for sys_name, syn_w, lat_ms in candidates:
+        for sys_name, syn_w, lat_ms, ttfa_ms in candidates:
             mcd, f0_c, is_v = compute_mcd_and_f0(gt_wav, syn_w)
             syn_dur = len(syn_w) / 16000.0 if is_v else 0.0
             dur_err = abs(syn_dur - gt_dur)
@@ -500,6 +564,7 @@ def main() -> None:
                 "f0_rmse_cents": f0_c,
                 "dur_mae_sec": dur_err,
                 "lat_ms": lat_ms,
+                "ttfa_ms": ttfa_ms,
                 "rtf": rtf,
             }
             if asr is not None:
@@ -515,12 +580,17 @@ def main() -> None:
         if (idx + 1) % 25 == 0 or (idx + 1) == len(test_rows):
             print(f"[bench] Evaluated {idx + 1}/{len(test_rows)} utterances", flush=True)
 
+    ox_mb = (
+        round((enc_onnx_path.stat().st_size + voc_onnx_path.stat().st_size) / (1024 * 1024), 2)
+        if (enc_onnx_path.exists() and voc_onnx_path.exists())
+        else round(quant_onnx_path.stat().st_size / (1024 * 1024), 2)
+    )
     size_map = {
         "mms_hin_raw": 138.8,
         "mms_hin_g2p": 138.8,
         "mms_5_fleet": 694.0,
         "ninada_pytorch_fp32": round((args.checkpoint_dir / "model.safetensors").stat().st_size / (1024 * 1024), 2),
-        "ninada_onnx_quant": round(quant_onnx_path.stat().st_size / (1024 * 1024), 2),
+        "ninada_onnx_quant": ox_mb,
         "ninada_klatt_tier2": 0.0,
     }
 
@@ -536,6 +606,7 @@ def main() -> None:
     for sys_name in systems:
         recs = records[sys_name]
         lats = [r["lat_ms"] for r in recs]
+        ttfas = [r["ttfa_ms"] for r in recs]
         sa_cers = [r["sa_cer"] for r in recs if "sa_cer" in r]
         sa_wers = [r["sa_wer"] for r in recs if "sa_wer" in r]
         pan_cers = [r["pan_cer"] for r in recs if "pan_cer" in r]
@@ -561,6 +632,11 @@ def main() -> None:
             "sanskrit_wer_pct": bootstrap_ci(sa_wers),
             "pan_indic_phonetic_cer_pct": bootstrap_ci(pan_cers),
             "rtf_mean": round(float(np.mean([r["rtf"] for r in recs])), 5),
+            "ttfa_ms": {
+                "mean": round(float(np.mean(ttfas)), 2),
+                "p50": round(float(np.percentile(ttfas, 50)), 2),
+                "p95": round(float(np.percentile(ttfas, 95)), 2),
+            },
             "latency_ms": {
                 "p50": round(float(np.percentile(lats, 50)), 2),
                 "p95": round(float(np.percentile(lats, 95)), 2),

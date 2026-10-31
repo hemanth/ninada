@@ -1,5 +1,14 @@
-"""ninada (निनाद): SOTA Pan-Indic & Classical Sanskrit Neural Text-to-Speech."""
-from .engine import SAMPLE_RATE, Ninada, encode_wav_bytes, speak, synthesize_klatt_pcm
+"""ninada (निनाद): Streaming Pan-Indic & Classical Sanskrit Neural Text-to-Speech."""
+from .engine import (
+    HOP_LENGTH,
+    SAMPLE_RATE,
+    Ninada,
+    encode_wav_bytes,
+    speak,
+    split_prosodic_clauses,
+    stream,
+    synthesize_klatt_pcm,
+)
 from .g2p import (
     BLANK_ID,
     ID_TO_LANGUAGE,
@@ -17,13 +26,16 @@ from .g2p import (
     text_to_ids,
 )
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     "__version__",
     "SAMPLE_RATE",
+    "HOP_LENGTH",
     "Ninada",
     "speak",
+    "stream",
+    "split_prosodic_clauses",
     "encode_wav_bytes",
     "synthesize_klatt_pcm",
     "VOCAB_TOKENS",

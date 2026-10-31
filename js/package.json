@@ -1,7 +1,7 @@
 {
   "name": "ninada",
-  "version": "1.0.0",
-  "description": "Speak Classical Sanskrit and 6 Indic languages in the browser and Node.js via a 54 MB VITS+HiFi-GAN ONNX or zero-dep Klatt synthesis.",
+  "version": "1.1.0",
+  "description": "Stream Classical Sanskrit and 6 Indic languages in the browser and Node.js via halo-chunked VITS+HiFi-GAN ONNX (<250ms TTFA) or zero-dep Klatt synthesis.",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",

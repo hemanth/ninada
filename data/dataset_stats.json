@@ -1,23 +1,23 @@
 {
   "sample_rate": 16000,
-  "total_clips": 1327,
-  "train_clips": 1061,
-  "val_clips": 133,
-  "test_clips": 133,
-  "total_duration_minutes": 144.0,
+  "total_clips": 1550,
+  "train_clips": 1240,
+  "val_clips": 155,
+  "test_clips": 155,
+  "total_duration_minutes": 175.19,
   "train_only_stats": {
-    "mean_duration_sec": 6.523,
-    "std_duration_sec": 2.031,
-    "mean_chars_per_sec": 11.807
+    "mean_duration_sec": 6.795,
+    "std_duration_sec": 1.947,
+    "mean_chars_per_sec": 11.456
   },
   "per_language": {
     "sa": {
-      "total": 474,
-      "train": 378,
-      "val": 48,
-      "test": 48,
-      "minutes": 54.88,
-      "mean_duration_sec": 6.95
+      "total": 650,
+      "train": 520,
+      "val": 65,
+      "test": 65,
+      "minutes": 80.54,
+      "mean_duration_sec": 7.43
     },
     "hi": {
       "total": 180,
@@ -28,12 +28,12 @@
       "mean_duration_sec": 6.91
     },
     "kn": {
-      "total": 133,
-      "train": 107,
-      "val": 13,
-      "test": 13,
-      "minutes": 16.34,
-      "mean_duration_sec": 7.37
+      "total": 180,
+      "train": 144,
+      "val": 18,
+      "test": 18,
+      "minutes": 21.87,
+      "mean_duration_sec": 7.29
     },
     "ta": {
       "total": 180,
@@ -62,33 +62,19 @@
   },
   "hygiene_audit": {
     "sources": {
-      "sa_sushrota": {
+      "sa_sushrota_recit": {
         "repo_id": "prathoshap/sushrota-sanskrit-asr-data",
         "lang": "sa",
-        "scanned": 498,
-        "accepted": 250,
-        "rejected_cer_gate": 14
+        "scanned": 962,
+        "accepted": 360,
+        "rejected_cer_gate": 105
       },
-      "sa_shrutilipi": {
-        "repo_id": "surajp/shrutilipi_sanskrit",
+      "sa_sushrota_scholar": {
+        "repo_id": "prathoshap/sushrota-sanskrit-asr-data",
         "lang": "sa",
-        "scanned": 608,
-        "accepted": 140,
-        "rejected_cer_gate": 77
-      },
-      "sa_asr84": {
-        "repo_id": "addy88/sanskrit-asr-84",
-        "lang": "sa",
-        "scanned": 800,
-        "accepted": 24,
-        "rejected_cer_gate": 184
-      },
-      "sa_gita": {
-        "repo_id": "yashnbx/gita_supersite_sanskrit_tts",
-        "lang": "sa",
-        "scanned": 66,
-        "accepted": 60,
-        "rejected_cer_gate": 4
+        "scanned": 540,
+        "accepted": 290,
+        "rejected_cer_gate": 17
       },
       "hi_syspin": {
         "repo_id": "SayantanJoker/SYSPIN_Hindi_Female_TTS",
@@ -100,8 +86,8 @@
       "kn_syspin": {
         "repo_id": "SayantanJoker/original_data_kannada_tts",
         "lang": "kn",
-        "scanned": 400,
-        "accepted": 133,
+        "scanned": 514,
+        "accepted": 180,
         "rejected_cer_gate": 0
       },
       "ta_syspin": {
@@ -126,10 +112,10 @@
         "rejected_cer_gate": 0
       }
     },
-    "rejected_empty_text": 6,
-    "rejected_corrupt_or_silent": 538,
-    "rejected_duration_outlier": 1091,
-    "rejected_duplicate_text": 17,
-    "rejected_transcript_misalignment": 279
+    "rejected_empty_text": 0,
+    "rejected_corrupt_or_silent": 1,
+    "rejected_duration_outlier": 1220,
+    "rejected_duplicate_text": 9,
+    "rejected_transcript_misalignment": 122
   }
 }

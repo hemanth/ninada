@@ -1,7 +1,7 @@
 {
   "model_name": "ninada",
   "project": "hemanth-hm",
-  "cloud_run_execution": "sntts-l4-trainer-8fqss",
+  "cloud_run_execution": "sntts-l4-trainer-rkzx7",
   "region": "us-east4",
   "hostname": "localhost",
   "platform": "Linux-6.9.12-x86_64-with-glibc2.35",
@@ -10,13 +10,13 @@
   "cuda_version": "12.1",
   "gpu_name": "NVIDIA L4",
   "gpu_vram_gb": 22.03,
-  "train_utterances": 1061,
-  "val_utterances": 133,
+  "train_utterances": 1240,
+  "val_utterances": 155,
   "epochs": 24,
   "batch_size": 8,
-  "total_steps": 3192,
-  "best_epoch": 22,
-  "total_elapsed_sec": 672.68,
+  "total_steps": 3720,
+  "best_epoch": 17,
+  "total_elapsed_sec": 807.3,
   "parameter_counts": {
     "total_params": 36690242,
     "trainable_params": 15136898,
@@ -25,124 +25,124 @@
     "backbone_group_params": 13383168
   },
   "pretrain_baseline": {
-    "val_loss": 64.54123,
-    "val_kl_loss": 0.06189,
-    "val_latent_loss": 0.57918,
-    "val_dur_loss": 20.15345,
-    "val_mel_l1": 1.34037,
-    "val_mr_stft": 2.91459,
-    "val_dur_mae_frames": 8.88917,
-    "val_utt_dur_mae_sec": 19.51226,
+    "val_loss": 63.15129,
+    "val_kl_loss": 0.05944,
+    "val_latent_loss": 0.55317,
+    "val_dur_loss": 19.86177,
+    "val_mel_l1": 1.25883,
+    "val_mr_stft": 2.80474,
+    "val_dur_mae_frames": 8.67484,
+    "val_utt_dur_mae_sec": 19.30029,
     "per_lang": {
       "sa": {
-        "n": 48,
-        "val_kl": 0.0652,
-        "val_latent": 0.5725,
-        "val_dur_mae_frames": 9.1216,
-        "val_mel_l1": 1.3911
+        "n": 65,
+        "val_kl": 0.0609,
+        "val_latent": 0.5387,
+        "val_dur_mae_frames": 8.8036,
+        "val_mel_l1": 1.291
       },
       "hi": {
         "n": 18,
-        "val_kl": 0.0565,
-        "val_latent": 0.5555,
-        "val_dur_mae_frames": 8.7765,
-        "val_mel_l1": 1.2404
+        "val_kl": 0.0561,
+        "val_latent": 0.5335,
+        "val_dur_mae_frames": 8.694,
+        "val_mel_l1": 1.2192
       },
       "kn": {
-        "n": 13,
-        "val_kl": 0.0605,
-        "val_latent": 0.6549,
-        "val_dur_mae_frames": 8.6395,
-        "val_mel_l1": 1.2283
+        "n": 18,
+        "val_kl": 0.0603,
+        "val_latent": 0.5838,
+        "val_dur_mae_frames": 8.5311,
+        "val_mel_l1": 1.2898
       },
       "ta": {
         "n": 18,
-        "val_kl": 0.0603,
-        "val_latent": 0.5924,
-        "val_dur_mae_frames": 8.7452,
-        "val_mel_l1": 1.3436
+        "val_kl": 0.0564,
+        "val_latent": 0.5747,
+        "val_dur_mae_frames": 8.5342,
+        "val_mel_l1": 1.2094
       },
       "te": {
         "n": 18,
-        "val_kl": 0.0601,
-        "val_latent": 0.5703,
-        "val_dur_mae_frames": 8.7648,
-        "val_mel_l1": 1.3261
+        "val_kl": 0.0609,
+        "val_latent": 0.5659,
+        "val_dur_mae_frames": 8.7632,
+        "val_mel_l1": 1.2837
       },
       "ml": {
         "n": 18,
-        "val_kl": 0.0629,
-        "val_latent": 0.5616,
-        "val_dur_mae_frames": 8.8307,
-        "val_mel_l1": 1.397
+        "val_kl": 0.0585,
+        "val_latent": 0.5603,
+        "val_dur_mae_frames": 8.3868,
+        "val_mel_l1": 1.176
       }
     }
   },
   "best_epoch_metrics": {
-    "epoch": 22,
-    "step": 2926,
-    "epoch_sec": 25.73,
-    "lr_head": 3.78e-05,
-    "lr_backbone": 5.7e-06,
+    "epoch": 17,
+    "step": 2635,
+    "epoch_sec": 31.82,
+    "lr_head": 9.77e-05,
+    "lr_backbone": 1.47e-05,
     "is_best": true,
-    "train_loss": 7.69144,
-    "train_kl_loss": 0.02981,
-    "train_latent_loss": 0.13878,
-    "train_dur_loss": 0.68123,
-    "train_mel_l1": 0.86538,
-    "train_mr_stft": 2.05217,
-    "train_dur_mae_frames": 1.69204,
-    "train_utt_dur_mae_sec": 0.43145,
-    "val_loss": 10.61626,
-    "val_kl_loss": 0.04106,
-    "val_latent_loss": 0.25065,
-    "val_dur_loss": 0.98302,
-    "val_mel_l1": 1.00459,
-    "val_mr_stft": 2.3163,
-    "val_dur_mae_frames": 1.75972,
-    "val_utt_dur_mae_sec": 0.82672,
+    "train_loss": 7.62151,
+    "train_kl_loss": 0.02972,
+    "train_latent_loss": 0.13001,
+    "train_dur_loss": 0.74978,
+    "train_mel_l1": 0.82314,
+    "train_mr_stft": 2.02689,
+    "train_dur_mae_frames": 1.76021,
+    "train_utt_dur_mae_sec": 0.51408,
+    "val_loss": 10.13588,
+    "val_kl_loss": 0.04177,
+    "val_latent_loss": 0.23261,
+    "val_dur_loss": 0.99594,
+    "val_mel_l1": 0.92574,
+    "val_mr_stft": 2.22752,
+    "val_dur_mae_frames": 1.84857,
+    "val_utt_dur_mae_sec": 0.79519,
     "per_lang": {
       "sa": {
-        "n": 48,
-        "val_kl": 0.0455,
-        "val_latent": 0.2694,
-        "val_dur_mae_frames": 2.0371,
-        "val_mel_l1": 1.0777
+        "n": 65,
+        "val_kl": 0.0442,
+        "val_latent": 0.231,
+        "val_dur_mae_frames": 2.1476,
+        "val_mel_l1": 0.9439
       },
       "hi": {
         "n": 18,
-        "val_kl": 0.0358,
-        "val_latent": 0.218,
-        "val_dur_mae_frames": 1.6114,
-        "val_mel_l1": 0.9212
+        "val_kl": 0.0407,
+        "val_latent": 0.2299,
+        "val_dur_mae_frames": 1.6668,
+        "val_mel_l1": 0.9247
       },
       "kn": {
-        "n": 13,
-        "val_kl": 0.0333,
-        "val_latent": 0.2044,
-        "val_dur_mae_frames": 1.7866,
-        "val_mel_l1": 0.8907
+        "n": 18,
+        "val_kl": 0.0376,
+        "val_latent": 0.1963,
+        "val_dur_mae_frames": 1.7427,
+        "val_mel_l1": 0.9109
       },
       "ta": {
         "n": 18,
-        "val_kl": 0.0382,
-        "val_latent": 0.2417,
-        "val_dur_mae_frames": 1.4519,
-        "val_mel_l1": 0.9477
+        "val_kl": 0.0384,
+        "val_latent": 0.2282,
+        "val_dur_mae_frames": 1.5553,
+        "val_mel_l1": 0.8899
       },
       "te": {
         "n": 18,
-        "val_kl": 0.0389,
-        "val_latent": 0.2302,
-        "val_dur_mae_frames": 1.5841,
-        "val_mel_l1": 1.0068
+        "val_kl": 0.0426,
+        "val_latent": 0.2501,
+        "val_dur_mae_frames": 1.7226,
+        "val_mel_l1": 0.955
       },
       "ml": {
         "n": 18,
-        "val_kl": 0.0452,
-        "val_latent": 0.2962,
-        "val_dur_mae_frames": 1.6324,
-        "val_mel_l1": 1.0299
+        "val_kl": 0.0406,
+        "val_latent": 0.2643,
+        "val_dur_mae_frames": 1.4757,
+        "val_mel_l1": 0.8828
       }
     }
   }
