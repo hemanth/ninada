@@ -16,6 +16,10 @@ const MONO_URLS = [
   'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/model_quantized.onnx',
 ];
 
+const ENC_EXPECTED_BYTES = 30444635;
+const VOC_EXPECTED_BYTES = 28922517;
+const MONO_EXPECTED_BYTES = 59359595;
+
 let voiceEngine = null;
 let initPromise = null;
 let activeAbort = null;
@@ -27,49 +31,45 @@ async function fetchSingleBuffer(urls, expectedBytes, onDelta) {
     try {
       const res = await fetch(url);
       if (!res.ok) continue;
-      const exactLen = Number(res.headers.get('content-length')) || 0;
+      // Note: CDNs like GitHub Pages / Fastly send Content-Encoding: gzip where
+      // Content-Length is the compressed wire size while reader.read() yields
+      // decompressed ONNX protobuf bytes.
+      const hasContentEncoding = Boolean(res.headers.get('content-encoding'));
+      const headerLen = Number(res.headers.get('content-length')) || 0;
+      const initialCap =
+        !hasContentEncoding && headerLen > 0
+          ? headerLen
+          : Math.max(expectedBytes || 0, headerLen, 1048576);
+
       if (!res.body) {
         const ab = await res.arrayBuffer();
-        onDelta(ab.byteLength);
-        return new Uint8Array(ab);
-      }
-      const reader = res.body.getReader();
-      if (exactLen > 0) {
-        const out = new Uint8Array(exactLen);
-        let offset = 0;
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (offset + value.byteLength <= out.byteLength) {
-            out.set(value, offset);
-          } else {
-            const grown = new Uint8Array(offset + value.byteLength);
-            grown.set(out.subarray(0, offset), 0);
-            grown.set(value, offset);
-            return grown;
-          }
-          offset += value.byteLength;
-          onDelta(value.byteLength);
-        }
-        return offset === out.byteLength ? out : out.subarray(0, offset);
+        const arr = new Uint8Array(ab);
+        if (arr.byteLength < 1000000 || arr[0] !== 0x08) continue;
+        onDelta(arr.byteLength);
+        return arr;
       }
 
-      const parts = [];
-      let loaded = 0;
+      const reader = res.body.getReader();
+      let out = new Uint8Array(initialCap);
+      let offset = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        parts.push(value);
-        loaded += value.byteLength;
+        const needed = offset + value.byteLength;
+        if (needed > out.byteLength) {
+          const nextCap = Math.max(needed, Math.ceil(out.byteLength * 1.5));
+          const grown = new Uint8Array(nextCap);
+          grown.set(out.subarray(0, offset), 0);
+          out = grown;
+        }
+        out.set(value, offset);
+        offset += value.byteLength;
         onDelta(value.byteLength);
       }
-      const merged = new Uint8Array(loaded || expectedBytes);
-      let off = 0;
-      for (const p of parts) {
-        merged.set(p, off);
-        off += p.byteLength;
-      }
-      return merged.subarray(0, off);
+
+      const finalArr = offset === out.byteLength ? out : out.subarray(0, offset);
+      if (finalArr.byteLength < 1000000 || finalArr[0] !== 0x08) continue;
+      return finalArr;
     } catch {
       // Try next mirror
     }
@@ -81,6 +81,7 @@ const SESSION_OPTS = {
   executionProviders: ['wasm'],
   graphOptimizationLevel: 'all',
   enableCpuMemArena: false,
+  enableMemPattern: false,
 };
 
 async function ensureReady() {
@@ -106,7 +107,7 @@ async function ensureReady() {
         : 1;
 
     let loadedBytes = 0;
-    const expectedTotal = 56.6 * 1048576;
+    const expectedTotal = ENC_EXPECTED_BYTES + VOC_EXPECTED_BYTES;
     const reportProgress = (delta) => {
       loadedBytes += delta;
       const loadedMB = loadedBytes / 1048576;
@@ -117,7 +118,7 @@ async function ensureReady() {
 
     try {
       // Stage 1: Fetch & compile Encoder+Flow sequentially, then immediately free JS buffer
-      let encBytes = await fetchSingleBuffer(ENC_URLS, 29.0 * 1048576, reportProgress);
+      let encBytes = await fetchSingleBuffer(ENC_URLS, ENC_EXPECTED_BYTES, reportProgress);
       if (encBytes) {
         const encLen = encBytes.byteLength;
         self.postMessage({
@@ -132,7 +133,7 @@ async function ensureReady() {
         await new Promise((r) => setTimeout(r, 10));
 
         // Stage 2: Fetch & compile Halo-Chunked HiFi-GAN Vocoder, then immediately free JS buffer
-        let vocBytes = await fetchSingleBuffer(VOC_URLS, 27.6 * 1048576, reportProgress);
+        let vocBytes = await fetchSingleBuffer(VOC_URLS, VOC_EXPECTED_BYTES, reportProgress);
         if (vocBytes) {
           const totalMB = (encLen + vocBytes.byteLength) / 1048576;
           self.postMessage({ type: 'progress', phase: 'compile', loadedMB: totalMB, totalMB, pct: 99 });
@@ -156,7 +157,7 @@ async function ensureReady() {
 
       // Fallback to monolithic graph if split streaming graphs are unavailable
       loadedBytes = 0;
-      let monoBytes = await fetchSingleBuffer(MONO_URLS, expectedTotal, reportProgress);
+      let monoBytes = await fetchSingleBuffer(MONO_URLS, MONO_EXPECTED_BYTES, reportProgress);
       if (monoBytes) {
         const totalMB = monoBytes.byteLength / 1048576;
         self.postMessage({ type: 'progress', phase: 'compile', loadedMB: totalMB, totalMB, pct: 99 });

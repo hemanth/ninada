@@ -1,113 +1,118 @@
 {
   "benchmark": "ninada-pan-indic-6lang-sota-v1",
-  "num_test_utterances": 133,
+  "num_test_utterances": 155,
   "bootstrap_resamples": 1000,
   "onnx_parity": {
     "fp32_size_mb": 112.61,
-    "quantized_size_mb": 56.61,
-    "mean_snr_db": 42.37,
-    "mean_pearson_r": 0.99996
+    "quantized_size_mb": 56.62,
+    "mean_snr_db": 41.09,
+    "mean_pearson_r": 0.999924
   },
   "systems": {
     "studio_ground_truth": {
       "size_mb": null,
       "sanskrit_cer_pct": {
-        "mean": 4.161,
-        "ci95_low": 2.919,
-        "ci95_high": 5.419
+        "mean": 2.577,
+        "ci95_low": 1.838,
+        "ci95_high": 3.31
       },
       "sanskrit_wer_pct": {
-        "mean": 42.144,
-        "ci95_low": 32.64,
-        "ci95_high": 51.341
+        "mean": 24.519,
+        "ci95_low": 19.002,
+        "ci95_high": 30.311
       },
       "pan_indic_phonetic_cer_pct": {
-        "mean": 16.503,
-        "ci95_low": 14.46,
-        "ci95_high": 18.758
+        "mean": 14.633,
+        "ci95_low": 12.595,
+        "ci95_high": 16.711
       }
     },
     "mms_hin_raw": {
       "size_mb": 138.8,
-      "voiced_rate_pct": 55.64,
+      "voiced_rate_pct": 59.35,
       "mcd_db": {
-        "mean": 7.604,
-        "ci95_low": 7.235,
-        "ci95_high": 7.971
+        "mean": 6.394,
+        "ci95_low": 6.195,
+        "ci95_high": 6.611
       },
       "f0_rmse_cents": {
-        "mean": 911.578,
-        "ci95_low": 863.93,
-        "ci95_high": 964.635
+        "mean": 861.608,
+        "ci95_low": 815.011,
+        "ci95_high": 910.464
       },
       "dur_mae_sec": {
-        "mean": 3.712,
-        "ci95_low": 3.248,
-        "ci95_high": 4.198
+        "mean": 3.542,
+        "ci95_low": 3.131,
+        "ci95_high": 3.968
       },
       "sanskrit_cer_pct": {
-        "mean": 23.11,
-        "ci95_low": 20.073,
-        "ci95_high": 26.23
+        "mean": 24.653,
+        "ci95_low": 22.421,
+        "ci95_high": 26.874
       },
       "sanskrit_wer_pct": {
-        "mean": 84.611,
-        "ci95_low": 76.83,
-        "ci95_high": 93.285
+        "mean": 86.9,
+        "ci95_low": 81.334,
+        "ci95_high": 93.628
       },
       "pan_indic_phonetic_cer_pct": {
-        "mean": 60.504,
-        "ci95_low": 54.006,
-        "ci95_high": 67.151
+        "mean": 57.994,
+        "ci95_low": 51.85,
+        "ci95_high": 64.356
       },
-      "rtf_mean": 0.06615,
+      "rtf_mean": 0.08463,
+      "ttfa_ms": {
+        "mean": 421.51,
+        "p50": 392.58,
+        "p95": 1041.98
+      },
       "latency_ms": {
-        "p50": 151.08,
-        "p95": 915.48,
-        "p99": 1017.31
+        "p50": 392.58,
+        "p95": 1041.98,
+        "p99": 1148.51
       },
       "per_lang": {
         "sa": {
-          "n": 48,
-          "mcd_mean": 8.414,
-          "f0_rmse_cents_mean": 659.5,
-          "dur_mae_sec_mean": 1.722,
-          "phonetic_cer_mean": 22.88
+          "n": 65,
+          "mcd_mean": 5.329,
+          "f0_rmse_cents_mean": 603.88,
+          "dur_mae_sec_mean": 1.712,
+          "phonetic_cer_mean": 24.48
         },
         "hi": {
           "n": 18,
-          "mcd_mean": 5.611,
-          "f0_rmse_cents_mean": 700.42,
-          "dur_mae_sec_mean": 0.518,
-          "phonetic_cer_mean": 19.04
+          "mcd_mean": 5.608,
+          "f0_rmse_cents_mean": 702.24,
+          "dur_mae_sec_mean": 0.775,
+          "phonetic_cer_mean": 17.3
         },
         "kn": {
-          "n": 13,
-          "mcd_mean": 8.927,
+          "n": 18,
+          "mcd_mean": 8.546,
           "f0_rmse_cents_mean": 1200.0,
-          "dur_mae_sec_mean": 7.122,
-          "phonetic_cer_mean": 98.45
+          "dur_mae_sec_mean": 6.817,
+          "phonetic_cer_mean": 98.91
         },
         "ta": {
           "n": 18,
-          "mcd_mean": 7.038,
+          "mcd_mean": 6.944,
           "f0_rmse_cents_mean": 1200.0,
-          "dur_mae_sec_mean": 5.768,
-          "phonetic_cer_mean": 98.88
+          "dur_mae_sec_mean": 5.83,
+          "phonetic_cer_mean": 98.45
         },
         "te": {
           "n": 18,
-          "mcd_mean": 7.612,
+          "mcd_mean": 7.799,
           "f0_rmse_cents_mean": 1200.0,
-          "dur_mae_sec_mean": 7.029,
-          "phonetic_cer_mean": 98.71
+          "dur_mae_sec_mean": 6.538,
+          "phonetic_cer_mean": 98.5
         },
         "ml": {
           "n": 18,
-          "mcd_mean": 7.036,
-          "f0_rmse_cents_mean": 1009.8,
-          "dur_mae_sec_mean": 4.378,
-          "phonetic_cer_mean": 98.32
+          "mcd_mean": 6.916,
+          "f0_rmse_cents_mean": 936.47,
+          "dur_mae_sec_mean": 4.361,
+          "phonetic_cer_mean": 97.83
         }
       }
     },
@@ -115,83 +120,88 @@
       "size_mb": 138.8,
       "voiced_rate_pct": 100.0,
       "mcd_db": {
-        "mean": 6.57,
-        "ci95_low": 6.184,
-        "ci95_high": 6.987
+        "mean": 5.467,
+        "ci95_low": 5.384,
+        "ci95_high": 5.551
       },
       "f0_rmse_cents": {
-        "mean": 738.465,
-        "ci95_low": 706.63,
-        "ci95_high": 773.319
+        "mean": 714.373,
+        "ci95_low": 683.581,
+        "ci95_high": 746.374
       },
       "dur_mae_sec": {
-        "mean": 1.156,
-        "ci95_low": 0.983,
-        "ci95_high": 1.353
+        "mean": 1.258,
+        "ci95_low": 1.101,
+        "ci95_high": 1.403
       },
       "sanskrit_cer_pct": {
-        "mean": 23.65,
-        "ci95_low": 20.564,
-        "ci95_high": 26.725
+        "mean": 24.887,
+        "ci95_low": 22.573,
+        "ci95_high": 27.197
       },
       "sanskrit_wer_pct": {
-        "mean": 84.687,
-        "ci95_low": 77.016,
-        "ci95_high": 93.339
+        "mean": 86.9,
+        "ci95_low": 81.334,
+        "ci95_high": 93.628
       },
       "pan_indic_phonetic_cer_pct": {
-        "mean": 33.455,
-        "ci95_low": 30.913,
-        "ci95_high": 36.197
+        "mean": 32.602,
+        "ci95_low": 30.332,
+        "ci95_high": 34.949
       },
-      "rtf_mean": 0.10536,
+      "rtf_mean": 0.12821,
+      "ttfa_ms": {
+        "mean": 745.78,
+        "p50": 738.2,
+        "p95": 1171.76
+      },
       "latency_ms": {
-        "p50": 603.52,
-        "p95": 1039.99,
-        "p99": 1081.6
+        "p50": 738.2,
+        "p95": 1171.76,
+        "p99": 1439.33
       },
       "per_lang": {
         "sa": {
-          "n": 48,
-          "mcd_mean": 8.438,
-          "f0_rmse_cents_mean": 662.4,
-          "dur_mae_sec_mean": 1.724,
-          "phonetic_cer_mean": 23.56
+          "n": 65,
+          "mcd_mean": 5.327,
+          "f0_rmse_cents_mean": 605.81,
+          "dur_mae_sec_mean": 1.715,
+          "phonetic_cer_mean": 24.65
         },
         "hi": {
           "n": 18,
-          "mcd_mean": 5.572,
-          "f0_rmse_cents_mean": 702.13,
-          "dur_mae_sec_mean": 0.506,
-          "phonetic_cer_mean": 18.04
+          "mcd_mean": 5.609,
+          "f0_rmse_cents_mean": 711.5,
+          "dur_mae_sec_mean": 0.768,
+          "phonetic_cer_mean": 17.53
         },
         "kn": {
-          "n": 13,
-          "mcd_mean": 5.73,
-          "f0_rmse_cents_mean": 1035.99,
-          "dur_mae_sec_mean": 1.338,
-          "phonetic_cer_mean": 40.77
+          "n": 18,
+          "mcd_mean": 5.804,
+          "f0_rmse_cents_mean": 1011.7,
+          "dur_mae_sec_mean": 1.034,
+          "phonetic_cer_mean": 40.3
         },
         "ta": {
           "n": 18,
-          "mcd_mean": 5.464,
-          "f0_rmse_cents_mean": 792.59,
-          "dur_mae_sec_mean": 0.753,
-          "phonetic_cer_mean": 55.49
+          "mcd_mean": 5.493,
+          "f0_rmse_cents_mean": 731.2,
+          "dur_mae_sec_mean": 0.947,
+          "phonetic_cer_mean": 54.42
         },
         "te": {
           "n": 18,
-          "mcd_mean": 5.602,
-          "f0_rmse_cents_mean": 800.51,
-          "dur_mae_sec_mean": 1.25,
-          "phonetic_cer_mean": 36.39
+          "mcd_mean": 5.603,
+          "f0_rmse_cents_mean": 842.12,
+          "dur_mae_sec_mean": 1.181,
+          "phonetic_cer_mean": 32.55
         },
         "ml": {
           "n": 18,
-          "mcd_mean": 5.27,
-          "f0_rmse_cents_mean": 646.6,
-          "dur_mae_sec_mean": 0.467,
-          "phonetic_cer_mean": 44.99
+          "mcd_mean": 5.333,
+          "f0_rmse_cents_mean": 667.36,
+          "dur_mae_sec_mean": 0.706,
+          "phonetic_cer_mean": 46.94
         }
       }
     },
@@ -199,83 +209,88 @@
       "size_mb": 694.0,
       "voiced_rate_pct": 100.0,
       "mcd_db": {
-        "mean": 6.286,
-        "ci95_low": 5.888,
-        "ci95_high": 6.716
+        "mean": 5.16,
+        "ci95_low": 5.065,
+        "ci95_high": 5.26
       },
       "f0_rmse_cents": {
-        "mean": 720.236,
-        "ci95_low": 688.583,
-        "ci95_high": 755.412
+        "mean": 697.109,
+        "ci95_low": 666.097,
+        "ci95_high": 729.392
       },
       "dur_mae_sec": {
-        "mean": 1.192,
-        "ci95_low": 0.997,
-        "ci95_high": 1.396
+        "mean": 1.238,
+        "ci95_low": 1.072,
+        "ci95_high": 1.394
       },
       "sanskrit_cer_pct": {
-        "mean": 23.11,
-        "ci95_low": 20.073,
-        "ci95_high": 26.23
+        "mean": 24.653,
+        "ci95_low": 22.421,
+        "ci95_high": 26.874
       },
       "sanskrit_wer_pct": {
-        "mean": 84.611,
-        "ci95_low": 76.83,
-        "ci95_high": 93.285
+        "mean": 86.9,
+        "ci95_low": 81.334,
+        "ci95_high": 93.628
       },
       "pan_indic_phonetic_cer_pct": {
-        "mean": 27.019,
-        "ci95_low": 25.089,
-        "ci95_high": 28.837
+        "mean": 26.58,
+        "ci95_low": 25.008,
+        "ci95_high": 28.401
       },
-      "rtf_mean": 0.10164,
+      "rtf_mean": 0.12665,
+      "ttfa_ms": {
+        "mean": 803.14,
+        "p50": 741.73,
+        "p95": 1343.28
+      },
       "latency_ms": {
-        "p50": 613.03,
-        "p95": 1092.39,
-        "p99": 1241.58
+        "p50": 741.73,
+        "p95": 1343.28,
+        "p99": 2055.91
       },
       "per_lang": {
         "sa": {
-          "n": 48,
-          "mcd_mean": 8.414,
-          "f0_rmse_cents_mean": 659.5,
-          "dur_mae_sec_mean": 1.722,
-          "phonetic_cer_mean": 22.88
+          "n": 65,
+          "mcd_mean": 5.329,
+          "f0_rmse_cents_mean": 603.88,
+          "dur_mae_sec_mean": 1.712,
+          "phonetic_cer_mean": 24.48
         },
         "hi": {
           "n": 18,
-          "mcd_mean": 5.611,
-          "f0_rmse_cents_mean": 700.42,
-          "dur_mae_sec_mean": 0.518,
-          "phonetic_cer_mean": 19.04
+          "mcd_mean": 5.608,
+          "f0_rmse_cents_mean": 702.24,
+          "dur_mae_sec_mean": 0.775,
+          "phonetic_cer_mean": 17.3
         },
         "kn": {
-          "n": 13,
-          "mcd_mean": 5.291,
-          "f0_rmse_cents_mean": 998.19,
-          "dur_mae_sec_mean": 1.215,
-          "phonetic_cer_mean": 23.31
+          "n": 18,
+          "mcd_mean": 5.286,
+          "f0_rmse_cents_mean": 952.04,
+          "dur_mae_sec_mean": 1.086,
+          "phonetic_cer_mean": 22.41
         },
         "ta": {
           "n": 18,
-          "mcd_mean": 4.822,
-          "f0_rmse_cents_mean": 666.72,
-          "dur_mae_sec_mean": 0.625,
-          "phonetic_cer_mean": 40.01
+          "mcd_mean": 4.704,
+          "f0_rmse_cents_mean": 647.27,
+          "dur_mae_sec_mean": 0.747,
+          "phonetic_cer_mean": 37.39
         },
         "te": {
           "n": 18,
-          "mcd_mean": 5.404,
-          "f0_rmse_cents_mean": 818.51,
-          "dur_mae_sec_mean": 1.657,
-          "phonetic_cer_mean": 24.7
+          "mcd_mean": 5.147,
+          "f0_rmse_cents_mean": 792.9,
+          "dur_mae_sec_mean": 1.357,
+          "phonetic_cer_mean": 24.53
         },
         "ml": {
           "n": 18,
-          "mcd_mean": 4.35,
-          "f0_rmse_cents_mean": 656.53,
-          "dur_mae_sec_mean": 0.541,
-          "phonetic_cer_mean": 38.05
+          "mcd_mean": 4.444,
+          "f0_rmse_cents_mean": 727.74,
+          "dur_mae_sec_mean": 0.511,
+          "phonetic_cer_mean": 38.85
         }
       }
     },
@@ -283,167 +298,177 @@
       "size_mb": 140.01,
       "voiced_rate_pct": 100.0,
       "mcd_db": {
-        "mean": 5.562,
-        "ci95_low": 5.112,
-        "ci95_high": 6.04
+        "mean": 4.33,
+        "ci95_low": 4.259,
+        "ci95_high": 4.415
       },
       "f0_rmse_cents": {
-        "mean": 554.863,
-        "ci95_low": 531.186,
-        "ci95_high": 579.378
+        "mean": 539.103,
+        "ci95_low": 516.79,
+        "ci95_high": 561.954
       },
       "dur_mae_sec": {
-        "mean": 0.889,
-        "ci95_low": 0.745,
-        "ci95_high": 1.059
+        "mean": 0.819,
+        "ci95_low": 0.713,
+        "ci95_high": 0.934
       },
       "sanskrit_cer_pct": {
-        "mean": 13.593,
-        "ci95_low": 11.449,
-        "ci95_high": 15.71
+        "mean": 12.765,
+        "ci95_low": 11.004,
+        "ci95_high": 14.678
       },
       "sanskrit_wer_pct": {
-        "mean": 66.331,
-        "ci95_low": 58.3,
-        "ci95_high": 73.995
+        "mean": 63.547,
+        "ci95_low": 56.612,
+        "ci95_high": 71.225
       },
       "pan_indic_phonetic_cer_pct": {
-        "mean": 22.877,
-        "ci95_low": 21.067,
-        "ci95_high": 24.766
+        "mean": 20.348,
+        "ci95_low": 18.58,
+        "ci95_high": 22.072
       },
-      "rtf_mean": 0.09459,
+      "rtf_mean": 0.18879,
+      "ttfa_ms": {
+        "mean": 145.57,
+        "p50": 127.76,
+        "p95": 252.68
+      },
       "latency_ms": {
-        "p50": 579.44,
-        "p95": 958.55,
-        "p99": 1062.48
+        "p50": 1245.15,
+        "p95": 2045.65,
+        "p99": 2352.93
       },
       "per_lang": {
         "sa": {
-          "n": 48,
-          "mcd_mean": 7.895,
-          "f0_rmse_cents_mean": 537.78,
-          "dur_mae_sec_mean": 1.542,
-          "phonetic_cer_mean": 13.3
+          "n": 65,
+          "mcd_mean": 4.517,
+          "f0_rmse_cents_mean": 481.95,
+          "dur_mae_sec_mean": 1.217,
+          "phonetic_cer_mean": 12.49
         },
         "hi": {
           "n": 18,
-          "mcd_mean": 4.093,
-          "f0_rmse_cents_mean": 539.49,
-          "dur_mae_sec_mean": 0.444,
-          "phonetic_cer_mean": 18.89
+          "mcd_mean": 4.085,
+          "f0_rmse_cents_mean": 575.07,
+          "dur_mae_sec_mean": 0.471,
+          "phonetic_cer_mean": 18.29
         },
         "kn": {
-          "n": 13,
-          "mcd_mean": 4.25,
-          "f0_rmse_cents_mean": 552.08,
-          "dur_mae_sec_mean": 0.539,
-          "phonetic_cer_mean": 24.72
+          "n": 18,
+          "mcd_mean": 4.138,
+          "f0_rmse_cents_mean": 588.43,
+          "dur_mae_sec_mean": 0.483,
+          "phonetic_cer_mean": 21.34
         },
         "ta": {
           "n": 18,
-          "mcd_mean": 4.15,
-          "f0_rmse_cents_mean": 525.85,
-          "dur_mae_sec_mean": 0.443,
-          "phonetic_cer_mean": 34.67
+          "mcd_mean": 4.072,
+          "f0_rmse_cents_mean": 515.7,
+          "dur_mae_sec_mean": 0.499,
+          "phonetic_cer_mean": 32.69
         },
         "te": {
           "n": 18,
-          "mcd_mean": 4.37,
-          "f0_rmse_cents_mean": 641.1,
-          "dur_mae_sec_mean": 0.685,
-          "phonetic_cer_mean": 29.4
+          "mcd_mean": 4.39,
+          "f0_rmse_cents_mean": 666.59,
+          "dur_mae_sec_mean": 0.568,
+          "phonetic_cer_mean": 28.23
         },
         "ml": {
           "n": 18,
-          "mcd_mean": 4.362,
-          "f0_rmse_cents_mean": 560.58,
-          "dur_mae_sec_mean": 0.493,
-          "phonetic_cer_mean": 32.75
+          "mcd_mean": 4.291,
+          "f0_rmse_cents_mean": 556.1,
+          "dur_mae_sec_mean": 0.634,
+          "phonetic_cer_mean": 29.56
         }
       }
     },
     "ninada_onnx_quant": {
-      "size_mb": 56.61,
+      "size_mb": 56.62,
       "voiced_rate_pct": 100.0,
       "mcd_db": {
-        "mean": 5.564,
-        "ci95_low": 5.118,
-        "ci95_high": 6.041
+        "mean": 4.326,
+        "ci95_low": 4.256,
+        "ci95_high": 4.411
       },
       "f0_rmse_cents": {
-        "mean": 552.951,
-        "ci95_low": 529.413,
-        "ci95_high": 576.676
+        "mean": 536.097,
+        "ci95_low": 513.387,
+        "ci95_high": 558.271
       },
       "dur_mae_sec": {
-        "mean": 0.889,
-        "ci95_low": 0.745,
-        "ci95_high": 1.059
+        "mean": 0.819,
+        "ci95_low": 0.713,
+        "ci95_high": 0.934
       },
       "sanskrit_cer_pct": {
-        "mean": 13.459,
-        "ci95_low": 11.312,
-        "ci95_high": 15.421
+        "mean": 13.319,
+        "ci95_low": 11.527,
+        "ci95_high": 15.237
       },
       "sanskrit_wer_pct": {
-        "mean": 69.234,
-        "ci95_low": 60.178,
-        "ci95_high": 77.893
+        "mean": 64.149,
+        "ci95_low": 56.719,
+        "ci95_high": 71.843
       },
       "pan_indic_phonetic_cer_pct": {
-        "mean": 22.883,
-        "ci95_low": 20.898,
-        "ci95_high": 24.975
+        "mean": 20.503,
+        "ci95_low": 18.816,
+        "ci95_high": 22.109
       },
-      "rtf_mean": 0.18801,
+      "rtf_mean": 0.29931,
+      "ttfa_ms": {
+        "mean": 191.26,
+        "p50": 178.59,
+        "p95": 287.7
+      },
       "latency_ms": {
-        "p50": 1163.51,
-        "p95": 1951.8,
-        "p99": 2051.85
+        "p50": 2053.96,
+        "p95": 2976.68,
+        "p99": 3477.02
       },
       "per_lang": {
         "sa": {
-          "n": 48,
-          "mcd_mean": 7.893,
-          "f0_rmse_cents_mean": 537.54,
-          "dur_mae_sec_mean": 1.542,
-          "phonetic_cer_mean": 13.18
+          "n": 65,
+          "mcd_mean": 4.507,
+          "f0_rmse_cents_mean": 479.96,
+          "dur_mae_sec_mean": 1.217,
+          "phonetic_cer_mean": 13.11
         },
         "hi": {
           "n": 18,
-          "mcd_mean": 4.081,
-          "f0_rmse_cents_mean": 533.15,
-          "dur_mae_sec_mean": 0.445,
-          "phonetic_cer_mean": 18.65
+          "mcd_mean": 4.093,
+          "f0_rmse_cents_mean": 566.02,
+          "dur_mae_sec_mean": 0.471,
+          "phonetic_cer_mean": 16.64
         },
         "kn": {
-          "n": 13,
-          "mcd_mean": 4.251,
-          "f0_rmse_cents_mean": 549.56,
-          "dur_mae_sec_mean": 0.539,
-          "phonetic_cer_mean": 26.1
+          "n": 18,
+          "mcd_mean": 4.144,
+          "f0_rmse_cents_mean": 571.94,
+          "dur_mae_sec_mean": 0.481,
+          "phonetic_cer_mean": 23.46
         },
         "ta": {
           "n": 18,
-          "mcd_mean": 4.142,
-          "f0_rmse_cents_mean": 519.46,
-          "dur_mae_sec_mean": 0.443,
-          "phonetic_cer_mean": 34.67
+          "mcd_mean": 4.064,
+          "f0_rmse_cents_mean": 519.94,
+          "dur_mae_sec_mean": 0.499,
+          "phonetic_cer_mean": 31.2
         },
         "te": {
           "n": 18,
           "mcd_mean": 4.394,
-          "f0_rmse_cents_mean": 642.47,
-          "dur_mae_sec_mean": 0.686,
-          "phonetic_cer_mean": 27.92
+          "f0_rmse_cents_mean": 662.0,
+          "dur_mae_sec_mean": 0.568,
+          "phonetic_cer_mean": 27.12
         },
         "ml": {
           "n": 18,
-          "mcd_mean": 4.374,
-          "f0_rmse_cents_mean": 560.26,
-          "dur_mae_sec_mean": 0.493,
-          "phonetic_cer_mean": 33.84
+          "mcd_mean": 4.283,
+          "f0_rmse_cents_mean": 563.32,
+          "dur_mae_sec_mean": 0.634,
+          "phonetic_cer_mean": 30.8
         }
       }
     },
@@ -451,83 +476,88 @@
       "size_mb": 0.0,
       "voiced_rate_pct": 100.0,
       "mcd_db": {
-        "mean": 10.924,
-        "ci95_low": 10.681,
-        "ci95_high": 11.153
+        "mean": 10.614,
+        "ci95_low": 10.413,
+        "ci95_high": 10.827
       },
       "f0_rmse_cents": {
-        "mean": 673.378,
-        "ci95_low": 632.913,
-        "ci95_high": 718.699
+        "mean": 640.884,
+        "ci95_low": 600.208,
+        "ci95_high": 682.544
       },
       "dur_mae_sec": {
-        "mean": 2.077,
-        "ci95_low": 1.869,
-        "ci95_high": 2.3
+        "mean": 2.321,
+        "ci95_low": 2.121,
+        "ci95_high": 2.505
       },
       "sanskrit_cer_pct": {
-        "mean": 86.652,
-        "ci95_low": 84.476,
-        "ci95_high": 88.539
+        "mean": 85.95,
+        "ci95_low": 84.231,
+        "ci95_high": 87.629
       },
       "sanskrit_wer_pct": {
-        "mean": 98.993,
-        "ci95_low": 96.354,
-        "ci95_high": 100.972
+        "mean": 103.641,
+        "ci95_low": 100.692,
+        "ci95_high": 107.744
       },
       "pan_indic_phonetic_cer_pct": {
-        "mean": 89.481,
-        "ci95_low": 88.043,
-        "ci95_high": 90.829
+        "mean": 89.439,
+        "ci95_low": 88.296,
+        "ci95_high": 90.521
       },
-      "rtf_mean": 0.01244,
+      "rtf_mean": 0.01331,
+      "ttfa_ms": {
+        "mean": 57.65,
+        "p50": 57.78,
+        "p95": 93.53
+      },
       "latency_ms": {
-        "p50": 54.67,
-        "p95": 89.59,
-        "p99": 103.04
+        "p50": 57.78,
+        "p95": 93.53,
+        "p99": 119.3
       },
       "per_lang": {
         "sa": {
-          "n": 48,
-          "mcd_mean": 10.555,
-          "f0_rmse_cents_mean": 574.65,
-          "dur_mae_sec_mean": 2.862,
-          "phonetic_cer_mean": 86.54
+          "n": 65,
+          "mcd_mean": 10.017,
+          "f0_rmse_cents_mean": 473.93,
+          "dur_mae_sec_mean": 3.17,
+          "phonetic_cer_mean": 85.91
         },
         "hi": {
           "n": 18,
-          "mcd_mean": 12.653,
-          "f0_rmse_cents_mean": 541.23,
-          "dur_mae_sec_mean": 0.806,
-          "phonetic_cer_mean": 93.98
+          "mcd_mean": 12.415,
+          "f0_rmse_cents_mean": 572.0,
+          "dur_mae_sec_mean": 1.003,
+          "phonetic_cer_mean": 93.8
         },
         "kn": {
-          "n": 13,
-          "mcd_mean": 9.983,
-          "f0_rmse_cents_mean": 1069.3,
-          "dur_mae_sec_mean": 2.918,
-          "phonetic_cer_mean": 87.4
+          "n": 18,
+          "mcd_mean": 10.273,
+          "f0_rmse_cents_mean": 1067.54,
+          "dur_mae_sec_mean": 2.69,
+          "phonetic_cer_mean": 87.87
         },
         "ta": {
           "n": 18,
-          "mcd_mean": 10.31,
-          "f0_rmse_cents_mean": 817.26,
-          "dur_mae_sec_mean": 1.957,
-          "phonetic_cer_mean": 89.04
+          "mcd_mean": 10.249,
+          "f0_rmse_cents_mean": 828.97,
+          "dur_mae_sec_mean": 2.019,
+          "phonetic_cer_mean": 91.9
         },
         "te": {
           "n": 18,
-          "mcd_mean": 12.294,
-          "f0_rmse_cents_mean": 793.26,
-          "dur_mae_sec_mean": 1.429,
-          "phonetic_cer_mean": 94.52
+          "mcd_mean": 12.315,
+          "f0_rmse_cents_mean": 778.93,
+          "dur_mae_sec_mean": 1.311,
+          "phonetic_cer_mean": 94.66
         },
         "ml": {
           "n": 18,
-          "mcd_mean": 10.101,
-          "f0_rmse_cents_mean": 519.1,
-          "dur_mae_sec_mean": 1.413,
-          "phonetic_cer_mean": 89.74
+          "mcd_mean": 9.973,
+          "f0_rmse_cents_mean": 559.89,
+          "dur_mae_sec_mean": 1.518,
+          "phonetic_cer_mean": 91.73
         }
       }
     }

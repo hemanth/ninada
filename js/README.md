@@ -1,8 +1,8 @@
 # ninada
 
-> Speak Classical Sanskrit and 6 Indic languages (`sa`, `hi`, `kn`, `ta`, `te`, `ml`) in the browser and Node.js via a 56.6 MB Disentangled VITS+HiFi-GAN ONNX or zero-dependency Klatt synthesis.
+> Stream Classical Sanskrit and 6 Indic languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser and Node.js via Halo-Chunked VITS+HiFi-GAN ONNX (`178.6 ms` TTFA) or zero-dependency Klatt synthesis.
 
-- **Live Browser WASM SIMD Studio:** <https://hemanth.github.io/ninada/>
+- **Live Web Worker WASM SIMD Studio:** <https://hemanth.github.io/ninada/>
 - **Hugging Face Model:** <https://huggingface.co/gnumanth/ninada>
 - **Source & Benchmarks:** <https://github.com/hemanth/ninada>
 
@@ -12,18 +12,24 @@
 npm install ninada onnxruntime-web
 ```
 
-## Usage
+## Streaming Usage
 
 ```js
 import ninada from 'ninada';
 import * as ort from 'onnxruntime-web';
 
-const voice = await ninada('sanskrit', {
-  model: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/model_quantized.onnx',
+const voice = await ninada('kannada', {
+  encoderModel: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/encoder_flow_quantized.onnx',
+  vocoderModel: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/vocoder_quantized.onnx',
   ort,
 });
 
-const wav = await voice.speak('prajñāpūrvakavyāpāravattvaṁ jīvatvam');
+for await (const chunk of voice.stream('ಕನ್ನಡ ಭಾಷೆಯ ನೈಸರ್ಗಿಕ ಧ್ವನಿ ಸಂಶ್ಲೇಷಣೆಗೆ ಸ್ವಾಗತ.')) {
+  playPcm16k(chunk.pcm); // Float32Array @ 16 kHz
+}
+
+// Or synthesize full 16 kHz RIFF WAV bytes
+const wav = await voice.speak('prajñāpūrvakavyāpāravattvaṁ jīvatvam', { lang: 'sa' });
 ```
 
 ## CLI

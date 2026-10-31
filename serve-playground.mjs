@@ -2,12 +2,14 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOCS_DIR = path.join(__dirname, "docs");
 const JS_DIST_DIR = path.join(__dirname, "js", "dist");
 const PORT = Number(process.env.PORT || 4179);
+const gzipCache = new Map();
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -69,6 +71,21 @@ const server = http.createServer((req, res) => {
       fs.createReadStream(resolved, { start, end }).pipe(res);
       return;
     }
+  }
+
+  const acceptEnc = String(req.headers["accept-encoding"] || "");
+  if (ext === ".onnx" && acceptEnc.includes("gzip")) {
+    let gz = gzipCache.get(resolved);
+    if (!gz) {
+      gz = zlib.gzipSync(fs.readFileSync(resolved), { level: 1 });
+      gzipCache.set(resolved, gz);
+    }
+    res.writeHead(200, {
+      "Content-Encoding": "gzip",
+      "Content-Length": gz.byteLength,
+    });
+    res.end(gz);
+    return;
   }
 
   res.writeHead(200, { "Content-Length": stat.size });
