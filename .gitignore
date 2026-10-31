@@ -1,0 +1,17 @@
+.venv
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+/build/
+/dist/
+.pytest_cache/
+node_modules
+node_modules/
+data/raw_audio/
+data/wavs/
+artifacts/ninada/*.safetensors
+artifacts/ninada/onnx/*.onnx
+*.tar.gz
+.DS_Store

@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ninada"
+version = "1.0.0"
+description = "Ninada (निनाद) — SOTA Pan-Indic & Classical Sanskrit neural text-to-speech (54 MB VITS+HiFi-GAN ONNX for Browser WASM SIMD, Node.js, and Python)."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+  { name = "Hemanth HM", email = "hemanth@h3manth.com" }
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.urls]
+Homepage = "https://hemanth.github.io/ninada/"
+Repository = "https://github.com/hemanth/ninada"
+Model = "https://huggingface.co/gnumanth/ninada"
+Dataset = "https://huggingface.co/datasets/gnumanth/ninada-sanskrit-indic"
+
+[project.scripts]
+ninada = "ninada.cli:main"
+
+[project.optional-dependencies]
+neural = [
+  "onnxruntime>=1.18.0",
+  "numpy>=1.24.0",
+  "soundfile>=0.12.1",
+]
+train = [
+  "torch>=2.2.0",
+  "torchaudio>=2.2.0",
+  "transformers>=4.44.0",
+  "safetensors>=0.4.3",
+  "onnx>=1.16.0",
+  "onnxruntime>=1.18.0",
+  "huggingface_hub>=0.24.0",
+  "pyarrow>=15.0.0",
+  "scipy>=1.11.0",
+  "soundfile>=0.12.1",
+]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["python/src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["python/src"]
+testpaths = ["tests"]

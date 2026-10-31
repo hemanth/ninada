@@ -1,0 +1,61 @@
+{
+  "name": "ninada",
+  "version": "1.0.0",
+  "description": "Speak Classical Sanskrit and 6 Indic languages in the browser and Node.js via a 54 MB VITS+HiFi-GAN ONNX or zero-dep Klatt synthesis.",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "src/index.d.ts",
+  "bin": {
+    "ninada": "./bin/ninada.mjs"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./src/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./src/index.d.ts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [
+    "ninada",
+    "sanskrit",
+    "indic",
+    "tts",
+    "text-to-speech",
+    "vits",
+    "hifi-gan",
+    "onnxruntime-web",
+    "wasm",
+    "kannada",
+    "tamil",
+    "telugu",
+    "malayalam",
+    "hindi"
+  ],
+  "homepage": "https://hemanth.github.io/ninada/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hemanth/ninada.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hemanth/ninada/issues"
+  },
+  "author": "Hemanth HM <hemanth@h3manth.com> (https://h3manth.com)",
+  "license": "MIT"
+}

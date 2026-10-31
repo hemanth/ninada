@@ -1,0 +1,66 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import ninada, {
+  VOCAB_TOKENS,
+  TOKEN_TO_ID,
+  textToIds,
+  iastToDevanagari,
+  brahmicToDevanagari,
+} from '../src/index.js';
+
+test('87-token vocabulary preserves Classical/Vedic Sanskrit vocalic r and velar nasal', () => {
+  assert.equal(VOCAB_TOKENS.length, 87);
+  assert.equal(VOCAB_TOKENS[85], '\u090b');
+  assert.equal(VOCAB_TOKENS[86], '\u0919');
+  assert.equal(TOKEN_TO_ID['\u090b'], 85);
+  assert.equal(TOKEN_TO_ID['\u0919'], 86);
+});
+
+test('Sanskrit G2P handles vocalic r, homorganic velar nasal, Vedic cantillation, and purvarupa avagraha', () => {
+  const res = textToIds('\u090b\u0924\u0951\u0902 \u0915\u0930\u094b\u093d\u0924\u093f \u0936\u0902\u0915\u0930\u0903', { lang: 'sa' });
+  assert.equal(res.lang, 'sa');
+  assert.ok(res.tokens.includes('\u090b'));
+  assert.ok(res.tokens.includes('\u0919'));
+  assert.ok(!res.normalizedDevanagari.includes('\u093d'));
+  assert.ok(!res.normalizedDevanagari.includes('\u0951'));
+});
+
+test('IAST and Multi-Script Brahmic G2P map Kannada, Tamil, Telugu, Malayalam accurately', () => {
+  const iast = iastToDevanagari('praj\u00f1\u0101p\u016brvakavy\u0101p\u0101ravattva\u1e41 j\u012bvatvam');
+  assert.ok(iast.includes('\u091c\u094d\u091e'));
+
+  const kn = textToIds('\u0c85\u0cb0\u0cbf\u0cb5\u0cc7 \u0c97\u0cc1\u0cb0\u0cc1');
+  assert.equal(kn.lang, 'kn');
+  assert.equal(kn.script, 'kannada');
+
+  const ta = textToIds('\u0ba4\u0bae\u0bbf\u0bb4\u0bcd \u0bb5\u0bbe\u0bb4\u0bcd\u0b95');
+  assert.equal(ta.lang, 'ta');
+  assert.ok(ta.tokens.includes('\u0934'));
+
+  const ml = brahmicToDevanagari('\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d7e');
+  assert.ok(ml.includes('\u0933'));
+});
+
+test('Zero-dep Tier-2 Klatt synthesis generates valid 16kHz RIFF WAV bytes', async () => {
+  const voice = await ninada('sanskrit');
+  let doneMeta = null;
+  voice.on('done', (m) => { doneMeta = m; });
+  const wav = await voice.speak('\u0927\u0930\u094d\u092e\u0915\u094d\u0937\u0947\u0924\u094d\u0930\u0947 \u0915\u0941\u0930\u0941\u0915\u094d\u0937\u0947\u0924\u094d\u0930\u0947', { tier: 'klatt' });
+  assert.ok(wav instanceof ArrayBuffer);
+  assert.ok(wav.byteLength > 4000);
+  const magic = Buffer.from(wav.slice(0, 4)).toString('ascii');
+  assert.equal(magic, 'RIFF');
+  assert.equal(doneMeta.tier, 'klatt_zero_dep');
+});
+
+test('Tier-1 Neural ONNX synthesis produces 16kHz RIFF WAV in Node.js when model is present', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const modelPath = path.resolve(import.meta.dirname, '../../docs/model_quantized.onnx');
+  if (!fs.existsSync(modelPath)) return;
+  const voice = await ninada('sanskrit', { model: modelPath });
+  assert.equal(voice.isNeural, true);
+  const { pcm, meta } = await voice.synthesize('\u0938\u0924\u094d\u092f\u092e\u0947\u0935 \u091c\u092f\u0924\u0947');
+  assert.equal(meta.tier, 'neural_onnx');
+  assert.ok(pcm.length > 16000);
+});

@@ -1,0 +1,86 @@
+{
+  "split_used": "val_meta.jsonl (strictly zero test-set access)",
+  "selected_alpha": 0.7,
+  "selected_metrics": {
+    "alpha": 0.7,
+    "val_mcd_db": 5.575,
+    "val_f0_cents": 566.8,
+    "val_dur_mae_sec": 0.868,
+    "val_sa_cer_pct": 14.08,
+    "pareto_cost": 2.6884,
+    "per_lang_mcd": {
+      "sa": 7.953,
+      "hi": 4.077,
+      "kn": 4.302,
+      "ta": 4.008,
+      "te": 4.412,
+      "ml": 4.385
+    }
+  },
+  "sweep": [
+    {
+      "alpha": 0.55,
+      "val_mcd_db": 5.782,
+      "val_f0_cents": 588.6,
+      "val_dur_mae_sec": 0.886,
+      "val_sa_cer_pct": 14.55,
+      "pareto_cost": 2.7797,
+      "per_lang_mcd": {
+        "sa": 8.023,
+        "hi": 4.42,
+        "kn": 4.711,
+        "ta": 4.325,
+        "te": 4.613,
+        "ml": 4.572
+      }
+    },
+    {
+      "alpha": 0.65,
+      "val_mcd_db": 5.643,
+      "val_f0_cents": 576.7,
+      "val_dur_mae_sec": 0.872,
+      "val_sa_cer_pct": 14.62,
+      "pareto_cost": 2.7449,
+      "per_lang_mcd": {
+        "sa": 7.983,
+        "hi": 4.179,
+        "kn": 4.43,
+        "ta": 4.12,
+        "te": 4.473,
+        "ml": 4.433
+      }
+    },
+    {
+      "alpha": 0.7,
+      "val_mcd_db": 5.575,
+      "val_f0_cents": 566.8,
+      "val_dur_mae_sec": 0.868,
+      "val_sa_cer_pct": 14.08,
+      "pareto_cost": 2.6884,
+      "per_lang_mcd": {
+        "sa": 7.953,
+        "hi": 4.077,
+        "kn": 4.302,
+        "ta": 4.008,
+        "te": 4.412,
+        "ml": 4.385
+      }
+    },
+    {
+      "alpha": 0.75,
+      "val_mcd_db": 5.518,
+      "val_f0_cents": 558.9,
+      "val_dur_mae_sec": 0.86,
+      "val_sa_cer_pct": 15.77,
+      "pareto_cost": 2.7819,
+      "per_lang_mcd": {
+        "sa": 7.93,
+        "hi": 4.013,
+        "kn": 4.161,
+        "ta": 3.901,
+        "te": 4.368,
+        "ml": 4.335
+      }
+    }
+  ]
+}

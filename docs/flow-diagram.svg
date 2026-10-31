@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 340" width="980" height="340" role="img" aria-label="Ninada Pan-Indic and Classical Sanskrit Neural TTS Architecture Blueprint">
+  <defs>
+    <style>
+      .canvas { fill: #fafaf7; }
+      .frame { fill: none; stroke: #111111; stroke-width: 1.2; }
+      .node { fill: #ffffff; stroke: #111111; stroke-width: 1.2; }
+      .focal { fill: #111111; stroke: #111111; stroke-width: 1.4; }
+      .wire { fill: none; stroke: #111111; stroke-width: 1.2; }
+      .dashed { fill: none; stroke: #555550; stroke-width: 1.1; stroke-dasharray: 4 4; }
+      .kicker { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; letter-spacing: 0.12em; fill: #555550; text-transform: uppercase; }
+      .title { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; font-weight: 700; fill: #111111; }
+      .focal-title { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13.5px; font-weight: 700; fill: #fafaf7; }
+      .sub { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; fill: #444440; }
+      .focal-sub { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; fill: #d8d7d0; }
+      .badge { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9.5px; fill: #111111; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="#111111" />
+    </marker>
+  </defs>
+
+  <rect class="canvas" x="0" y="0" width="980" height="340" rx="8" />
+  <rect class="frame" x="14" y="14" width="952" height="312" rx="6" />
+
+  <text class="kicker" x="32" y="38">NINADA // PAN-INDIC &amp; CLASSICAL SANSKRIT AKSHARA-TO-WAVEFORM ARCHITECTURE (SA · HI · KN · TA · TE · ML)</text>
+  <line x1="32" y1="48" x2="948" y2="48" stroke="#dcdad2" stroke-width="1" />
+
+  <!-- Stage 1: Script Input -->
+  <rect class="node" x="32" y="92" width="166" height="122" rx="6" />
+  <text class="kicker" x="46" y="114">01 / INPUT</text>
+  <text class="title" x="46" y="135">Brahmic &amp; IAST</text>
+  <text class="sub" x="46" y="156">Devanagari · Kannada</text>
+  <text class="sub" x="46" y="173">Tamil · Telugu · Mal.</text>
+  <text class="sub" x="46" y="190">ISO-15919 Romanized</text>
+
+  <!-- Arrow 1->2 -->
+  <line class="wire" x1="198" y1="153" x2="230" y2="153" marker-end="url(#arrow)" />
+
+  <!-- Stage 2: Pan-Indic G2P -->
+  <rect class="node" x="234" y="92" width="188" height="122" rx="6" />
+  <text class="kicker" x="248" y="114">02 / PHONOLOGY</text>
+  <text class="title" x="248" y="135">Akshara G2P (87 tok)</text>
+  <text class="sub" x="248" y="156">0x80 ISCII Alignment</text>
+  <text class="sub" x="248" y="173">Paninian Sandhi + Avagraha</text>
+  <text class="sub" x="248" y="190">Guru / Laghu Weighting</text>
+
+  <!-- Arrow 2->3 (Tier 1) -->
+  <line class="wire" x1="422" y1="136" x2="458" y2="136" marker-end="url(#arrow)" />
+  <!-- Arrow 2->Tier 2 fallback -->
+  <path class="dashed" d="M 328 214 L 328 268 L 458 268" marker-end="url(#arrow)" />
+
+  <!-- Stage 3: Focal Node - Disentangled Conditional VITS -->
+  <rect class="focal" x="462" y="74" width="252" height="132" rx="6" />
+  <text class="focal-sub" x="478" y="96">03 / TIER-1 NEURAL CORE (GCP L4)</text>
+  <text class="focal-title" x="478" y="119">Ninada Disentangled VITS</text>
+  <text class="focal-sub" x="478" y="141">6-Lang + EMA Voice Conditioning</text>
+  <text class="focal-sub" x="478" y="159">Deterministic MAS Duration Pred.</text>
+  <text class="focal-sub" x="478" y="177">4-Step WaveNet Normalizing Flow</text>
+  <text class="focal-sub" x="478" y="194">56.6 MB Browser ONNX (FP16)</text>
+
+  <!-- Stage 3B: Tier 2 Zero-Dep Klatt -->
+  <rect class="node" x="462" y="232" width="252" height="72" rx="6" />
+  <text class="kicker" x="478" y="252">03B / TIER-2 ZERO-DEP FALLBACK</text>
+  <text class="title" x="478" y="271">Cascade Klatt-Akshara Synth</text>
+  <text class="sub" x="478" y="290">0.0 MB · Rosenberg Glottal + F1-F3</text>
+
+  <!-- Arrow 3->4 -->
+  <line class="wire" x1="714" y1="140" x2="752" y2="140" marker-end="url(#arrow)" />
+  <path class="dashed" d="M 714 268 L 850 268 L 850 218" marker-end="url(#arrow)" />
+
+  <!-- Stage 4: HiFi-GAN & Output -->
+  <rect class="node" x="756" y="92" width="192" height="122" rx="6" />
+  <text class="kicker" x="770" y="114">04 / VOCODER &amp; AUDIO</text>
+  <text class="title" x="770" y="135">16 kHz HiFi-GAN</text>
+  <text class="sub" x="770" y="156">onnxruntime-web WASM</text>
+  <text class="sub" x="770" y="173">Python &amp; Node.js SDKs</text>
+  <text class="sub" x="770" y="190">16-bit RIFF WAV + Timings</text>
+
+  <!-- Footer telemetry bar -->
+  <text class="badge" x="32" y="312">RUNTIME: BROWSER WASM SIMD + PYTHON + NODE // ZERO EXTERNAL DAEMONS // MIT LICENSE</text>
+</svg>
