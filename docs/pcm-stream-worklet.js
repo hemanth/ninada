@@ -5,8 +5,8 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
     this.chunks = [];
     this.headOffset = 0;
     this.queuedSamples = 0;
-    this.srcRate = 16000;
-    this.watermarkSamples = 720; // default 45ms @ 16kHz
+    this.srcRate = 24000;
+    this.watermarkSamples = 1080; // default 45ms @ 24kHz
     this.state = 'idle'; // 'idle' | 'buffering' | 'playing'
     this.eos = false;
 
@@ -23,6 +23,10 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
     this.totalPushedSamples = 0;
     this.underrunCount = 0;
     this.quantaCounter = 0;
+    // Stateful 1-pole high-pass DC blocker (R = 0.9965, fc ≈ 13.3 Hz @ 24 kHz)
+    this.dcR = 0.9965;
+    this.dcXPrev = 0.0;
+    this.dcYPrev = 0.0;
 
     this.port.onmessage = (ev) => {
       const msg = ev.data || {};
@@ -31,7 +35,7 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
         this.chunks = [];
         this.headOffset = 0;
         this.queuedSamples = 0;
-        this.srcRate = Number(msg.sampleRate) || 16000;
+        this.srcRate = Number(msg.sampleRate) || 24000;
         this.watermarkSamples = Math.max(128, Number(msg.watermarkSamples) || Math.round(0.045 * this.srcRate));
         this.state = 'buffering';
         this.eos = false;
@@ -44,6 +48,8 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
         this.totalPushedSamples = 0;
         this.underrunCount = 0;
         this.quantaCounter = 0;
+        this.dcXPrev = 0.0;
+        this.dcYPrev = 0.0;
         return;
       }
 
@@ -91,6 +97,8 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
         this.eos = true;
         this.hist.fill(0);
         this.histPrimed = false;
+        this.dcXPrev = 0.0;
+        this.dcYPrev = 0.0;
       }
     };
   }
@@ -100,7 +108,7 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
       return 0.0;
     }
     const head = this.chunks[0];
-    const val = head[this.headOffset];
+    const rawVal = head[this.headOffset];
     this.headOffset += 1;
     this.queuedSamples -= 1;
     this.playedSourceSamples += 1;
@@ -108,6 +116,11 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
       this.chunks.shift();
       this.headOffset = 0;
     }
+    // 1-pole high-pass DC blocker at 16 kHz source rate
+    const val = rawVal - this.dcXPrev + this.dcR * this.dcYPrev;
+    this.dcXPrev = rawVal;
+    this.dcYPrev = val;
+    if (Math.abs(this.dcYPrev) < 1e-15) this.dcYPrev = 0.0;
     return val;
   }
 

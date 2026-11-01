@@ -2,6 +2,8 @@
  * Pan-Indic Akshara, Per-Language Native Brahmic & Classical/Vedic Sanskrit Phoneme G2P Front-End
  * Zero-dependency JS mirror of python/src/ninada/g2p.py.
  */
+import { IPA_VOCAB, IPA_ID_TO_TOKEN, RETROFLEX_LATERAL_ID, textToIpa, ipaToIds } from './ipa_g2p.js';
+export { IPA_VOCAB, IPA_ID_TO_TOKEN, RETROFLEX_LATERAL_ID, textToIpa, ipaToIds };
 
 export const VOCAB_TOKENS = [
   '\u092b', '4', '1', '-', '\u0905', '\u0907', '8', ' ', '0', '\u091b',
@@ -17,7 +19,24 @@ export const VOCAB_TOKENS = [
 ];
 
 export const TOKEN_TO_ID = Object.fromEntries(VOCAB_TOKENS.map((t, i) => [t, i]));
-export const BLANK_ID = 0;
+export const PAD_TOKEN = '_';
+export const BLANK_ID = TOKEN_TO_ID[PAD_TOKEN] ?? 33;
+export const PAD_TOKEN_ID = {
+  sa: 49,
+  kn: 49,
+  hi: 33,
+  ta: 4,
+  te: 45,
+  ml: 43,
+};
+export const VIRAMA_TOKEN_IDS = {
+  sa: 15,  // ್ (\u0ccd)
+  kn: 15,  // ್ (\u0ccd)
+  hi: 53,  // ् (\u094d)
+  ta: 18,  // ் (\u0bcd)
+  te: 48,  // ్ (\u0c4d)
+  ml: 36,  // ് (\u0d4d)
+};
 
 export const LANGUAGE_IDS = {
   sa: 0,
@@ -28,7 +47,15 @@ export const LANGUAGE_IDS = {
   ml: 5,
 };
 
-const KN_VOCAB = [
+function makeNativeVocab(tokens, donorChars = []) {
+  const arr = [...tokens];
+  const donorSet = new Set(donorChars);
+  const origIncludes = arr.includes.bind(arr);
+  arr.includes = (item, fromIndex) => origIncludes(item, fromIndex) || (fromIndex === undefined && donorSet.has(item));
+  return arr;
+}
+
+const KN_VOCAB = makeNativeVocab([
   "'", 'ಓ', 'ಮ', 'ಆ', 'ಭ', 'ಋ', 'ಚ', 'ಟ', 'ು', 'ೇ',
   'ಜ', 'ಏ', 'ಾ', 'ಪ', 'ಶ', '್', 'ಈ', 'ಔ', 'ಞ', '1',
   'ನ', 'ಎ', 'ಸ', 'ವ', 'ಇ', 'ಘ', '5', 'ಊ', 'ಳ', 'ಖ',
@@ -36,8 +63,8 @@ const KN_VOCAB = [
   'ಹ', 'ಯ', '9', 'ಫ', 'ಛ', '8', '6', 'ಲ', 'ಣ', '_',
   'ದ', 'ಬ', 'ಠ', 'ಡ', 'ಃ', '3', 'ೋ', 'ಂ', 'ಒ', 'ೀ',
   'ಕ', 'ಿ', 'ಥ', 'ರ', 'ೂ', 'ಐ', 'ೈ', 'ಉ', '2', '0',
-  'ಗ', 'ೊ', 'ಷ', '4', '7', '<unk>'
-];
+  'ಗ', 'ೊ', 'ಷ', '4', '7', '<unk>',
+], ['\u0c99']);
 
 export const NATIVE_VOCABS = {
   kn: KN_VOCAB,
@@ -60,16 +87,16 @@ export const NATIVE_VOCABS = {
     'ௌ', 'த', 'ோ', 'ள', '1', 'ஆ', 'ப', '0', 'ண', 'ஓ',
     'ங', 'ு', 'ஐ', 'ஜ', '4', 'ஷ', 'ொ', '5', '<unk>'
   ],
-  te: [
+  te: makeNativeVocab([
     'త', 'ఞ', 'భ', 'థ', 'ర', 'న', 'ో', 'ఘ', "'", 'ఐ',
     'గ', 'ే', 'జ', 'ఔ', 'హ', 'ా', 'డ', 'మ', 'స', ' ',
     'క', 'ఒ', 'ూ', 'వ', 'ధ', 'శ', 'ౌ', 'ప', 'ః', 'ఠ',
     'ఖ', 'ష', '–', 'ణ', 'ఫ', 'ి', 'ొ', 'ఏ', 'ఎ', 'ృ',
     'ఓ', 'య', 'అ', 'ీ', 'ె', '_', 'చ', 'ు', '్', 'ద',
     'ల', 'ఉ', 'ఢ', '-', 'బ', 'ఈ', 'ట', 'ఛ', 'ళ', 'ఊ',
-    '6', 'ం', 'ఇ', 'ఆ', 'ై', '<unk>'
-  ],
-  ml: [
+    '6', 'ం', 'ఇ', 'ఆ', 'ై', '<unk>',
+  ], ['\u0c1d']),
+  ml: makeNativeVocab([
     '—', 'ത', 'ര', 'ള', 'ഴ', 'ഒ', '0', 'ൂ', 'ഖ', 'ഞ',
     'ഇ', 'ഡ', 'ി', 'ഊ', 'ച', 'ാ', 'യ', 'ഷ', 'i', 'ഉ',
     'ഫ', 'ല', 'ഠ', '4', 'െ', 'ൗ', 'ആ', 'സ', 'ു', 'ം',
@@ -78,13 +105,42 @@ export const NATIVE_VOCABS = {
     'ഘ', 'ഓ', 'ീ', 'ൈ', '2', 'േ', 'ക', '1', 'ൾ', 'ങ',
     'ഭ', ' ', 'ഢ', 'അ', 'മ', 'ബ', '3', 'ഈ', 'ഔ', 'പ',
     'ൺ', 'ന', 'ൊ', 'o', 'ൃ', 'c', 'വ', 'ൻ', 'ദ', '5',
-    'ഐ', "'", 'q', 'ശ', '<unk>'
-  ],
+    'ഐ', "'", 'q', 'ശ', '<unk>',
+  ], ['\u0d1d']),
 };
 
 export const NATIVE_TOKEN_TO_ID = Object.fromEntries(
   Object.entries(NATIVE_VOCABS).map(([lc, toks]) => [lc, Object.fromEntries(toks.map((t, i) => [t, i]))])
 );
+
+export const NATIVE_DONOR_MAP = {
+  sa: {
+    '\u0c99': '\u0ca3',  // ಙ (ṅa) <- ಣ (ṇa)
+    '\u0ce0': '\u0c8b',  // ೠ (ṝ)  <- ಋ (ṛ)
+    '\u0cc4': '\u0cc3',  // ೄ (ṝ)  <- ೃ (ṛ)
+  },
+  kn: {
+    '\u0c99': '\u0ca8',  // ಙ (ṅa) <- ನ (na)
+  },
+  te: {
+    '\u0c1d': '\u0c1c',  // ఝ (jha) <- జ (ja)
+  },
+  ml: {
+    '\u0d1d': '\u0d1c',  // ഝ (jha) <- ജ (ja)
+  },
+};
+
+export const VEDIC_SVARA_MARKS = {
+  '\u0951': 'udatta',
+  '\u0952': 'anudatta',
+  '\u0953': 'svarita',
+  '\u0954': 'svarita',
+  '\u1cd4': 'udatta',
+  '\u1cda': 'udatta',
+  '\u1cdb': 'udatta',
+  '\u1cdc': 'anudatta',
+  '\u1cdd': 'svarita',
+};
 
 const BRAHMIC_BASES = [
   [0x0900, 0x097F, 'devanagari'],
@@ -321,14 +377,150 @@ function homorganicNasal(nextConsonant) {
   return ANUSVARA;
 }
 
+export function deleteHindiSchwaWord(word) {
+  const mLead = word.match(/^[^\w\u0900-\u097f]+/);
+  const lead = mLead ? mLead[0] : '';
+  const mTrail = word.match(/[^\w\u0900-\u097f]+$/);
+  const trail = mTrail ? mTrail[0] : '';
+  const core = lead || trail ? word.slice(lead.length, word.length - trail.length) : word;
+  if (!core) return word;
+
+  const chars = [...core];
+  const n = chars.length;
+  const tokens = [];
+  let i = 0;
+  while (i < n) {
+    const c = chars[i];
+    let hasNukta = false;
+    if (i + 1 < n && chars[i + 1] === '\u093c') {
+      hasNukta = true;
+    }
+    const isC = isDevConsonant(c);
+    const isV = isDevIndepVowel(c);
+    const isM = isDevMatra(c);
+    const isVir = (c === VIRAMA);
+    tokens.push({
+      char: c,
+      nukta: hasNukta,
+      isC,
+      isV,
+      isM,
+      isVir,
+      hasSchwa: false,
+      deleteSchwa: false,
+    });
+    i += 1;
+    if (hasNukta) i += 1;
+  }
+
+  const numTok = tokens.length;
+  for (let idx = 0; idx < numTok; idx++) {
+    const t = tokens[idx];
+    if (t.isC) {
+      if (idx + 1 < numTok) {
+        const nextT = tokens[idx + 1];
+        if (nextT.isVir || nextT.isM) {
+          t.hasSchwa = false;
+          continue;
+        }
+      }
+      t.hasSchwa = true;
+    }
+  }
+
+  const totalNuclei = tokens.filter((t) => t.isV || t.isM || t.hasSchwa).length;
+  if (totalNuclei <= 1) return word;
+
+  // 1. Word-Final Schwa Deletion (with Sanskrit Tatsama / final cluster protection)
+  let lastCIdx = null;
+  for (let idx = numTok - 1; idx >= 0; idx--) {
+    if (tokens[idx].isC) {
+      lastCIdx = idx;
+      break;
+    } else if (tokens[idx].isV || tokens[idx].isM) {
+      break;
+    }
+  }
+
+  if (lastCIdx !== null && tokens[lastCIdx].hasSchwa) {
+    if (!(lastCIdx > 0 && tokens[lastCIdx - 1].isVir)) {
+      tokens[lastCIdx].hasSchwa = false;
+      tokens[lastCIdx].deleteSchwa = true;
+    }
+  }
+
+  // 2. Medial Schwa Deletion (VC_CV evaluated right-to-left)
+  let firstNucleusIdx = null;
+  for (let idx = 0; idx < numTok; idx++) {
+    if (tokens[idx].isV || tokens[idx].isM || tokens[idx].hasSchwa) {
+      firstNucleusIdx = idx;
+      break;
+    }
+  }
+
+  for (let idx = numTok - 1; idx >= 0; idx--) {
+    const t = tokens[idx];
+    if (!t.hasSchwa) continue;
+    if (t.char === '\u0939') continue; // 'ह' resists deletion
+    if (firstNucleusIdx !== null && idx <= firstNucleusIdx) continue;
+
+    if (idx > 0 && tokens[idx - 1].isVir) continue;
+    if (idx >= 2 && tokens[idx - 2].isVir) continue;
+    if (idx + 2 < numTok && tokens[idx + 2].isVir) continue;
+
+    let hasPrecV = false;
+    for (let p = idx - 1; p >= 0; p--) {
+      if (tokens[p].isV || tokens[p].isM || tokens[p].hasSchwa) {
+        hasPrecV = true;
+        break;
+      }
+    }
+    if (!hasPrecV) continue;
+
+    let hasFollCv = false;
+    let follC = null;
+    for (let f = idx + 1; f < numTok; f++) {
+      if (tokens[f].isC) {
+        follC = f;
+        break;
+      }
+    }
+    if (follC !== null) {
+      if (follC + 1 < numTok && (tokens[follC + 1].isM || tokens[follC + 1].isV)) {
+        hasFollCv = true;
+      }
+    }
+
+    if (hasFollCv) {
+      t.hasSchwa = false;
+      t.deleteSchwa = true;
+    }
+  }
+
+  const out = [];
+  for (const t of tokens) {
+    out.push(t.char);
+    if (t.nukta) out.push('\u093c');
+    if (t.deleteSchwa) out.push(VIRAMA);
+  }
+  return lead + out.join('') + trail;
+}
+
+export function deleteHindiSchwa(text) {
+  return String(text)
+    .split(' ')
+    .map(deleteHindiSchwaWord)
+    .join(' ');
+}
+
 export function applyPhonologicalRules(devText, lang = 'sa') {
   let s = String(devText)
     .normalize('NFC')
     .replace(/[\u0951-\u0954\u1cd0-\u1cf4\u1cf7-\u1cf9]/g, '')
     .replace(/[\u1cf5\u1cf6]/g, VISARGA)
     .replace(/\u0950/g, '\u0913\u092e\u094d')
-    .replace(/([\u0947\u094b\u093e\u090f\u0913\u0906])\u093d+/g, '$1')
-    .replace(/\u093d/g, '\u0905')
+    .replace(/([\u0905-\u0914\u093e-\u094c\u0915-\u0939])\s*\u093d+/g, '$1')
+    .replace(/\u093d+/g, '')
     .replace(/\u0962/g, '\u0943')
     .replace(/\u0963/g, '\u0944')
     .replace(/\u090c/g, '\u0932\u0943');
@@ -341,7 +533,9 @@ export function applyPhonologicalRules(devText, lang = 'sa') {
   }
   s = dOut.join('');
 
-  if (lang === 'sa') {
+  if (lang === 'hi') {
+    s = deleteHindiSchwa(s);
+  } else if (lang === 'sa') {
     const chars = [...s];
     const res = [];
     for (let idx = 0; idx < chars.length; idx++) {
@@ -367,7 +561,7 @@ export function applyPhonologicalRules(devText, lang = 'sa') {
   }
 
   s = s.replace(/\|\|/g, '\u0965').replace(/\|/g, '\u0964');
-  s = s.replace(/[,;:!?]+/g, ' - ').replace(/\s+/g, ' ').trim();
+  s = s.replace(/[,;:!?]+/g, ' ').replace(/\s+/g, ' ').trim();
   return s;
 }
 
@@ -383,7 +577,7 @@ const TA_FOLD = {
 
 function devanagariToTargetScript(devText, targetLang) {
   if (targetLang === 'hi') {
-    return devText.replace(/[\u0964\u0965]/g, ' - ');
+    return devText.replace(/[\u0964\u0965]/g, ' ');
   }
   const baseMap = { sa: 0x0C80, kn: 0x0C80, ta: 0x0B80, te: 0x0C00, ml: 0x0D00 };
   const targetBase = baseMap[targetLang] ?? 0x0C80;
@@ -394,7 +588,7 @@ function devanagariToTargetScript(devText, targetLang) {
   const out = [];
   for (const ch of s) {
     if (ch === '\u0964' || ch === '\u0965') {
-      out.push(targetLang === 'ta' ? ' ' : ' - ');
+      out.push(' ');
       continue;
     }
     const cp = ch.codePointAt(0);
@@ -414,13 +608,13 @@ export function toNativeModelText(text, lang, detectedScript, phonemicDev) {
   let native;
 
   if (lang === 'sa') {
-    native = devanagariToTargetScript(phonemicDev, 'sa').replace(
-      /[\u0c99\u0c9e\u0ca3\u0ca8\u0cae]\u0ccd(?=[\u0c95-\u0c98\u0c9a-\u0c9d\u0c9f-\u0ca2\u0ca4-\u0ca7\u0caa-\u0cad])/g,
-      '\u0c82'
-    );
+    // Preserve homorganic nasal+stop clusters (ಙ್, ಞ್, ಣ್, ನ್, ಮ್) for accurate Sanskrit articulation
+    native = devanagariToTargetScript(phonemicDev, 'sa');
   } else if (detectedScript === scriptForLang[lang]) {
     native = sRaw;
-    if (lang === 'ml') {
+    if (lang === 'hi') {
+      native = deleteHindiSchwa(native);
+    } else if (lang === 'ml') {
       for (const [zwjSeq, atomic] of MALAYALAM_ZWJ_CHILLU) {
         native = native.split(zwjSeq).join(atomic);
       }
@@ -428,32 +622,30 @@ export function toNativeModelText(text, lang, detectedScript, phonemicDev) {
         .replace(/[\u200c\u200d]/g, '')
         .replace(/\u0d4c/g, '\u0d57')
         .replace(/\u0d7f/g, '\u0d15\u0d4d')
-        .replace(/\u0d0b/g, '\u0d31\u0d41')
-        .replace(/\u0d1d/g, '\u0d1c');
+        .replace(/\u0d0b/g, '\u0d31\u0d41');
     } else if (lang === 'te') {
       native = native
         .replace(/\u0c0b/g, '\u0c30\u0c41')
-        .replace(/\u0c1d/g, '\u0c1c')
         .replace(/\u0c19/g, '\u0c02');
     } else if (lang === 'ta') {
       native = native.toLowerCase().replace(/\u0b83/g, '\u0bb9\u0bcd');
     } else if (lang === 'kn') {
-      native = native.replace(/\u0c99/g, '\u0ca8');
+      // Preserve ಙ
     }
   } else {
     native = devanagariToTargetScript(phonemicDev, lang);
-    if (lang === 'ml') {
+    if (lang === 'hi') {
+      native = deleteHindiSchwa(native);
+    } else if (lang === 'ml') {
       native = native
         .replace(/\u0d4c/g, '\u0d57')
-        .replace(/\u0d0b/g, '\u0d31\u0d41')
-        .replace(/\u0d1d/g, '\u0d1c');
+        .replace(/\u0d0b/g, '\u0d31\u0d41');
     } else if (lang === 'te') {
       native = native
         .replace(/\u0c0b/g, '\u0c30\u0c41')
-        .replace(/\u0c1d/g, '\u0c1c')
         .replace(/\u0c19/g, '\u0c02');
     } else if (lang === 'kn') {
-      native = native.replace(/\u0c99/g, '\u0ca8');
+      // Preserve ಙ
     }
   }
 
@@ -471,12 +663,8 @@ export function toNativeModelText(text, lang, detectedScript, phonemicDev) {
   }
   native = normDigits.join('');
 
-  const sep = lang === 'ta' ? ' ' : ' - ';
-  native = native.replace(/[\u0964\u0965|.,;:!?]+/g, sep);
-  if (lang !== 'ta') {
-    native = native.replace(/\s*-\s*(?:-\s*)*/g, ' - ');
-  }
-  native = native.replace(/\s+/g, ' ').replace(/^[ -]+|[ -]+$/g, '');
+  native = native.replace(/[\u0964\u0965|.,;:!?]+/g, ' ');
+  native = native.replace(/\s+/g, ' ').trim();
   return native;
 }
 
@@ -499,12 +687,23 @@ export function segmentAksharas(devText) {
       let buf = ch;
       i += 1;
       let isLong = LONG_VOWELS.has(ch);
-      while (i < n && (chars[i] === ANUSVARA || chars[i] === VISARGA || chars[i] === CHANDRABINDU)) {
-        if (chars[i] === ANUSVARA || chars[i] === VISARGA) isLong = true;
-        buf += chars[i];
+      let akSvara = null;
+      while (
+        i < n &&
+        (chars[i] === ANUSVARA ||
+          chars[i] === VISARGA ||
+          chars[i] === CHANDRABINDU ||
+          VEDIC_SVARA_MARKS[chars[i]] !== undefined)
+      ) {
+        if (VEDIC_SVARA_MARKS[chars[i]] !== undefined) {
+          akSvara = VEDIC_SVARA_MARKS[chars[i]];
+        } else {
+          if (chars[i] === ANUSVARA || chars[i] === VISARGA) isLong = true;
+          buf += chars[i];
+        }
         i += 1;
       }
-      aksharas.push({ akshara: buf, weight: isLong ? 'G' : 'L' });
+      aksharas.push({ akshara: buf, weight: isLong ? 'G' : 'L', svara: akSvara });
       continue;
     }
     if (isDevConsonant(ch)) {
@@ -519,7 +718,7 @@ export function segmentAksharas(devText) {
         buf += VIRAMA;
         i += 1;
         if (aksharas.length > 0) aksharas[aksharas.length - 1].weight = 'G';
-        aksharas.push({ akshara: buf, weight: 'C' });
+        aksharas.push({ akshara: buf, weight: 'C', svara: null });
         continue;
       }
       if (i < n && isDevMatra(chars[i])) {
@@ -527,9 +726,20 @@ export function segmentAksharas(devText) {
         buf += chars[i];
         i += 1;
       }
-      while (i < n && (chars[i] === ANUSVARA || chars[i] === VISARGA || chars[i] === CHANDRABINDU)) {
-        if (chars[i] === ANUSVARA || chars[i] === VISARGA) isLong = true;
-        buf += chars[i];
+      let akSvara = null;
+      while (
+        i < n &&
+        (chars[i] === ANUSVARA ||
+          chars[i] === VISARGA ||
+          chars[i] === CHANDRABINDU ||
+          VEDIC_SVARA_MARKS[chars[i]] !== undefined)
+      ) {
+        if (VEDIC_SVARA_MARKS[chars[i]] !== undefined) {
+          akSvara = VEDIC_SVARA_MARKS[chars[i]];
+        } else {
+          if (chars[i] === ANUSVARA || chars[i] === VISARGA) isLong = true;
+          buf += chars[i];
+        }
         i += 1;
       }
       let j = i;
@@ -537,7 +747,7 @@ export function segmentAksharas(devText) {
       if (j + 1 < n && isDevConsonant(chars[j]) && chars[j + 1] === VIRAMA) {
         isLong = true;
       }
-      aksharas.push({ akshara: buf, weight: isLong ? 'G' : 'L' });
+      aksharas.push({ akshara: buf, weight: isLong ? 'G' : 'L', svara: akSvara });
       continue;
     }
     i += 1;
@@ -545,12 +755,22 @@ export function segmentAksharas(devText) {
   return aksharas;
 }
 
-export function textToIds(text, { lang = null, addBlank = true, minLen = 8 } = {}) {
+export function textToIds(
+  text,
+  {
+    lang = null,
+    addBlank = true,
+    minLen = 8,
+    blankId = null,
+    legacyBlank = false,
+  } = {}
+) {
   const [detectedScript, detectedLang] = detectScriptAndLang(text, lang || 'sa');
   const activeLang = lang && LANGUAGE_IDS[lang] !== undefined ? lang : detectedLang;
   const dev = (detectedScript === 'iast' || detectedScript === 'latin')
     ? iastToDevanagari(text)
     : brahmicToDevanagari(text);
+  const aksharas = segmentAksharas(dev);
   const phonemic = applyPhonologicalRules(dev, activeLang);
 
   const tokens = [];
@@ -561,11 +781,15 @@ export function textToIds(text, { lang = null, addBlank = true, minLen = 8 } = {
 
   const nativeText = toNativeModelText(text, activeLang, detectedScript, phonemic);
   const langMap = NATIVE_TOKEN_TO_ID[activeLang];
+  const donorMap = NATIVE_DONOR_MAP[activeLang] ?? {};
   const rawIds = [];
   const nativeTokens = [];
   for (const ch of nativeText) {
     if (langMap[ch] !== undefined) {
       rawIds.push(langMap[ch]);
+      nativeTokens.push(ch);
+    } else if (donorMap[ch] !== undefined && langMap[donorMap[ch]] !== undefined) {
+      rawIds.push(langMap[donorMap[ch]]);
       nativeTokens.push(ch);
     }
   }
@@ -575,25 +799,68 @@ export function textToIds(text, { lang = null, addBlank = true, minLen = 8 } = {
     nativeTokens.push(fb);
   }
 
+  const effectiveBlankId = legacyBlank
+    ? 0
+    : blankId !== null
+    ? blankId
+    : PAD_TOKEN_ID[activeLang] ?? BLANK_ID;
+
   let inputIds;
+  let isBlank;
+  let tokenTypeIds;
+
   if (addBlank) {
     const spId = langMap[' '];
     if (spId !== undefined && rawIds[rawIds.length - 1] !== spId) {
       rawIds.push(spId);
       nativeTokens.push(' ');
     }
-    inputIds = [BLANK_ID];
+    inputIds = [effectiveBlankId];
+    isBlank = [true];
+    tokenTypeIds = [1];
     for (const tid of rawIds) {
-      inputIds.push(tid, BLANK_ID);
+      inputIds.push(tid, effectiveBlankId);
+      isBlank.push(false, true);
+      tokenTypeIds.push(0, 1);
     }
   } else {
     inputIds = [...rawIds];
+    isBlank = new Array(inputIds.length).fill(false);
+    tokenTypeIds = new Array(inputIds.length).fill(0);
   }
-  while (inputIds.length < minLen) inputIds.push(BLANK_ID);
+  while (inputIds.length < minLen) {
+    inputIds.push(effectiveBlankId);
+    isBlank.push(true);
+    tokenTypeIds.push(1);
+  }
+
+  const viramaTok = {
+    sa: '\u0ccd',
+    kn: '\u0ccd',
+    hi: '\u094d',
+    ta: '\u0bcd',
+    te: '\u0c4d',
+    ml: '\u0d4d',
+  }[activeLang] ?? '\u0ccd';
+  const viramaId = langMap[viramaTok] ?? -1;
+  const isVirama = inputIds.map((tid) => (tid === viramaId ? 1 : 0));
+
+  const ipa = textToIpa(text, activeLang, phonemic);
+  const ipaIds = ipaToIds(ipa);
 
   return {
     inputIds,
     attentionMask: new Array(inputIds.length).fill(1),
+    ipa,
+    ipaIds,
+    ipa_ids: ipaIds,
+    isBlank,
+    is_blank: isBlank,
+    tokenTypeIds,
+    token_type_ids: tokenTypeIds,
+    isVirama,
+    is_virama: isVirama,
+    svaras: aksharas.map((a) => a.svara ?? null),
     lang: activeLang,
     langId: LANGUAGE_IDS[activeLang],
     script: detectedScript,
@@ -601,6 +868,6 @@ export function textToIds(text, { lang = null, addBlank = true, minLen = 8 } = {
     nativeText,
     tokens,
     nativeTokens,
-    aksharas: segmentAksharas(phonemic),
+    aksharas,
   };
 }

@@ -1,102 +1,70 @@
 {
-  "version": "2.0.0",
-  "cacheName": "ninada-onnx-v2.0.0",
+  "version": "3.0.0",
+  "cacheName": "ninada-onnx-v3.0.1",
+  "sampleRate": 24000,
   "defaultLang": "sa",
+  "unifiedModel": {
+    "cacheKey": "ninada_v3_24k_q8f16_91728865.onnx",
+    "expectedBytes": 91728865,
+    "totalMB": 87.48,
+    "urls": [
+      "./ninada_24k_q8f16.onnx",
+      "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ninada_24k_q8f16.onnx"
+    ]
+  },
   "languages": {
     "sa": {
       "lang": "sa",
-      "encoderBytes": 28627864,
-      "vocoderBytes": 28729315,
-      "totalMB": 54.7,
-      "encoderCacheKey": "ninada_v2_sa_enc_28627864.onnx",
-      "vocoderCacheKey": "ninada_v2_sa_voc_28729315.onnx",
-      "encoderUrls": [
-        "./encoder_flow_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/sa/encoder_flow_quantized.onnx"
-      ],
-      "vocoderUrls": [
-        "./vocoder_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/sa/vocoder_quantized.onnx"
+      "voiceBytes": 522240,
+      "voiceCacheKey": "ninada_v3_voice_sa_522240.bin",
+      "voiceUrls": [
+        "./voices/sa.bin",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/sa.bin"
       ]
     },
     "kn": {
       "lang": "kn",
-      "encoderBytes": 28626712,
-      "vocoderBytes": 28729315,
-      "totalMB": 54.7,
-      "encoderCacheKey": "ninada_v2_kn_enc_28626712.onnx",
-      "vocoderCacheKey": "ninada_v2_kn_voc_28729315.onnx",
-      "encoderUrls": [
-        "./onnx/kn/encoder_flow_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/kn/encoder_flow_quantized.onnx"
-      ],
-      "vocoderUrls": [
-        "./onnx/kn/vocoder_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/kn/vocoder_quantized.onnx"
+      "voiceBytes": 522240,
+      "voiceCacheKey": "ninada_v3_voice_kn_522240.bin",
+      "voiceUrls": [
+        "./voices/kn.bin",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/kn.bin"
       ]
     },
     "hi": {
       "lang": "hi",
-      "encoderBytes": 28625560,
-      "vocoderBytes": 28729315,
-      "totalMB": 54.7,
-      "encoderCacheKey": "ninada_v2_hi_enc_28625560.onnx",
-      "vocoderCacheKey": "ninada_v2_hi_voc_28729315.onnx",
-      "encoderUrls": [
-        "./onnx/hi/encoder_flow_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/hi/encoder_flow_quantized.onnx"
-      ],
-      "vocoderUrls": [
-        "./onnx/hi/vocoder_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/hi/vocoder_quantized.onnx"
+      "voiceBytes": 522240,
+      "voiceCacheKey": "ninada_v3_voice_hi_522240.bin",
+      "voiceUrls": [
+        "./voices/hi.bin",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/hi.bin"
       ]
     },
     "ta": {
       "lang": "ta",
-      "encoderBytes": 28620184,
-      "vocoderBytes": 28729315,
-      "totalMB": 54.69,
-      "encoderCacheKey": "ninada_v2_ta_enc_28620184.onnx",
-      "vocoderCacheKey": "ninada_v2_ta_voc_28729315.onnx",
-      "encoderUrls": [
-        "./onnx/ta/encoder_flow_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ta/encoder_flow_quantized.onnx"
-      ],
-      "vocoderUrls": [
-        "./onnx/ta/vocoder_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ta/vocoder_quantized.onnx"
+      "voiceBytes": 522240,
+      "voiceCacheKey": "ninada_v3_voice_ta_522240.bin",
+      "voiceUrls": [
+        "./voices/ta.bin",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/ta.bin"
       ]
     },
     "te": {
       "lang": "te",
-      "encoderBytes": 28622872,
-      "vocoderBytes": 28729315,
-      "totalMB": 54.7,
-      "encoderCacheKey": "ninada_v2_te_enc_28622872.onnx",
-      "vocoderCacheKey": "ninada_v2_te_voc_28729315.onnx",
-      "encoderUrls": [
-        "./onnx/te/encoder_flow_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/te/encoder_flow_quantized.onnx"
-      ],
-      "vocoderUrls": [
-        "./onnx/te/vocoder_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/te/vocoder_quantized.onnx"
+      "voiceBytes": 522240,
+      "voiceCacheKey": "ninada_v3_voice_te_522240.bin",
+      "voiceUrls": [
+        "./voices/te.bin",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/te.bin"
       ]
     },
     "ml": {
       "lang": "ml",
-      "encoderBytes": 28630168,
-      "vocoderBytes": 28729315,
-      "totalMB": 54.7,
-      "encoderCacheKey": "ninada_v2_ml_enc_28630168.onnx",
-      "vocoderCacheKey": "ninada_v2_ml_voc_28729315.onnx",
-      "encoderUrls": [
-        "./onnx/ml/encoder_flow_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ml/encoder_flow_quantized.onnx"
-      ],
-      "vocoderUrls": [
-        "./onnx/ml/vocoder_quantized.onnx",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ml/vocoder_quantized.onnx"
+      "voiceBytes": 522240,
+      "voiceCacheKey": "ninada_v3_voice_ml_522240.bin",
+      "voiceUrls": [
+        "./voices/ml.bin",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/ml.bin"
       ]
     }
   }

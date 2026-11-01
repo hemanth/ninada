@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ninada"
-version = "2.1.0"
-description = "Ninada (निनाद) — Streaming SOTA Pan-Indic & Classical Sanskrit neural text-to-speech (halo-chunked VITS+HiFi-GAN ONNX for Browser WASM SIMD, Node.js, and Python)."
+version = "3.0.0"
+description = "Ninada (निनाद) — Streaming 24 kHz Studio Pan-Indic & Classical Sanskrit neural text-to-speech (StyleTTS2 + PL-BERT + Harmonic-Source iSTFTNet ONNX for Browser WASM SIMD, Node.js, and Python)."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [

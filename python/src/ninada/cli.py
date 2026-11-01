@@ -6,13 +6,13 @@ import json
 import sys
 from pathlib import Path
 
-from .engine import Ninada
+from .engine import SAMPLE_RATE, Ninada
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="ninada",
-        description="Ninada — Pan-Indic & Classical Sanskrit Neural TTS (16 kHz WAV)",
+        description="Ninada — Pan-Indic & Classical Sanskrit Neural TTS (24 kHz Studio WAV)",
     )
     parser.add_argument("text", nargs="?", help="Input text in Devanagari, Kannada, Tamil, Telugu, Malayalam, or IAST")
     parser.add_argument("-l", "--lang", default=None, help="Language code: sa | hi | kn | ta | te | ml")
@@ -34,9 +34,9 @@ def main() -> None:
 
     from .engine import encode_wav_bytes
 
-    wav = encode_wav_bytes(pcm)
+    wav = encode_wav_bytes(pcm, sr=SAMPLE_RATE)
     args.output.write_bytes(wav)
-    print(f"Wrote {len(wav)} bytes ({len(pcm)/16000.0:.2f}s, tier={meta['tier']}, lang={meta['lang']}) -> {args.output}")
+    print(f"Wrote {len(wav)} bytes ({len(pcm)/float(SAMPLE_RATE):.2f}s, tier={meta['tier']}, lang={meta['lang']}) -> {args.output}")
 
 
 if __name__ == "__main__":

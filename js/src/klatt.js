@@ -3,7 +3,7 @@
  */
 import { textToIds } from './g2p.js';
 
-export const SAMPLE_RATE = 16000;
+export const SAMPLE_RATE = 24000;
 
 const VOWEL_FORMANTS = {
   '\u0905': [640, 1240, 2550, 0.085],
@@ -75,7 +75,7 @@ export function synthesizeKlattPcm(text, { lang = null, rate = 1.0, f0Base = 132
 
     let [f1, f2, f3, durV] = VOWEL_FORMANTS['\u0905'];
     if (s.endsWith('\u094d')) {
-      durV = 0.032;
+      durV = 0.000;
     } else {
       for (const ch of s) {
         if (VOWEL_FORMANTS[ch]) [f1, f2, f3, durV] = VOWEL_FORMANTS[ch];
@@ -136,22 +136,29 @@ export function synthesizeKlattPcm(text, { lang = null, rate = 1.0, f0Base = 132
   }
 
   if (totalSamples === 0) {
-    return { pcm: new Float32Array(1600), meta: { ...parsed, tier: 'klatt_zero_dep' } };
+    return { pcm: new Float32Array(2400), meta: { ...parsed, tier: 'klatt_zero_dep' } };
   }
 
   const out = new Float32Array(totalSamples);
   let offset = 0;
-  let peak = 1e-5;
   for (const ch of chunks) {
-    for (let i = 0; i < ch.length; i++) {
-      const a = Math.abs(ch[i]);
-      if (a > peak) peak = a;
-    }
     out.set(ch, offset);
     offset += ch.length;
   }
+
+  // Remove DC bias from cascaded resonators before peak scaling
+  let sum = 0.0;
+  for (let idx = 0; idx < out.length; idx++) sum += out[idx];
+  const mean = sum / out.length;
+  for (let idx = 0; idx < out.length; idx++) out[idx] -= mean;
+
+  let peak = 1e-5;
+  for (let idx = 0; idx < out.length; idx++) {
+    const a = Math.abs(out[idx]);
+    if (a > peak) peak = a;
+  }
   const gain = 0.82 / peak;
-  for (let i = 0; i < out.length; i++) out[i] *= gain;
+  for (let idx = 0; idx < out.length; idx++) out[idx] *= gain;
 
   return { pcm: out, meta: { ...parsed, tier: 'klatt_zero_dep' } };
 }

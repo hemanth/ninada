@@ -567,6 +567,7 @@
         </p>
       </div>
       <div class="masthead-badges">
+        <span class="pill-stat">24 KHZ STUDIO VOICE</span>
         <span class="pill-stat">6 INDIAN LANGUAGES</span>
         <span class="pill-stat">INSTANT STREAMING</span>
         <span class="pill-stat">OFFLINE CACHE</span>
@@ -650,7 +651,7 @@
           </button>
           <a id="downloadLink" class="btn-secondary is-disabled" aria-disabled="true" tabindex="-1" download="ninada_output.wav" href="#">
             <svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-            <span>16 kHz WAV</span>
+            <span>24 kHz WAV</span>
           </a>
         </div>
       </section>
@@ -701,7 +702,7 @@
       <div class="panel">
         <div class="panel-header">
           <h2 class="panel-title">04 / Streaming Architecture Blueprint</h2>
-          <span class="pill-stat">HALO-CHUNKED VITS + 16 KHZ HIFI-GAN</span>
+          <span class="pill-stat">24 KHZ STYLETTS2 + PL-BERT + ISTFTNET</span>
         </div>
         <img src="./flow-diagram.svg" alt="Ninada Streaming Pan-Indic Neural TTS Architecture Diagram" class="blueprint-img" />
       </div>
@@ -734,17 +735,17 @@
     }
 
     document.getElementById('sdkSnippet').textContent = [
-      "// JavaScript / Browser / Node.js (Streaming)",
+      "// JavaScript / Browser / Node.js (24 kHz Studio Streaming)",
       "import ninada from 'ninada';",
       "const voice = await ninada('kannada', {",
-      "  encoderModel: './encoder_flow_quantized.onnx',",
-      "  vocoderModel: './vocoder_quantized.onnx',",
+      "  model: './ninada_24k_q8f16.onnx',",
+      "  voice: './voices/kn.bin',",
       "});",
       "for await (const chunk of voice.stream(text)) {",
-      "  playPcm16k(chunk.pcm); // <250ms TTFA!",
+      "  playPcm24k(chunk.pcm); // 24 kHz studio PCM!",
       "}",
       "",
-      "# Python 3.10+ (Streaming)",
+      "# Python 3.10+ (24 kHz Studio Streaming)",
       "from ninada import Ninada",
       'for chunk in Ninada(lang="sa").stream(shloka):',
       '    play(chunk["pcm"], chunk["sample_rate"])',
@@ -1046,8 +1047,8 @@
     function beginLiveAudioSession() {
       activePlaySessionId += 1;
       const initialWatermark = window.crossOriginIsolated
-        ? Math.round(0.045 * SAMPLE_RATE)
-        : Math.round(0.28 * SAMPLE_RATE);
+        ? Math.round(0.28 * SAMPLE_RATE)
+        : Math.round(0.65 * SAMPLE_RATE);
       streamStats.underrunCount = 0;
       streamStats.playedSamples = 0;
       streamStats.bufferedSamples = 0;
@@ -1070,12 +1071,15 @@
     function pushLivePcmChunk(pcm, sampleRate = SAMPLE_RATE, chunkMeta = null) {
       if (!audioCtx || audioCtx.state !== 'running') return;
       if (workletReady && workletNode) {
-        // On non-COI 1-thread fallback CPUs, adapt watermark from measured Chunk 0 vocoder speed
-        if (chunkMeta && chunkMeta.index === 0) {
-          const estVocRtf = (chunkMeta.vocoderMs || chunkMeta.latencyMs || 0) / Math.max(120, (chunkMeta.durationSec || 0.5) * 1000);
-          if (estVocRtf > 0.52) {
-            const extraCushionSec = Math.min(1.8, Math.max(0.65, (estVocRtf - 0.40) * 2.4));
-            const adaptedWatermark = pcm.length + Math.round(extraCushionSec * sampleRate);
+        // Adapt pre-roll watermark from measured Clause 0 synthesis speed when CPU RTF > 0.78x (e.g. 1-thread fallback)
+        if (chunkMeta && chunkMeta.index === 0 && (chunkMeta.clauseCount || 1) > 1) {
+          const clauseDurSec = Math.max(0.25, Number(chunkMeta.clauseDurationSec || chunkMeta.durationSec || 0.8));
+          const estRtf = (chunkMeta.vocoderMs || chunkMeta.latencyMs || 0) / (clauseDurSec * 1000);
+          if (estRtf > 0.78) {
+            const remClauses = Math.max(1, (chunkMeta.clauseCount || 2) - 1);
+            const estRemSec = remClauses * Math.max(1.4, clauseDurSec * 1.45);
+            const extraCushionSec = Math.min(5.0, Math.max(0.75, (estRtf - 0.70) * estRemSec));
+            const adaptedWatermark = Math.round((clauseDurSec + extraCushionSec) * sampleRate);
             streamStats.watermarkSamples = adaptedWatermark;
             workletNode.port.postMessage({
               type: 'watermark',
@@ -1211,12 +1215,16 @@
       const txt = textInput.value.trim() || fallback;
       const info = textToIds(txt, { lang: activeLang });
       detectedBadge.textContent = `SCRIPT: ${info.script.toUpperCase()} \u00b7 ${info.lang.toUpperCase()}`;
-      metricTokens.textContent = `${info.aksharas.length} ak / ${info.inputIds.length} id`;
+      metricTokens.textContent = `${info.aksharas.length} ak / ${info.ipaIds.length} ph`;
 
       aksharaRibbon.innerHTML = '';
       const aks = info.aksharas || [];
       const maxCards = 96;
-      aks.slice(0, maxCards).forEach((ak, idx) => {
+      const totalWeight = aks.reduce((acc, a) => acc + (a.weight === 'G' ? 1.55 : a.weight === 'C' ? 0.60 : 1.0), 0) || 1;
+      const totalSpeechMs = durations && durations.length > 2
+        ? durations.slice(1, -1).reduce((s, d) => s + Number(d || 0), 0) * 25
+        : 0;
+      aks.slice(0, maxCards).forEach((ak) => {
         const card = document.createElement('div');
         card.className = `akshara-card ${ak.weight === 'G' ? 'guru' : ''}`;
         const g = document.createElement('div');
@@ -1225,9 +1233,9 @@
         const m = document.createElement('div');
         m.className = 'akshara-meta';
         let durTag = ak.weight;
-        if (durations && durations.length > 0) {
-          const tokIdx = Math.min(durations.length - 1, idx * 2 + 1);
-          const ms = Math.round(durations[tokIdx] * 16);
+        if (totalSpeechMs > 0) {
+          const w = ak.weight === 'G' ? 1.55 : ak.weight === 'C' ? 0.60 : 1.0;
+          const ms = Math.max(25, Math.round((totalSpeechMs * w) / totalWeight));
           durTag = `${ak.weight} \u00b7 ${ms}ms`;
         }
         m.textContent = durTag;
@@ -1236,7 +1244,7 @@
         aksharaRibbon.appendChild(card);
       });
 
-      phonemicLine.textContent = `Specialist Native Tokens (${info.lang.toUpperCase()}, ${info.inputIds.length} blank-interleaved IDs): ${info.nativeText}  |  Paninian Devanagari: ${info.normalizedDevanagari}`;
+      phonemicLine.textContent = `24 kHz Studio IPA (${info.lang.toUpperCase()}, ${info.ipaIds.length} tokens): /${info.ipa}/  |  Paninian Devanagari: ${info.normalizedDevanagari}`;
       return info;
     }
 

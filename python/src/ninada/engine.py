@@ -1,4 +1,4 @@
-"""Streaming Halo-Chunked Specialist Neural ONNX + Zero-Dep Klatt-Akshara Runtime Engine for Ninada v2.0."""
+"""Streaming 24 kHz Studio Neural ONNX (StyleTTS2 + PL-BERT + iSTFTNet) + Zero-Dep Klatt Runtime Engine for Ninada v3.0."""
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -11,8 +11,8 @@ from typing import Any
 
 from .g2p import LANGUAGE_IDS, text_to_ids
 
-SAMPLE_RATE = 16000
-HOP_LENGTH = 256
+SAMPLE_RATE = 24000
+HOP_LENGTH = 600
 
 VOWEL_FORMANTS: dict[str, tuple[float, float, float, float]] = {
     "\u0905": (640.0, 1240.0, 2550.0, 0.085),
@@ -94,13 +94,69 @@ def _biquad_resonator(samples: list[float], freq: float, bw: float, sr: int = SA
     return out
 
 
+def apply_dc_blocker_1pole(
+    pcm: Any,
+    r: float = 0.9965,
+    state: tuple[float, float] | None = None,
+) -> tuple[Any, tuple[float, float]]:
+    """Apply causal 1-pole DC blocking filter: y[n] = x[n] - x[n-1] + R * y[n-1] (fc ≈ 13.3 Hz @ 24 kHz)."""
+    import numpy as np
+
+    x_prev, y_prev = state if state is not None else (0.0, 0.0)
+    arr = np.asarray(pcm, dtype=np.float32)
+    if len(arr) == 0:
+        return arr, (x_prev, y_prev)
+
+    try:
+        from scipy.signal import lfilter
+
+        b = np.array([1.0, -1.0], dtype=np.float32)
+        a = np.array([1.0, -float(r)], dtype=np.float32)
+        zi = np.array([-x_prev + float(r) * y_prev], dtype=np.float32)
+        filtered, _ = lfilter(b, a, arr, zi=zi)
+        return filtered.astype(np.float32), (float(arr[-1]), float(filtered[-1]))
+    except Exception:
+        out = np.empty_like(arr)
+        r_f = float(r)
+        for n in range(len(arr)):
+            xn = float(arr[n])
+            yn = xn - x_prev + r_f * y_prev
+            out[n] = yn
+            x_prev = xn
+            y_prev = yn
+        return out.astype(np.float32), (x_prev, y_prev)
+
+
+def generate_room_tone(num_samples: int = 1920, seed: int = 1337) -> Any:
+    """Generate calibrated acoustic room tone (-58 dBFS 1-pole low-pass filtered noise with raised-cosine windowing)."""
+    import numpy as np
+
+    n = max(1, int(num_samples))
+    rng = np.random.default_rng(seed=seed)
+    raw_noise = rng.normal(0.0, 0.0035, size=n).astype(np.float32)
+    raw_noise = raw_noise - np.mean(raw_noise)
+    room_tone = np.empty(n, dtype=np.float32)
+    y = 0.0
+    alpha = 0.28
+    for i in range(n):
+        y = y + alpha * (raw_noise[i] - y)
+        room_tone[i] = y
+    room_tone = room_tone - np.mean(room_tone)
+    fade_len = min(192, n // 4)
+    if fade_len > 0:
+        f_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(fade_len, dtype=np.float32) / fade_len))
+        room_tone[:fade_len] *= f_in
+        room_tone[-fade_len:] *= f_in[::-1]
+    return room_tone
+
+
 def synthesize_klatt_pcm(
     text: str,
     lang: str | None = None,
     rate: float = 1.0,
     f0_base: float = 132.0,
 ) -> tuple[list[float], dict[str, Any]]:
-    """Tier-2 Zero-Dependency Cascade Klatt-Akshara Synthesizer (16 kHz float PCM)."""
+    """Tier-2 Zero-Dependency Cascade Klatt-Akshara Synthesizer (24 kHz float PCM)."""
     parsed = text_to_ids(text, lang=lang)
     aksharas = parsed["aksharas"]
     speed = max(0.45, min(2.5, float(rate)))
@@ -125,7 +181,7 @@ def synthesize_klatt_pcm(
 
         f1, f2, f3, dur_v = VOWEL_FORMANTS["\u0905"]
         if s.endswith("\u094d"):
-            dur_v = 0.032
+            dur_v = 0.0
         else:
             for ch in s:
                 if ch in VOWEL_FORMANTS:
@@ -142,8 +198,8 @@ def synthesize_klatt_pcm(
 
         onset_sec = (0.048 if is_sibilant else (0.036 if is_aspirated else 0.022)) / speed
         nucleus_sec = (dur_v + (0.035 if has_visarga else 0.0)) / speed
-        n_onset = max(16, int(round(onset_sec * SAMPLE_RATE)))
-        n_nuc = max(32, int(round(nucleus_sec * SAMPLE_RATE)))
+        n_onset = max(24, int(round(onset_sec * SAMPLE_RATE)))
+        n_nuc = max(48, int(round(nucleus_sec * SAMPLE_RATE)))
         n_tot = n_onset + n_nuc
 
         exc = [0.0] * n_tot
@@ -180,7 +236,9 @@ def synthesize_klatt_pcm(
         pcm.extend([0.0] * int(0.010 * SAMPLE_RATE / speed))
 
     if not pcm:
-        pcm = [0.0] * 1600
+        pcm = [0.0] * 2400
+    mean_val = sum(pcm) / len(pcm)
+    pcm = [x - mean_val for x in pcm]
     peak = max(1e-6, max(abs(x) for x in pcm))
     pcm = [0.82 * (x / peak) for x in pcm]
     parsed["tier"] = "klatt_zero_dep"
@@ -214,14 +272,27 @@ def encode_wav_bytes(pcm: Any, sr: int = SAMPLE_RATE) -> bytes:
     return header + pcm16
 
 
+def _has_pronounceable_content(parsed: dict[str, Any]) -> bool:
+    """Return True if parsed utterance contains at least one non-virama pronounceable akshara."""
+    aksharas = parsed.get("aksharas") or []
+    if not aksharas:
+        return False
+    for ak in aksharas:
+        core = str(ak.get("akshara", "")).replace("\u094d", "").strip()
+        if core:
+            return True
+    return False
+
+
 class Ninada:
-    """Ninada (निनाद) v2.0: Streaming Pan-Indic & Classical Sanskrit TTS (Per-Language Specialist ONNX + Klatt Tier-2)."""
+    """Ninada (निनाद) v3.0: Streaming 24 kHz Studio Pan-Indic & Classical Sanskrit TTS (StyleTTS2 + PL-BERT + iSTFTNet ONNX)."""
 
     def __init__(
         self,
         model_path: str | Path | None = None,
         encoder_path: str | Path | None = None,
         vocoder_path: str | Path | None = None,
+        voice_dir: str | Path | None = None,
         lang: str = "sa",
     ) -> None:
         self.default_lang = lang if lang in LANGUAGE_IDS else "sa"
@@ -231,13 +302,25 @@ class Ninada:
         self.model_path: Path | None = None
         self._explicit_override = bool(model_path or encoder_path or vocoder_path)
         self._lang_sessions: dict[str, tuple[Any, Any]] = {}
+        self._voice_banks: dict[str, Any] = {}
         self._repo_root = Path(__file__).resolve().parents[3]
+        self._voice_dir = Path(voice_dir) if voice_dir is not None else None
 
         if model_path is not None and Path(model_path).is_dir():
             d = Path(model_path)
-            if (d / self.default_lang / "encoder_flow_quantized.onnx").exists():
-                self._explicit_override = False
+            if (d / "ninada_24k_q8f16.onnx").exists():
+                model_path = d / "ninada_24k_q8f16.onnx"
+                if self._voice_dir is None and (d / "voices").is_dir():
+                    self._voice_dir = d / "voices"
                 self._onnx_base_dir: Path | None = d
+            elif (d / "onnx" / "ninada_24k_q8f16.onnx").exists():
+                model_path = d / "onnx" / "ninada_24k_q8f16.onnx"
+                if self._voice_dir is None and (d / "voices").is_dir():
+                    self._voice_dir = d / "voices"
+                self._onnx_base_dir = d
+            elif (d / self.default_lang / "encoder_flow_quantized.onnx").exists():
+                self._explicit_override = False
+                self._onnx_base_dir = d
             elif (d / "encoder_flow_quantized.onnx").exists() and (d / "vocoder_quantized.onnx").exists():
                 encoder_path = d / "encoder_flow_quantized.onnx"
                 vocoder_path = d / "vocoder_quantized.onnx"
@@ -262,14 +345,106 @@ class Ninada:
                 elif model_path is not None and Path(model_path).exists():
                     self.model_path = Path(model_path)
                     self.session = ort.InferenceSession(str(self.model_path), providers=["CPUExecutionProvider"])
+                    if self._voice_dir is None and (self.model_path.parent / "voices").is_dir():
+                        self._voice_dir = self.model_path.parent / "voices"
+                    elif self._voice_dir is None and (self.model_path.parent.parent / "voices").is_dir():
+                        self._voice_dir = self.model_path.parent.parent / "voices"
             except Exception:
                 self.session = None
                 self.enc_session = None
                 self.voc_session = None
         else:
-            pair = self._get_specialist_sessions(self.default_lang)
-            if pair is not None:
-                self.enc_session, self.voc_session = pair
+            sess_24k = self._discover_unified_24k_session()
+            if sess_24k is not None:
+                self.session = sess_24k
+            else:
+                pair = self._get_specialist_sessions(self.default_lang)
+                if pair is not None:
+                    self.enc_session, self.voc_session = pair
+
+    def _discover_unified_24k_session(self) -> Any:
+        if self.session is not None:
+            return self.session
+
+        candidates: list[Path] = []
+        if self._onnx_base_dir is not None:
+            candidates.append(self._onnx_base_dir / "ninada_24k_q8f16.onnx")
+            candidates.append(self._onnx_base_dir / "onnx" / "ninada_24k_q8f16.onnx")
+        candidates.extend(
+            [
+                self._repo_root / "docs" / "ninada_24k_q8f16.onnx",
+                self._repo_root / "artifacts" / "ninada_v3" / "onnx" / "ninada_24k_q8f16.onnx",
+                self._repo_root / "artifacts" / "ninada" / "onnx" / "ninada_24k_q8f16.onnx",
+            ]
+        )
+        onnx_path: Path | None = None
+        for p in candidates:
+            if p.exists():
+                onnx_path = p
+                break
+
+        if onnx_path is None:
+            try:
+                from huggingface_hub import hf_hub_download
+
+                onnx_path = Path(
+                    hf_hub_download(repo_id="gnumanth/ninada", filename="onnx/ninada_24k_q8f16.onnx")
+                )
+            except Exception:
+                onnx_path = None
+
+        if onnx_path is not None and onnx_path.exists():
+            try:
+                import onnxruntime as ort
+
+                sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+                self.model_path = onnx_path
+                return sess
+            except Exception:
+                return None
+        return None
+
+    def _get_voice_style(self, lang: str, num_ipa_tokens: int) -> Any:
+        import numpy as np
+
+        lc = lang if lang in LANGUAGE_IDS else "sa"
+        bank = self._voice_banks.get(lc)
+        if bank is None:
+            search_paths: list[Path] = []
+            if self._voice_dir is not None:
+                search_paths.append(self._voice_dir / f"{lc}.bin")
+            if self.model_path is not None:
+                search_paths.append(self.model_path.parent / "voices" / f"{lc}.bin")
+                search_paths.append(self.model_path.parent.parent / "voices" / f"{lc}.bin")
+            search_paths.extend(
+                [
+                    self._repo_root / "docs" / "voices" / f"{lc}.bin",
+                    self._repo_root / "artifacts" / "ninada_v3" / "voices" / f"{lc}.bin",
+                    self._repo_root / "artifacts" / "ninada" / "voices" / f"{lc}.bin",
+                ]
+            )
+            bin_path: Path | None = None
+            for p in search_paths:
+                if p.exists() and p.stat().st_size == 510 * 256 * 4:
+                    bin_path = p
+                    break
+            if bin_path is None:
+                try:
+                    from huggingface_hub import hf_hub_download
+
+                    dl = Path(hf_hub_download(repo_id="gnumanth/ninada", filename=f"voices/{lc}.bin"))
+                    if dl.exists() and dl.stat().st_size == 510 * 256 * 4:
+                        bin_path = dl
+                except Exception:
+                    bin_path = None
+            if bin_path is not None:
+                bank = np.fromfile(str(bin_path), dtype=np.float32).reshape(510, 1, 256)
+            else:
+                bank = np.zeros((510, 1, 256), dtype=np.float32)
+            self._voice_banks[lc] = bank
+
+        row = min(509, max(0, int(num_ipa_tokens) - 2))
+        return bank[row].astype(np.float32)
 
     def _get_specialist_sessions(self, lang: str) -> tuple[Any, Any] | None:
         lc = lang if lang in LANGUAGE_IDS else "sa"
@@ -295,30 +470,6 @@ class Ninada:
                 enc_p, voc_p = ef, vf
                 break
 
-        if enc_p is None:
-            try:
-                from huggingface_hub import hf_hub_download
-
-                enc_p = Path(
-                    hf_hub_download(repo_id="gnumanth/ninada", filename=f"onnx/{lc}/encoder_flow_quantized.onnx")
-                )
-                voc_p = Path(
-                    hf_hub_download(repo_id="gnumanth/ninada", filename=f"onnx/{lc}/vocoder_quantized.onnx")
-                )
-            except Exception:
-                if lc == "sa":
-                    try:
-                        from huggingface_hub import hf_hub_download
-
-                        enc_p = Path(
-                            hf_hub_download(repo_id="gnumanth/ninada", filename="onnx/encoder_flow_quantized.onnx")
-                        )
-                        voc_p = Path(
-                            hf_hub_download(repo_id="gnumanth/ninada", filename="onnx/vocoder_quantized.onnx")
-                        )
-                    except Exception:
-                        enc_p = None
-
         if enc_p and voc_p and enc_p.exists() and voc_p.exists():
             try:
                 import onnxruntime as ort
@@ -336,10 +487,17 @@ class Ninada:
     @property
     def is_neural(self) -> bool:
         return (
-            bool(self._lang_sessions)
+            (self.session is not None)
+            or bool(self._lang_sessions)
             or (self.enc_session is not None and self.voc_session is not None)
-            or (self.session is not None)
         )
+
+    @property
+    def is_24k_studio(self) -> bool:
+        if self.session is None:
+            return False
+        in_names = {i.name for i in self.session.get_inputs()}
+        return "style" in in_names and "speed" in in_names
 
     def with_lang(self, lang: str) -> "Ninada":
         if lang in LANGUAGE_IDS:
@@ -358,13 +516,139 @@ class Ninada:
         halo_frames: int = 12,
         crossfade_samples: int = 256,
     ) -> Iterator[dict[str, Any]]:
-        """Stream audio chunks (<200 ms TTFA) via 12-frame halo + 256-sample raised-cosine crossfaded HiFi-GAN."""
+        """Stream 24 kHz studio neural audio chunks (StyleTTS2 + PL-BERT + iSTFTNet ONNX) or Tier-2 Klatt fallback."""
         use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
+        eff_rate = max(0.45, min(2.5, float(rate)))
         clauses = split_prosodic_clauses(text)
         t_start = time.perf_counter()
         ttfa_ms: float | None = None
         chunk_idx = 0
 
+        # Path 1: Primary 24 kHz Unified Studio ONNX (`input_ids`, `style`, `speed`)
+        if tier != "klatt" and self.is_24k_studio:
+            import numpy as np
+
+            if not clauses:
+                silent = generate_room_tone(num_samples=int(0.10 * SAMPLE_RATE), seed=1337)
+                ttfa_ms = (time.perf_counter() - t_start) * 1000.0
+                yield {
+                    "pcm": silent,
+                    "wav": encode_wav_bytes(silent, sr=SAMPLE_RATE),
+                    "sample_rate": SAMPLE_RATE,
+                    "index": 0,
+                    "clause_index": 0,
+                    "clause_count": 1,
+                    "is_final": True,
+                    "duration_sec": len(silent) / SAMPLE_RATE,
+                    "latency_ms": ttfa_ms,
+                    "ttfa_ms": ttfa_ms,
+                    "lang": use_lang,
+                    "tier": "neural_onnx",
+                    "aksharas": [],
+                    "durations": [],
+                }
+                return
+
+            chunk_f = max(24, int(chunk_frames))
+            chunk_samples = chunk_f * HOP_LENGTH
+            min_tail_samples = 16 * HOP_LENGTH
+            filter_state: tuple[float, float] = (0.0, 0.0)
+
+            for c_idx, clause in enumerate(clauses):
+                t_c = time.perf_counter()
+                parsed = text_to_ids(clause, lang=use_lang)
+
+                if not _has_pronounceable_content(parsed):
+                    silent = generate_room_tone(num_samples=int(0.10 * SAMPLE_RATE), seed=1337 + c_idx)
+                    now_ms = (time.perf_counter() - t_start) * 1000.0
+                    if ttfa_ms is None:
+                        ttfa_ms = now_ms
+                    yield {
+                        "pcm": silent,
+                        "wav": encode_wav_bytes(silent, sr=SAMPLE_RATE),
+                        "sample_rate": SAMPLE_RATE,
+                        "index": chunk_idx,
+                        "clause_index": c_idx,
+                        "clause_count": len(clauses),
+                        "is_final": c_idx == len(clauses) - 1,
+                        "duration_sec": len(silent) / SAMPLE_RATE,
+                        "latency_ms": (time.perf_counter() - t_c) * 1000.0,
+                        "ttfa_ms": ttfa_ms,
+                        "lang": parsed["lang"],
+                        "tier": "neural_onnx",
+                        "aksharas": parsed["aksharas"],
+                        "durations": [],
+                    }
+                    chunk_idx += 1
+                    continue
+
+                ipa_ids = parsed["ipa_ids"]
+                style_vec = self._get_voice_style(parsed["lang"], len(ipa_ids))
+                ort_in = {
+                    "input_ids": np.array([ipa_ids], dtype=np.int64),
+                    "style": style_vec,
+                    "speed": np.array([eff_rate], dtype=np.float32),
+                }
+                wav_out, durs_out = self.session.run(None, ort_in)
+                clause_pcm = np.asarray(wav_out, dtype=np.float32).reshape(-1).copy()
+                durs_list = np.asarray(durs_out, dtype=np.int64).reshape(-1).tolist()
+
+                clause_pcm, filter_state = apply_dc_blocker_1pole(clause_pcm, r=0.9965, state=filter_state)
+                if len(clause_pcm) > 192:
+                    r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 192.0))
+                    clause_pcm[:192] *= r_in
+                if len(clause_pcm) > 256:
+                    r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 256.0))
+                    clause_pcm[-256:] *= r_out
+                if c_idx < len(clauses) - 1:
+                    pause_samples = int(0.055 * SAMPLE_RATE)
+                    room_tone = generate_room_tone(num_samples=pause_samples, seed=1337 + c_idx)
+                    clause_pcm = np.concatenate([clause_pcm, room_tone])
+
+                peak = float(np.max(np.abs(clause_pcm))) if len(clause_pcm) > 0 else 0.0
+                if peak > 0.96:
+                    clause_pcm = (0.92 * (clause_pcm / peak)).astype(np.float32)
+
+                # Slice long clause PCM into contiguous frame-aligned sub-chunks for steady ring-buffer pacing
+                total_s = len(clause_pcm)
+                bounds: list[tuple[int, int]] = []
+                cur = 0
+                while cur < total_s:
+                    nxt = min(total_s, cur + chunk_samples)
+                    if total_s - nxt < min_tail_samples:
+                        nxt = total_s
+                    bounds.append((cur, nxt))
+                    cur = nxt
+                if not bounds:
+                    bounds = [(0, total_s)]
+
+                clause_elapsed_ms = (time.perf_counter() - t_c) * 1000.0
+                for sub_i, (st_s, ed_s) in enumerate(bounds):
+                    sub_pcm = clause_pcm[st_s:ed_s]
+                    is_last_sub = sub_i == len(bounds) - 1
+                    now_ms = (time.perf_counter() - t_start) * 1000.0
+                    if ttfa_ms is None:
+                        ttfa_ms = now_ms
+                    yield {
+                        "pcm": sub_pcm,
+                        "wav": encode_wav_bytes(sub_pcm, sr=SAMPLE_RATE),
+                        "sample_rate": SAMPLE_RATE,
+                        "index": chunk_idx,
+                        "clause_index": c_idx,
+                        "clause_count": len(clauses),
+                        "is_final": (c_idx == len(clauses) - 1) and is_last_sub,
+                        "duration_sec": len(sub_pcm) / SAMPLE_RATE,
+                        "latency_ms": clause_elapsed_ms if sub_i == 0 else 0.05,
+                        "ttfa_ms": ttfa_ms,
+                        "lang": parsed["lang"],
+                        "tier": "neural_onnx",
+                        "aksharas": parsed["aksharas"] if sub_i == 0 else [],
+                        "durations": durs_list if sub_i == 0 else [],
+                    }
+                    chunk_idx += 1
+            return
+
+        # Path 2: Legacy 2-stage encoder + vocoder sessions (if explicitly configured)
         enc_sess = self.enc_session
         voc_sess = self.voc_session
         if not self._explicit_override and tier != "klatt":
@@ -375,9 +659,10 @@ class Ninada:
         if tier != "klatt" and enc_sess is not None and voc_sess is not None:
             import numpy as np
 
+            legacy_hop = 256
             chunk_f = max(24, int(chunk_frames))
             halo_f = max(8, int(halo_frames))
-            xfade = max(0, min(int(crossfade_samples), halo_f * HOP_LENGTH // 2))
+            xfade = max(0, min(int(crossfade_samples), halo_f * legacy_hop // 2))
 
             enc_in_names = {i.name for i in enc_sess.get_inputs()}
             voc_in_names = {i.name for i in voc_sess.get_inputs()}
@@ -392,19 +677,20 @@ class Ninada:
             global_ord = 0
             for c_idx, clause in enumerate(clauses):
                 parsed = text_to_ids(clause, lang=use_lang)
-                ort_in: dict[str, Any] = {
+                ort_in_leg: dict[str, Any] = {
                     "input_ids": np.array([parsed["input_ids"]], dtype=np.int64),
                     "attention_mask": np.array([parsed["attention_mask"]], dtype=np.int64),
                 }
                 if "lang_id" in enc_in_names:
-                    ort_in["lang_id"] = np.array([parsed["lang_id"]], dtype=np.int64)
-                    ort_in["scales"] = np.array([float(rate), float(noise)], dtype=np.float32)
+                    ort_in_leg["lang_id"] = np.array([parsed["lang_id"]], dtype=np.int64)
+                    ort_in_leg["scales"] = np.array([eff_rate, float(noise)], dtype=np.float32)
                 else:
-                    ort_in["scales"] = np.array(
-                        [float(rate), float(noise), float(noise_duration)], dtype=np.float32
+                    eff_noise_dur = 0.80 if noise_duration is None else float(noise_duration)
+                    ort_in_leg["scales"] = np.array(
+                        [eff_rate, float(noise), eff_noise_dur], dtype=np.float32
                     )
 
-                enc_outs = enc_sess.run(None, ort_in)
+                enc_outs = enc_sess.run(None, ort_in_leg)
                 if len(enc_outs) == 3:
                     latents, voice_cond, durs = enc_outs
                 else:
@@ -412,7 +698,7 @@ class Ninada:
                     voice_cond = None
 
                 total_frames = int(latents.shape[2])
-                bounds: list[tuple[int, int]] = []
+                bounds = []
                 cur = 0
                 while cur < total_frames:
                     step = min(chunk_f, 48) if global_ord == 0 else chunk_f
@@ -425,6 +711,7 @@ class Ninada:
 
                 num_sub = max(1, len(bounds))
                 prev_tail: np.ndarray | None = None
+                filter_state = (0.0, 0.0)
 
                 for sub_i, (st, ed) in enumerate(bounds):
                     is_last_sub = sub_i == num_sub - 1
@@ -437,8 +724,8 @@ class Ninada:
                         voc_in["voice_cond"] = voice_cond
                     wav_win = voc_sess.run(None, voc_in)[0][0]
 
-                    crop_l = (st - w_st) * HOP_LENGTH
-                    crop_r = crop_l + (ed - st) * HOP_LENGTH
+                    crop_l = (st - w_st) * legacy_hop
+                    crop_r = crop_l + (ed - st) * legacy_hop
                     extra_r = min(len(wav_win), crop_r + (0 if is_last_sub else xfade))
                     seg = wav_win[crop_l:extra_r].astype(np.float32).copy()
 
@@ -452,24 +739,17 @@ class Ninada:
                         prev_tail = None
                         pcm = seg[: crop_r - crop_l]
 
-                    # Micro-envelope on clause start/end + natural breath pause between multi-clause sentences
+                    pcm, filter_state = apply_dc_blocker_1pole(pcm, r=0.995, state=filter_state)
                     if sub_i == 0 and len(pcm) > 192:
                         r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 192.0))
                         pcm[:192] *= r_in
                     if is_last_sub and len(pcm) > 256:
                         r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 256.0))
                         pcm[-256:] *= r_out
-                        if c_idx < len(clauses) - 1:
-                            pcm = np.concatenate([pcm, np.zeros(int(0.08 * SAMPLE_RATE), dtype=np.float32)])
-
-                    peak = float(np.max(np.abs(pcm))) if len(pcm) > 0 else 0.0
-                    if peak > 0.98:
-                        pcm = (0.94 * (pcm / peak)).astype(np.float32)
 
                     now_ms = (time.perf_counter() - t_start) * 1000.0
                     if ttfa_ms is None:
                         ttfa_ms = now_ms
-                    is_final = (c_idx == len(clauses) - 1) and is_last_sub
                     yield {
                         "pcm": pcm,
                         "wav": encode_wav_bytes(pcm, sr=SAMPLE_RATE),
@@ -477,7 +757,7 @@ class Ninada:
                         "index": chunk_idx,
                         "clause_index": c_idx,
                         "clause_count": len(clauses),
-                        "is_final": is_final,
+                        "is_final": (c_idx == len(clauses) - 1) and is_last_sub,
                         "duration_sec": len(pcm) / SAMPLE_RATE,
                         "latency_ms": (time.perf_counter() - t_c) * 1000.0,
                         "ttfa_ms": ttfa_ms,
@@ -489,6 +769,7 @@ class Ninada:
                     chunk_idx += 1
             return
 
+        # Path 3: Legacy monolithic VITS ONNX (if explicitly configured)
         if tier != "klatt" and self.session is not None:
             import numpy as np
 
@@ -496,22 +777,19 @@ class Ninada:
             for c_idx, clause in enumerate(clauses):
                 t_c = time.perf_counter()
                 parsed = text_to_ids(clause, lang=use_lang)
-                ort_in = {
+                ort_in_m = {
                     "input_ids": np.array([parsed["input_ids"]], dtype=np.int64),
                     "attention_mask": np.array([parsed["attention_mask"]], dtype=np.int64),
                 }
                 if "lang_id" in in_names:
-                    ort_in["lang_id"] = np.array([parsed["lang_id"]], dtype=np.int64)
-                    ort_in["scales"] = np.array([float(rate), float(noise)], dtype=np.float32)
+                    ort_in_m["lang_id"] = np.array([parsed["lang_id"]], dtype=np.int64)
+                    ort_in_m["scales"] = np.array([eff_rate, float(noise)], dtype=np.float32)
                 else:
-                    ort_in["scales"] = np.array(
-                        [float(rate), float(noise), float(noise_duration)], dtype=np.float32
-                    )
-                wav, durs = self.session.run(None, ort_in)
+                    eff_noise_dur = 0.80 if noise_duration is None else float(noise_duration)
+                    ort_in_m["scales"] = np.array([eff_rate, float(noise), eff_noise_dur], dtype=np.float32)
+                wav, durs = self.session.run(None, ort_in_m)
                 pcm = wav[0].astype(np.float32)
-                peak = float(np.max(np.abs(pcm))) if len(pcm) > 0 else 0.0
-                if peak > 1e-4:
-                    pcm = 0.88 * (pcm / max(1.0, peak))
+                pcm = (pcm - np.mean(pcm)).astype(np.float32)
                 if ttfa_ms is None:
                     ttfa_ms = (time.perf_counter() - t_start) * 1000.0
                 yield {
@@ -533,9 +811,31 @@ class Ninada:
                 chunk_idx += 1
             return
 
+        # Path 4: Zero-Dependency Klatt Tier-2 Clause Streaming
+        if not clauses:
+            pcm_list, parsed = synthesize_klatt_pcm(text, lang=use_lang, rate=eff_rate)
+            ttfa_ms = (time.perf_counter() - t_start) * 1000.0
+            yield {
+                "pcm": pcm_list,
+                "wav": encode_wav_bytes(pcm_list, sr=SAMPLE_RATE),
+                "sample_rate": SAMPLE_RATE,
+                "index": 0,
+                "clause_index": 0,
+                "clause_count": 1,
+                "is_final": True,
+                "duration_sec": len(pcm_list) / SAMPLE_RATE,
+                "latency_ms": ttfa_ms,
+                "ttfa_ms": ttfa_ms,
+                "lang": parsed["lang"],
+                "tier": "klatt_zero_dep",
+                "aksharas": parsed["aksharas"],
+                "durations": [],
+            }
+            return
+
         for c_idx, clause in enumerate(clauses):
             t_c = time.perf_counter()
-            pcm_list, parsed = synthesize_klatt_pcm(clause, lang=use_lang, rate=rate)
+            pcm_list, parsed = synthesize_klatt_pcm(clause, lang=use_lang, rate=eff_rate)
             if ttfa_ms is None:
                 ttfa_ms = (time.perf_counter() - t_start) * 1000.0
             yield {
@@ -562,10 +862,18 @@ class Ninada:
         lang: str | None = None,
         rate: float = 1.0,
         noise: float = 0.667,
+        noise_duration: float = 0.80,
         tier: str = "auto",
     ) -> bytes:
-        """Synthesize text into 16 kHz mono WAV bytes."""
-        pcm, _ = self.synthesize(text=text, lang=lang, rate=rate, noise=noise, tier=tier)
+        """Synthesize text into 24 kHz mono WAV bytes."""
+        pcm, _ = self.synthesize(
+            text=text,
+            lang=lang,
+            rate=rate,
+            noise=noise,
+            noise_duration=noise_duration,
+            tier=tier,
+        )
         return encode_wav_bytes(pcm, sr=SAMPLE_RATE)
 
     def synthesize(
@@ -574,9 +882,10 @@ class Ninada:
         lang: str | None = None,
         rate: float = 1.0,
         noise: float = 0.667,
+        noise_duration: float = 0.80,
         tier: str = "auto",
     ) -> tuple[Any, dict[str, Any]]:
-        """Synthesize full waveform array + linguistic metadata using halo-crossfaded streaming chunks."""
+        """Synthesize full 24 kHz waveform array + linguistic metadata."""
         use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
         parsed = text_to_ids(text, lang=use_lang)
 
@@ -586,14 +895,22 @@ class Ninada:
             pieces: list[np.ndarray] = []
             all_durs: list[int] = []
             ttfa_ms = 0.0
-            for ch in self.stream(text=text, lang=use_lang, rate=rate, noise=noise, tier=tier):
+            for ch in self.stream(
+                text=text,
+                lang=use_lang,
+                rate=rate,
+                noise=noise,
+                noise_duration=noise_duration,
+                tier=tier,
+            ):
                 pieces.append(np.asarray(ch["pcm"], dtype=np.float32))
                 if ch.get("durations"):
                     all_durs.extend(ch["durations"])
                 ttfa_ms = float(ch["ttfa_ms"])
-            waveform = np.concatenate(pieces, axis=0) if pieces else np.zeros(1600, dtype=np.float32)
+            waveform = np.concatenate(pieces, axis=0) if pieces else np.zeros(2400, dtype=np.float32)
+            waveform = (waveform - np.mean(waveform)).astype(np.float32)
             peak = float(np.max(np.abs(waveform))) if len(waveform) > 0 else 0.0
-            if peak > 1e-4:
+            if peak > 0.02:
                 waveform = 0.88 * (waveform / max(1.0, peak))
             parsed["tier"] = "neural_onnx"
             parsed["durations"] = all_durs
@@ -605,9 +922,23 @@ class Ninada:
         return pcm, parsed
 
 
-def speak(text: str, lang: str = "sa", rate: float = 1.0, tier: str = "auto") -> bytes:
-    """One-line convenience helper to synthesize 16 kHz RIFF WAV bytes."""
-    return Ninada(lang=lang).speak(text, lang=lang, rate=rate, tier=tier)
+def speak(
+    text: str,
+    lang: str = "sa",
+    rate: float = 1.0,
+    noise: float = 0.667,
+    noise_duration: float = 0.80,
+    tier: str = "auto",
+) -> bytes:
+    """One-line convenience helper to synthesize 24 kHz RIFF WAV bytes."""
+    return Ninada(lang=lang).speak(
+        text,
+        lang=lang,
+        rate=rate,
+        noise=noise,
+        noise_duration=noise_duration,
+        tier=tier,
+    )
 
 
 def stream(
@@ -615,10 +946,17 @@ def stream(
     lang: str = "sa",
     rate: float = 1.0,
     noise: float = 0.667,
+    noise_duration: float = 0.80,
     tier: str = "auto",
     chunk_frames: int = 64,
 ) -> Iterator[dict[str, Any]]:
-    """One-line convenience generator to stream 16 kHz audio chunks with <200 ms TTFA."""
+    """One-line convenience generator to stream 24 kHz audio chunks with low TTFA."""
     yield from Ninada(lang=lang).stream(
-        text, lang=lang, rate=rate, noise=noise, tier=tier, chunk_frames=chunk_frames
+        text,
+        lang=lang,
+        rate=rate,
+        noise=noise,
+        noise_duration=noise_duration,
+        tier=tier,
+        chunk_frames=chunk_frames,
     )

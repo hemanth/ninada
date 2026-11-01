@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 340" width="980" height="340" role="img" aria-label="Ninada Pan-Indic and Classical Sanskrit Neural TTS Architecture Blueprint">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 340" width="980" height="340" role="img" aria-label="Ninada 24 kHz Pan-Indic and Classical Sanskrit Studio Neural TTS Architecture Blueprint">
   <defs>
     <style>
       .canvas { fill: #fafaf7; }
@@ -22,7 +22,7 @@
   <rect class="canvas" x="0" y="0" width="980" height="340" rx="8" />
   <rect class="frame" x="14" y="14" width="952" height="312" rx="6" />
 
-  <text class="kicker" x="32" y="38">NINADA // STREAMING PAN-INDIC &amp; CLASSICAL SANSKRIT AKSHARA-TO-WAVEFORM ARCHITECTURE (SA · HI · KN · TA · TE · ML)</text>
+  <text class="kicker" x="32" y="38">NINADA v3.0 // 24 KHZ STUDIO PAN-INDIC &amp; CLASSICAL SANSKRIT NEURAL TTS ARCHITECTURE (SA · HI · KN · TA · TE · ML)</text>
   <line x1="32" y1="48" x2="948" y2="48" stroke="#dcdad2" stroke-width="1" />
 
   <!-- Stage 1: Script Input -->
@@ -31,51 +31,51 @@
   <text class="title" x="46" y="135">Brahmic &amp; IAST</text>
   <text class="sub" x="46" y="156">Devanagari · Kannada</text>
   <text class="sub" x="46" y="173">Tamil · Telugu · Mal.</text>
-  <text class="sub" x="46" y="190">Prosodic Danda Split</text>
+  <text class="sub" x="46" y="190">Breath-Group Split</text>
 
   <!-- Arrow 1->2 -->
   <line class="wire" x1="198" y1="153" x2="230" y2="153" marker-end="url(#arrow)" />
 
-  <!-- Stage 2: Pan-Indic G2P -->
+  <!-- Stage 2: Pan-Indic IPA G2P -->
   <rect class="node" x="234" y="92" width="188" height="122" rx="6" />
-  <text class="kicker" x="248" y="114">02 / NATIVE AKSHARA G2P</text>
-  <text class="title" x="248" y="135">6-Script Specialist Map</text>
-  <text class="sub" x="248" y="156">0x80 ISCII + Kannada SA</text>
-  <text class="sub" x="248" y="173">Paninian Sandhi + Anusvara</text>
-  <text class="sub" x="248" y="190">CTC Blank + Final Boundary</text>
+  <text class="kicker" x="248" y="114">02 / PAN-INDIC IPA G2P</text>
+  <text class="title" x="248" y="135">Zero-Dep Phonemizer</text>
+  <text class="sub" x="248" y="156">Paninian Sandhi + Schwa</text>
+  <text class="sub" x="248" y="173">Tamil Lenition + Chillus</text>
+  <text class="sub" x="248" y="190">Slot 79 Retroflex [ɭ]</text>
 
   <!-- Arrow 2->3 (Tier 1) -->
   <line class="wire" x1="422" y1="136" x2="458" y2="136" marker-end="url(#arrow)" />
   <!-- Arrow 2->Tier 2 fallback -->
   <path class="dashed" d="M 328 214 L 328 268 L 458 268" marker-end="url(#arrow)" />
 
-  <!-- Stage 3: Focal Node - Streaming Encoder + Flow -->
+  <!-- Stage 3: Focal Node - StyleTTS2 + PL-BERT + ProsodyPredictor -->
   <rect class="focal" x="462" y="74" width="252" height="132" rx="6" />
-  <text class="focal-sub" x="478" y="96">03 / STAGE-1 ENCODER + FLOW</text>
-  <text class="focal-title" x="478" y="119">6x Ninada Voice Specialists</text>
-  <text class="focal-sub" x="478" y="141">Akshara Text Encoder + SDP</text>
-  <text class="focal-sub" x="478" y="159">4-Step Reversible Latent Flow</text>
-  <text class="focal-sub" x="478" y="177">Studio Voice Conditioning</text>
-  <text class="focal-sub" x="478" y="194">27.3 MB FP16 ONNX · Cached</text>
+  <text class="focal-sub" x="478" y="96">03 / CONTEXTUAL PROSODY</text>
+  <text class="focal-title" x="478" y="119">StyleTTS2 + PL-BERT Acoustic</text>
+  <text class="focal-sub" x="478" y="141">12-Layer Contextual PL-BERT</text>
+  <text class="focal-sub" x="478" y="159">Explicit F0 + Energy + Duration</text>
+  <text class="focal-sub" x="478" y="177">6x Studio Voice Banks (510 KB)</text>
+  <text class="focal-sub" x="478" y="194">87.5 MB Unified q8f16 ONNX</text>
 
   <!-- Stage 3B: Tier 2 Zero-Dep Klatt -->
   <rect class="node" x="462" y="232" width="252" height="72" rx="6" />
   <text class="kicker" x="478" y="252">03B / TIER-2 ZERO-DEP STREAM</text>
   <text class="title" x="478" y="271">Cascade Klatt-Akshara Synth</text>
-  <text class="sub" x="478" y="290">0.0 MB · Rosenberg Glottal + F1-F3</text>
+  <text class="sub" x="478" y="290">0.0 MB · 24 kHz Glottal + F1-F3</text>
 
   <!-- Arrow 3->4 -->
   <line class="wire" x1="714" y1="140" x2="752" y2="140" marker-end="url(#arrow)" />
   <path class="dashed" d="M 714 268 L 850 268 L 850 218" marker-end="url(#arrow)" />
 
-  <!-- Stage 4: Halo-Chunked HiFi-GAN & Stream Output -->
+  <!-- Stage 4: Harmonic-Source iSTFTNet 24 kHz Fourier Vocoder -->
   <rect class="node" x="756" y="92" width="192" height="122" rx="6" />
-  <text class="kicker" x="770" y="114">04 / STREAMING VOCODER</text>
-  <text class="title" x="770" y="135">Halo-Chunk HiFi-GAN</text>
-  <text class="sub" x="770" y="156">12f Halo + 256s Crossfade</text>
-  <text class="sub" x="770" y="173">27.4 MB ONNX · 122.1 dB SNR</text>
-  <text class="sub" x="770" y="190">48 kHz AudioWorklet Stream</text>
+  <text class="kicker" x="770" y="114">04 / FOURIER VOCODER</text>
+  <text class="title" x="770" y="135">Harmonic iSTFTNet</text>
+  <text class="sub" x="770" y="156">SineGen Harmonic Source</text>
+  <text class="sub" x="770" y="173">Exact Magnitude + Phase iSTFT</text>
+  <text class="sub" x="770" y="190">24 kHz AudioWorklet Stream</text>
 
   <!-- Footer telemetry bar -->
-  <text class="badge" x="32" y="312">RUNTIME: MULTI-CORE WASM + AUDIOWORKLET + CACHESTORAGE + PYTHON + NODE // MIT LICENSE</text>
+  <text class="badge" x="32" y="312">RUNTIME: MULTI-CORE WASM SIMD + 24 KHZ AUDIOWORKLET + CACHESTORAGE + PYTHON + NODE // MIT LICENSE</text>
 </svg>

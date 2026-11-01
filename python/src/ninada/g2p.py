@@ -5,6 +5,8 @@ import re
 import unicodedata
 from typing import Any
 
+from .ipa_g2p import IPA_ID_TO_TOKEN, IPA_VOCAB, RETROFLEX_LATERAL_ID, ipa_to_ids, text_to_ipa
+
 # Canonical 87-symbol Pan-Indic & Classical/Vedic Sanskrit inspection vocabulary
 VOCAB_TOKENS: list[str] = [
     "फ", "4", "1", "-", "अ", "इ", "8", " ", "0", "छ",
@@ -22,7 +24,26 @@ VOCAB_TOKENS: list[str] = [
 
 TOKEN_TO_ID: dict[str, int] = {tok: idx for idx, tok in enumerate(VOCAB_TOKENS)}
 ID_TO_TOKEN: dict[int, str] = {idx: tok for idx, tok in enumerate(VOCAB_TOKENS)}
-BLANK_ID: int = 0
+
+# Dedicated non-colliding padding / blank token definitions
+PAD_TOKEN: str = "_"
+BLANK_ID: int = TOKEN_TO_ID.get(PAD_TOKEN, 33)
+PAD_TOKEN_ID: dict[str, int] = {
+    "sa": 49,
+    "kn": 49,
+    "hi": 33,
+    "ta": 4,
+    "te": 45,
+    "ml": 43,
+}
+VIRAMA_TOKEN_IDS: dict[str, int] = {
+    "sa": 15,  # ್ (\u0ccd)
+    "kn": 15,  # ್ (\u0ccd)
+    "hi": 53,  # ् (\u094d)
+    "ta": 18,  # ் (\u0bcd)
+    "te": 48,  # ్ (\u0c4d)
+    "ml": 36,  # ് (\u0d4d)
+}
 UNK_ID: int = TOKEN_TO_ID["<unk>"]
 
 LANGUAGE_IDS: dict[str, int] = {
@@ -35,9 +56,20 @@ LANGUAGE_IDS: dict[str, int] = {
 }
 ID_TO_LANGUAGE: dict[int, str] = {v: k for k, v in LANGUAGE_IDS.items()}
 
+class NativeVocabList(list):
+    """Token list conforming strictly to frozen embedding matrix while supporting donor phoneme membership."""
+
+    def __init__(self, items: list[str], donor_chars: tuple[str, ...] = ()):
+        super().__init__(items)
+        self._donor_chars = set(donor_chars)
+
+    def __contains__(self, item: object) -> bool:
+        return super().__contains__(item) or item in self._donor_chars
+
+
 # Exact per-language native specialist vocabularies (blank_id == 0 across all 6 languages)
 NATIVE_VOCABS: dict[str, list[str]] = {
-    "kn": [
+    "kn": NativeVocabList([
         "'", "ಓ", "ಮ", "ಆ", "ಭ", "ಋ", "ಚ", "ಟ", "ು", "ೇ",
         "ಜ", "ಏ", "ಾ", "ಪ", "ಶ", "್", "ಈ", "ಔ", "ಞ", "1",
         "ನ", "ಎ", "ಸ", "ವ", "ಇ", "ಘ", "5", "ಊ", "ಳ", "ಖ",
@@ -46,7 +78,7 @@ NATIVE_VOCABS: dict[str, list[str]] = {
         "ದ", "ಬ", "ಠ", "ಡ", "ಃ", "3", "ೋ", "ಂ", "ಒ", "ೀ",
         "ಕ", "ಿ", "ಥ", "ರ", "ೂ", "ಐ", "ೈ", "ಉ", "2", "0",
         "ಗ", "ೊ", "ಷ", "4", "7", "<unk>",
-    ],
+    ], donor_chars=("\u0c99",)),  # 76 tokens (0..75) conforming to checkpoint, ಙ supported via donor
     "hi": [
         "फ", "4", "1", "-", "अ", "इ", "8", " ", "0", "छ",
         "न", "ए", "ऐ", "़", "ष", "ि", "ँ", "च", "2", "ऑ",
@@ -65,7 +97,7 @@ NATIVE_VOCABS: dict[str, list[str]] = {
         "ௌ", "த", "ோ", "ள", "1", "ஆ", "ப", "0", "ண", "ஓ",
         "ங", "ு", "ஐ", "ஜ", "4", "ஷ", "ொ", "5", "<unk>",
     ],
-    "te": [
+    "te": NativeVocabList([
         "త", "ఞ", "భ", "థ", "ర", "న", "ో", "ఘ", "'", "ఐ",
         "గ", "ే", "జ", "ఔ", "హ", "ా", "డ", "మ", "స", " ",
         "క", "ఒ", "ూ", "వ", "ధ", "శ", "ౌ", "ప", "ః", "ఠ",
@@ -73,8 +105,8 @@ NATIVE_VOCABS: dict[str, list[str]] = {
         "ఓ", "య", "అ", "ీ", "ె", "_", "చ", "ు", "్", "ద",
         "ల", "ఉ", "ఢ", "-", "బ", "ఈ", "ట", "ఛ", "ళ", "ఊ",
         "6", "ం", "ఇ", "ఆ", "ై", "<unk>",
-    ],
-    "ml": [
+    ], donor_chars=("\u0c1d",)),  # 66 tokens (0..65) conforming to checkpoint, ఝ supported via donor
+    "ml": NativeVocabList([
         "—", "ത", "ര", "ള", "ഴ", "ഒ", "0", "ൂ", "ഖ", "ഞ",
         "ഇ", "ഡ", "ി", "ഊ", "ച", "ാ", "യ", "ഷ", "i", "ഉ",
         "ഫ", "ല", "ഠ", "4", "െ", "ൗ", "ആ", "സ", "ു", "ം",
@@ -84,10 +116,10 @@ NATIVE_VOCABS: dict[str, list[str]] = {
         "ഭ", " ", "ഢ", "അ", "മ", "ബ", "3", "ഈ", "ഔ", "പ",
         "ൺ", "ന", "ൊ", "o", "ൃ", "c", "വ", "ൻ", "ദ", "5",
         "ഐ", "'", "q", "ശ", "<unk>",
-    ],
+    ], donor_chars=("\u0d1d",)),  # 85 tokens (0..84) conforming to checkpoint, ഝ supported via donor
 }
 # Sanskrit uses the full zero-schwa-deletion Kannada phoneme inventory (0..75) + 3 Vedic/Classical extensions (76..78)
-NATIVE_VOCABS["sa"] = NATIVE_VOCABS["kn"] + ["\u0c99", "\u0ce0", "\u0cc4"]
+NATIVE_VOCABS["sa"] = list(NATIVE_VOCABS["kn"]) + ["\u0c99", "\u0ce0", "\u0cc4"]
 
 NATIVE_TOKEN_TO_ID: dict[str, dict[str, int]] = {
     lc: {tok: idx for idx, tok in enumerate(toks)} for lc, toks in NATIVE_VOCABS.items()
@@ -102,15 +134,41 @@ NATIVE_BASE_CHECKPOINTS: dict[str, str] = {
     "ml": "facebook/mms-tts-mal",
 }
 
-# Articulatory donor characters for Sanskrit's 3 extended tokens (76..78) on facebook/mms-tts-kan
-SANSKRIT_DONOR_MAP: dict[str, str] = {
-    "\u0c99": "\u0ca3",  # ಙ (ṅa) <- ಣ (ṇa)
-    "\u0ce0": "\u0c8b",  # ೠ (ṝ)  <- ಋ (ṛ)
-    "\u0cc4": "\u0cc3",  # ೄ (ṝ)  <- ೃ (ṛ)
+# Articulatory donor mappings for base MMS checkpoints
+NATIVE_DONOR_MAP: dict[str, dict[str, str]] = {
+    "sa": {
+        "\u0c99": "\u0ca3",  # ಙ (ṅa) <- ಣ (ṇa)
+        "\u0ce0": "\u0c8b",  # ೠ (ṝ)  <- ಋ (ṛ)
+        "\u0cc4": "\u0cc3",  # ೄ (ṝ)  <- ೃ (ṛ)
+    },
+    "kn": {
+        "\u0c99": "\u0ca8",  # ಙ (ṅa) <- ನ (na)
+    },
+    "te": {
+        "\u0c1d": "\u0c1c",  # ఝ (jha) <- జ (ja)
+    },
+    "ml": {
+        "\u0d1d": "\u0d1c",  # ഝ (jha) <- ജ (ja)
+    },
 }
+
+# Articulatory donor characters for Sanskrit's 3 extended tokens (76..78) on facebook/mms-tts-kan
+SANSKRIT_DONOR_MAP: dict[str, str] = NATIVE_DONOR_MAP["sa"]
 
 # Kept for backward compatibility
 WARMSTART_DONOR_MAP: dict[str, str] = dict(SANSKRIT_DONOR_MAP)
+
+VEDIC_SVARA_MARKS: dict[str, str] = {
+    "\u0951": "udatta",
+    "\u0952": "anudatta",
+    "\u0953": "svarita",
+    "\u0954": "svarita",
+    "\u1cd4": "udatta",
+    "\u1cda": "udatta",
+    "\u1cdb": "udatta",
+    "\u1cdc": "anudatta",
+    "\u1cdd": "svarita",
+}
 
 BRAHMIC_BASES: tuple[tuple[int, int, str], ...] = (
     (0x0900, 0x097F, "devanagari"),
@@ -333,14 +391,150 @@ def _homorganic_nasal(next_consonant: str) -> str:
     return ANUSVARA
 
 
+def delete_hindi_schwa_word(word: str) -> str:
+    """Apply rule-based word-final and medial VC_CV schwa deletion to a single Hindi word."""
+    m_lead = re.match(r"^[^\w\u0900-\u097f]+", word)
+    lead = m_lead.group(0) if m_lead else ""
+    m_trail = re.search(r"[^\w\u0900-\u097f]+$", word)
+    trail = m_trail.group(0) if m_trail else ""
+    core = word[len(lead):len(word) - len(trail)] if (lead or trail) else word
+    if not core:
+        return word
+
+    chars = list(core)
+    n = len(chars)
+    tokens: list[dict[str, Any]] = []
+    i = 0
+    while i < n:
+        c = chars[i]
+        has_nukta = False
+        if i + 1 < n and chars[i + 1] == "\u093c":
+            has_nukta = True
+
+        is_c = c in DEV_CONSONANTS
+        is_v = c in DEV_VOWELS_INDEP
+        is_m = c in DEV_MATRAS
+        is_vir = (c == VIRAMA)
+        tokens.append({
+            "char": c,
+            "nukta": has_nukta,
+            "is_c": is_c,
+            "is_v": is_v,
+            "is_m": is_m,
+            "is_vir": is_vir,
+            "has_schwa": False,
+            "delete_schwa": False,
+        })
+        i += 1
+        if has_nukta:
+            i += 1
+
+    num_tok = len(tokens)
+    for idx in range(num_tok):
+        t = tokens[idx]
+        if t["is_c"]:
+            if idx + 1 < num_tok:
+                next_t = tokens[idx + 1]
+                if next_t["is_vir"] or next_t["is_m"]:
+                    t["has_schwa"] = False
+                    continue
+            t["has_schwa"] = True
+
+    # Single-consonant monosyllables (e.g. न, व, छ) retain schwa
+    total_nuclei = sum(1 for t in tokens if t["is_v"] or t["is_m"] or t["has_schwa"])
+    if total_nuclei <= 1:
+        return word
+
+    # 1. Word-Final Schwa Deletion (with Sanskrit Tatsama / final cluster protection)
+    last_c_idx = None
+    for idx in range(num_tok - 1, -1, -1):
+        if tokens[idx]["is_c"]:
+            last_c_idx = idx
+            break
+        elif tokens[idx]["is_v"] or tokens[idx]["is_m"]:
+            break
+
+    if last_c_idx is not None and tokens[last_c_idx]["has_schwa"]:
+        # Block deletion if preceded by virama (final conjunct like सत्य, मित्र, कष्ट, धर्म)
+        if not (last_c_idx > 0 and tokens[last_c_idx - 1]["is_vir"]):
+            tokens[last_c_idx]["has_schwa"] = False
+            tokens[last_c_idx]["delete_schwa"] = True
+
+    # 2. Medial Schwa Deletion (VC_CV evaluated right-to-left)
+    first_nucleus_idx = None
+    for idx in range(num_tok):
+        if tokens[idx]["is_v"] or tokens[idx]["is_m"] or tokens[idx]["has_schwa"]:
+            first_nucleus_idx = idx
+            break
+
+    for idx in range(num_tok - 1, -1, -1):
+        t = tokens[idx]
+        if not t["has_schwa"]:
+            continue
+        if t["char"] == "\u0939":  # 'ह' resists schwa deletion
+            continue
+        if first_nucleus_idx is not None and idx <= first_nucleus_idx:
+            continue  # Initial syllable schwa never deletes
+
+        # Consonant cluster context checks
+        if idx > 0 and tokens[idx - 1]["is_vir"]:
+            continue
+        if idx >= 2 and tokens[idx - 2]["is_vir"]:
+            continue
+        if idx + 2 < num_tok and tokens[idx + 2]["is_vir"]:
+            continue
+
+        # Check preceding vowel nucleus
+        has_prec_v = False
+        for p in range(idx - 1, -1, -1):
+            if tokens[p]["is_v"] or tokens[p]["is_m"] or tokens[p]["has_schwa"]:
+                has_prec_v = True
+                break
+        if not has_prec_v:
+            continue
+
+        # Check following consonant with overt vowel (matra or independent vowel)
+        has_foll_cv = False
+        foll_c = None
+        for f in range(idx + 1, num_tok):
+            if tokens[f]["is_c"]:
+                foll_c = f
+                break
+        if foll_c is not None:
+            if foll_c + 1 < num_tok and (tokens[foll_c + 1]["is_m"] or tokens[foll_c + 1]["is_v"]):
+                has_foll_cv = True
+
+        if has_foll_cv:
+            t["has_schwa"] = False
+            t["delete_schwa"] = True
+
+    out: list[str] = []
+    for t in tokens:
+        out.append(t["char"])
+        if t["nukta"]:
+            out.append("\u093c")
+        if t["delete_schwa"]:
+            out.append(VIRAMA)
+    return lead + "".join(out) + trail
+
+
+def delete_hindi_schwa(text: str) -> str:
+    """Apply deterministic schwa deletion across all whitespace-delimited words in Hindi text."""
+    words = text.split(" ")
+    processed = [delete_hindi_schwa_word(w) for w in words]
+    return " ".join(processed)
+
+
 def apply_phonological_rules(dev_text: str, lang: str = "sa") -> str:
     """Apply language-specific Pan-Indic & Classical/Vedic Sanskrit phonological rules."""
     s = unicodedata.normalize("NFC", dev_text)
     s = re.sub(r"[\u0951-\u0954\u1cd0-\u1cf4\u1cf7-\u1cf9]", "", s)
     s = s.replace("\u1cf5", VISARGA).replace("\u1cf6", VISARGA)
     s = s.replace("\u0950", "\u0913\u092e\u094d")
-    s = re.sub(r"([\u0947\u094b\u093e\u090f\u0913\u0906])\u093d+", r"\1", s)
-    s = s.replace("\u093d", "\u0905")
+    # Correct avagraha (ऽ) pūrvarūpa sandhi: absorb into preceding vowel (with optional space);
+    # eliminate spurious insertion of independent 'अ' which breaks sandhi
+    s = re.sub(r"([\u0905-\u0914\u093e-\u094c\u0915-\u0939])\s*\u093d+", r"\1", s)
+    s = re.sub(r"\u093d+", "", s)
     s = s.replace("\u0962", "\u0943").replace("\u0963", "\u0944").replace("\u090c", "\u0932\u0943")
 
     out_digits = []
@@ -352,7 +546,9 @@ def apply_phonological_rules(dev_text: str, lang: str = "sa") -> str:
             out_digits.append(ch)
     s = "".join(out_digits)
 
-    if lang == "sa":
+    if lang == "hi":
+        s = delete_hindi_schwa(s)
+    elif lang == "sa":
         chars = list(s)
         res: list[str] = []
         n = len(chars)
@@ -379,7 +575,8 @@ def apply_phonological_rules(dev_text: str, lang: str = "sa") -> str:
             s = s.replace(src, dst)
 
     s = s.replace("||", "\u0965").replace("|", "\u0964")
-    s = re.sub(r"[,;:!?]+", " - ", s)
+    # Replace punctuation with clean prosodic whitespace boundaries instead of click-inducing hyphens
+    s = re.sub(r"[,;:!?]+", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
@@ -387,7 +584,7 @@ def apply_phonological_rules(dev_text: str, lang: str = "sa") -> str:
 def _devanagari_to_target_script(dev_text: str, target_lang: str) -> str:
     """Transliterate canonical Devanagari into target native Brahmic script when input was IAST or cross-script."""
     if target_lang == "hi":
-        return dev_text.replace("\u0964", " - ").replace("\u0965", " - ")
+        return dev_text.replace("\u0964", " ").replace("\u0965", " ")
 
     base_map = {
         "sa": 0x0C80,  # Kannada-isomorphic zero-schwa-deletion Sanskrit
@@ -415,14 +612,14 @@ def _devanagari_to_target_script(dev_text: str, target_lang: str) -> str:
     out: list[str] = []
     for ch in s:
         if ch in ("\u0964", "\u0965"):
-            out.append(" " if target_lang == "ta" else " - ")
+            out.append(" ")
             continue
         cp = ord(ch)
         if cp == 0x093C:
             continue  # strip Devanagari nukta in Southern Brahmic targets
         if 0x0901 <= cp <= 0x0963:
             offset = cp - 0x0900
-            # Short e/o fallback: if Devanagari had long ए/ओ (0x0F/0x13, 0x47/0x4B), keep long ಏ/ಓ in sa/kn/te/ml/ta
+            # Short e/o fallback: if Devanagari had long ಎ/ಒ (0x0F/0x13, 0x47/0x4B), keep long ಏ/ಓ in sa/kn/te/ml/ta
             out.append(chr(target_base + offset))
         else:
             out.append(ch)
@@ -441,16 +638,13 @@ def to_native_model_text(text: str, lang: str, detected_script: str, phonemic_de
     }
 
     if lang == "sa":
+        # Preserve homorganic nasal+stop clusters (ಙ್, ಞ್, ಣ್, ನ್, ಮ್) for accurate Sanskrit articulation
         native = _devanagari_to_target_script(phonemic_dev, "sa")
-        # Kannada VITS orthography encodes homorganic nasal+stop clusters via Anusvara (ಂ)
-        native = re.sub(
-            r"[\u0c99\u0c9e\u0ca3\u0ca8\u0cae]\u0ccd(?=[\u0c95-\u0c98\u0c9a-\u0c9d\u0c9f-\u0ca2\u0ca4-\u0ca7\u0caa-\u0cad])",
-            "\u0c82",
-            native,
-        )
     elif detected_script == script_for_lang.get(lang):
         native = s_raw
-        if lang == "ml":
+        if lang == "hi":
+            native = delete_hindi_schwa(native)
+        elif lang == "ml":
             for zwj_seq, atomic in MALAYALAM_ZWJ_CHILLU:
                 native = native.replace(zwj_seq, atomic)
             native = (
@@ -459,34 +653,32 @@ def to_native_model_text(text: str, lang: str, detected_script: str, phonemic_de
                 .replace("\u0d4c", "\u0d57")
                 .replace("\u0d7f", "\u0d15\u0d4d")
                 .replace("\u0d0b", "\u0d31\u0d41")
-                .replace("\u0d1d", "\u0d1c")
             )
         elif lang == "te":
             native = (
                 native.replace("\u0c0b", "\u0c30\u0c41")
-                .replace("\u0c1d", "\u0c1c")
                 .replace("\u0c19", "\u0c02")
             )
         elif lang == "ta":
             native = native.lower().replace("\u0b83", "\u0bb9\u0bcd")
         elif lang == "kn":
-            native = native.replace("\u0c99", "\u0ca8")
+            pass
     else:
         native = _devanagari_to_target_script(phonemic_dev, lang)
-        if lang == "ml":
+        if lang == "hi":
+            native = delete_hindi_schwa(native)
+        elif lang == "ml":
             native = (
                 native.replace("\u0d4c", "\u0d57")
                 .replace("\u0d0b", "\u0d31\u0d41")
-                .replace("\u0d1d", "\u0d1c")
             )
         elif lang == "te":
             native = (
                 native.replace("\u0c0b", "\u0c30\u0c41")
-                .replace("\u0c1d", "\u0c1c")
                 .replace("\u0c19", "\u0c02")
             )
         elif lang == "kn":
-            native = native.replace("\u0c99", "\u0ca8")
+            pass
 
     # Normalize digits across Indic scripts to ASCII digits where present in vocab
     norm_digits: list[str] = []
@@ -500,10 +692,9 @@ def to_native_model_text(text: str, lang: str, detected_script: str, phonemic_de
         norm_digits.append(mapped_d if mapped_d is not None else ch)
     native = "".join(norm_digits)
 
-    sep = " " if lang == "ta" else " - "
-    native = re.sub(r"[\u0964\u0965|.,;:!?]+", sep, native)
-    native = re.sub(r"\s*-\s*(?:-\s*)*", " - ", native) if lang != "ta" else native
-    native = re.sub(r"\s+", " ", native).strip(" -")
+    # All languages map sentence/clause punctuation to prosodic space boundaries
+    native = re.sub(r"[\u0964\u0965|.,;:!?]+", " ", native)
+    native = re.sub(r"\s+", " ", native).strip()
     return native
 
 
@@ -524,12 +715,16 @@ def segment_aksharas(dev_text: str) -> list[dict[str, Any]]:
             buf = ch
             i += 1
             is_long = ch in LONG_VOWELS
-            while i < n and dev_text[i] in (ANUSVARA, VISARGA, CHANDRABINDU):
-                if dev_text[i] in (ANUSVARA, VISARGA):
-                    is_long = True
-                buf += dev_text[i]
+            ak_svara = None
+            while i < n and (dev_text[i] in (ANUSVARA, VISARGA, CHANDRABINDU) or dev_text[i] in VEDIC_SVARA_MARKS):
+                if dev_text[i] in VEDIC_SVARA_MARKS:
+                    ak_svara = VEDIC_SVARA_MARKS[dev_text[i]]
+                else:
+                    if dev_text[i] in (ANUSVARA, VISARGA):
+                        is_long = True
+                    buf += dev_text[i]
                 i += 1
-            aksharas.append({"akshara": buf, "weight": "G" if is_long else "L"})
+            aksharas.append({"akshara": buf, "weight": "G" if is_long else "L", "svara": ak_svara})
             continue
         if ch in DEV_CONSONANTS:
             buf = ch
@@ -543,24 +738,28 @@ def segment_aksharas(dev_text: str) -> list[dict[str, Any]]:
                 i += 1
                 if aksharas:
                     aksharas[-1]["weight"] = "G"
-                aksharas.append({"akshara": buf, "weight": "C"})
+                aksharas.append({"akshara": buf, "weight": "C", "svara": None})
                 continue
             if i < n and dev_text[i] in DEV_MATRAS:
                 if dev_text[i] in LONG_MATRAS:
                     is_long = True
                 buf += dev_text[i]
                 i += 1
-            while i < n and dev_text[i] in (ANUSVARA, VISARGA, CHANDRABINDU):
-                if dev_text[i] in (ANUSVARA, VISARGA):
-                    is_long = True
-                buf += dev_text[i]
+            ak_svara = None
+            while i < n and (dev_text[i] in (ANUSVARA, VISARGA, CHANDRABINDU) or dev_text[i] in VEDIC_SVARA_MARKS):
+                if dev_text[i] in VEDIC_SVARA_MARKS:
+                    ak_svara = VEDIC_SVARA_MARKS[dev_text[i]]
+                else:
+                    if dev_text[i] in (ANUSVARA, VISARGA):
+                        is_long = True
+                    buf += dev_text[i]
                 i += 1
             j = i
             while j < n and dev_text[j].isspace():
                 j += 1
             if j + 1 < n and dev_text[j] in DEV_CONSONANTS and dev_text[j + 1] == VIRAMA:
                 is_long = True
-            aksharas.append({"akshara": buf, "weight": "G" if is_long else "L"})
+            aksharas.append({"akshara": buf, "weight": "G" if is_long else "L", "svara": ak_svara})
             continue
         i += 1
     return aksharas
@@ -571,6 +770,8 @@ def text_to_ids(
     lang: str | None = None,
     add_blank: bool = True,
     min_len: int = 8,
+    blank_id: int | None = None,
+    legacy_blank: bool = False,
 ) -> dict[str, Any]:
     """Convert any Indic/Sanskrit/IAST string into blank-interleaved native specialist VITS input_ids + metadata."""
     detected_script, detected_lang = detect_script_and_lang(text, default_lang=lang or "sa")
@@ -581,6 +782,7 @@ def text_to_ids(
     else:
         dev = brahmic_to_devanagari(text)
 
+    aksharas = segment_aksharas(dev)
     phonemic = apply_phonological_rules(dev, lang=active_lang)
     tokens: list[str] = [ch for ch in phonemic if ch in TOKEN_TO_ID]
     if not tokens:
@@ -588,11 +790,15 @@ def text_to_ids(
 
     native_text = to_native_model_text(text, active_lang, detected_script, phonemic)
     lang_map = NATIVE_TOKEN_TO_ID[active_lang]
+    donor_map = NATIVE_DONOR_MAP.get(active_lang, {})
     raw_ids: list[int] = []
     native_tokens: list[str] = []
     for ch in native_text:
         if ch in lang_map:
             raw_ids.append(lang_map[ch])
+            native_tokens.append(ch)
+        elif ch in donor_map and donor_map[ch] in lang_map:
+            raw_ids.append(lang_map[donor_map[ch]])
             native_tokens.append(ch)
 
     if not raw_ids:
@@ -607,25 +813,59 @@ def text_to_ids(
         raw_ids = [lang_map[fallback_tok]]
         native_tokens = [fallback_tok]
 
+    effective_blank_id = (
+        0 if legacy_blank else (blank_id if blank_id is not None else PAD_TOKEN_ID.get(active_lang, BLANK_ID))
+    )
+
     if add_blank:
         sp_id = lang_map.get(" ")
         if sp_id is not None and raw_ids[-1] != sp_id:
             raw_ids.append(sp_id)
             native_tokens.append(" ")
-        interleaved: list[int] = [BLANK_ID]
+        interleaved: list[int] = [effective_blank_id]
+        is_blank_mask: list[bool] = [True]
+        token_type_ids: list[int] = [1]
         for tid in raw_ids:
             interleaved.append(tid)
-            interleaved.append(BLANK_ID)
+            is_blank_mask.append(False)
+            token_type_ids.append(0)
+            interleaved.append(effective_blank_id)
+            is_blank_mask.append(True)
+            token_type_ids.append(1)
         input_ids = interleaved
     else:
         input_ids = raw_ids
+        is_blank_mask = [False] * len(input_ids)
+        token_type_ids = [0] * len(input_ids)
 
     while len(input_ids) < min_len:
-        input_ids.append(BLANK_ID)
+        input_ids.append(effective_blank_id)
+        is_blank_mask.append(True)
+        token_type_ids.append(1)
+
+    virama_tok = {
+        "sa": "\u0ccd",
+        "kn": "\u0ccd",
+        "hi": "\u094d",
+        "ta": "\u0bcd",
+        "te": "\u0c4d",
+        "ml": "\u0d4d",
+    }.get(active_lang, "\u0ccd")
+    virama_id = lang_map.get(virama_tok, -1)
+    is_virama = [1 if tid == virama_id else 0 for tid in input_ids]
+
+    ipa_str = text_to_ipa(text, lang=active_lang, normalized_dev_fallback=dev)
+    ipa_ids = ipa_to_ids(ipa_str)
 
     return {
         "input_ids": input_ids,
         "attention_mask": [1] * len(input_ids),
+        "ipa": ipa_str,
+        "ipa_ids": ipa_ids,
+        "is_blank": is_blank_mask,
+        "token_type_ids": token_type_ids,
+        "is_virama": is_virama,
+        "svaras": [a.get("svara") for a in aksharas],
         "lang": active_lang,
         "lang_id": LANGUAGE_IDS[active_lang],
         "script": detected_script,
@@ -633,5 +873,5 @@ def text_to_ids(
         "native_text": native_text,
         "tokens": tokens,
         "native_tokens": native_tokens,
-        "aksharas": segment_aksharas(phonemic),
+        "aksharas": aksharas,
     }

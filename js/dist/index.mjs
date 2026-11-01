@@ -1,8 +1,639 @@
-// Auto-generated ESM bundle for ninada
+// Auto-generated ESM bundle for ninada v3.0
+const { IPA_VOCAB, IPA_ID_TO_TOKEN, RETROFLEX_LATERAL_ID, textToIpa, ipaToIds } = (() => {
+/**
+ * Zero-dependency Pan-Indic & Classical/Vedic Sanskrit -> 24 kHz IPA Phonemizer for Ninada v3.0.
+ * Exact 1-to-1 JavaScript mirror of python/src/ninada/ipa_g2p.py.
+ */
+
+const IPA_VOCAB = {
+  ';': 1, ':': 2, ',': 3, '.': 4, '!': 5, '?': 6, '—': 9, '…': 10,
+  '"': 11, '(': 12, ')': 13, '“': 14, '”': 15, ' ': 16, '̃': 17,
+  'ʣ': 18, 'ʥ': 19, 'ʦ': 20, 'ʨ': 21, 'ᵝ': 22, 'ꭧ': 23,
+  'A': 24, 'I': 25, 'O': 31, 'Q': 33, 'S': 35, 'T': 36, 'W': 39, 'Y': 41,
+  'ᵊ': 42, 'a': 43, 'b': 44, 'c': 45, 'd': 46, 'e': 47, 'f': 48, 'h': 50,
+  'i': 51, 'j': 52, 'k': 53, 'l': 54, 'm': 55, 'n': 56, 'o': 57, 'p': 58,
+  'q': 59, 'r': 60, 's': 61, 't': 62, 'u': 63, 'v': 64, 'w': 65, 'x': 66,
+  'y': 67, 'z': 68, 'ɑ': 69, 'ɐ': 70, 'ɒ': 71, 'æ': 72, 'β': 75, 'ɔ': 76,
+  'ɕ': 77, 'ç': 78, 'ɭ': 79, 'ɖ': 80, 'ð': 81, 'ʤ': 82, 'ə': 83, 'ɚ': 85,
+  'ɛ': 86, 'ɜ': 87, 'ɟ': 90, 'ɡ': 92, 'ɥ': 99, 'ɨ': 101, 'ɪ': 102, 'ʝ': 103,
+  'ɯ': 110, 'ɰ': 111, 'ŋ': 112, 'ɳ': 113, 'ɲ': 114, 'ɴ': 115, 'ø': 116,
+  'ɸ': 118, 'θ': 119, 'œ': 120, 'ɹ': 123, 'ɾ': 125, 'ɻ': 126, 'ʁ': 128,
+  'ɽ': 129, 'ʂ': 130, 'ʃ': 131, 'ʈ': 132, 'ʧ': 133, 'ʊ': 135, 'ʋ': 136,
+  'ʌ': 138, 'ɣ': 139, 'ɤ': 140, 'χ': 142, 'ʎ': 143, 'ʒ': 147, 'ʔ': 148,
+  'ˈ': 156, 'ˌ': 157, 'ː': 158, 'ʰ': 162, 'ʲ': 164,
+  '↓': 169, '→': 171, '↗': 172, '↘': 173, 'ᵻ': 177,
+};
+
+const IPA_ID_TO_TOKEN = Object.fromEntries(
+  Object.entries(IPA_VOCAB).map(([k, v]) => [v, k])
+);
+const RETROFLEX_LATERAL_ID = 79;
+
+const VIRAMA = '\u094d';
+const NUKTA = '\u093c';
+const ANUSVARA = '\u0902';
+const CHANDRABINDU = '\u0901';
+const VISARGA = '\u0903';
+const AVAGRAHA = '\u093d';
+
+const NUKTA_PRECOMPOSED = {
+  '\u0958': 'q',
+  '\u0959': 'x',
+  '\u095a': 'ɣ',
+  '\u095b': 'z',
+  '\u095c': 'ɽ',
+  '\u095d': 'ɽʰ',
+  '\u095e': 'f',
+  '\u095f': 'j',
+};
+
+const NUKTA_BASE_MAP = {
+  'क': 'q',
+  'ख': 'x',
+  'ग': 'ɣ',
+  'ज': 'z',
+  'ड': 'ɽ',
+  'ढ': 'ɽʰ',
+  'फ': 'f',
+};
+
+const CONSONANT_IPA = {
+  'क': 'k', 'ख': 'kʰ', 'ग': 'ɡ', 'घ': 'ɡʰ', 'ङ': 'ŋ',
+  'च': 'ʧ', 'छ': 'ʧʰ', 'ज': 'ʤ', 'झ': 'ʤʰ', 'ञ': 'ɲ',
+  'ट': 'ʈ', 'ठ': 'ʈʰ', 'ड': 'ɖ', 'ढ': 'ɖʰ', 'ण': 'ɳ',
+  'त': 't', 'थ': 'tʰ', 'द': 'd', 'ध': 'dʰ', 'न': 'n', '\u0929': 'n',
+  'प': 'p', 'फ': 'pʰ', 'ब': 'b', 'भ': 'bʰ', 'म': 'm',
+  'य': 'j', 'र': 'ɾ', '\u0931': 'r', 'ल': 'l', 'ळ': 'ɭ', '\u0934': 'ɻ',
+  'व': 'ʋ', 'श': 'ɕ', 'ष': 'ʂ', 'स': 's', 'ह': 'h',
+};
+
+const STOP_HOMORGANIC_NASAL = {
+  'क': 'ŋ', 'ख': 'ŋ', 'ग': 'ŋ', 'घ': 'ŋ', 'ङ': 'ŋ',
+  'च': 'ɲ', 'छ': 'ɲ', 'ज': 'ɲ', 'झ': 'ɲ', 'ञ': 'ɲ',
+  'ट': 'ɳ', 'ठ': 'ɳ', 'ड': 'ɳ', 'ढ': 'ɳ', 'ण': 'ɳ',
+  'त': 'n', 'थ': 'n', 'द': 'n', 'ध': 'n', 'न': 'n', '\u0929': 'n',
+  'प': 'm', 'फ': 'm', 'ब': 'm', 'भ': 'm', 'म': 'm',
+};
+
+const ML_CHILLU_IPA = {
+  '\u0d7a': 'ɳ',
+  '\u0d7b': 'n',
+  '\u0d7c': 'ɾ',
+  '\u0d7d': 'l',
+  '\u0d7e': 'ɭ',
+  '\u0d7f': 'k',
+};
+
+const INDEP_VOWELS_COMMON = {
+  'अ': 'ə',
+  'आ': 'ɑː',
+  'इ': 'ɪ',
+  'ई': 'iː',
+  'उ': 'ʊ',
+  'ऊ': 'uː',
+  'ऋ': 'ɾɪ',
+  'ॠ': 'ɾiː',
+  'ऌ': 'lɪ',
+  'ॡ': 'liː',
+  '\u090e': 'ɛ',
+  'ए': 'eː',
+  'ऍ': 'æː',
+  '\u0912': 'o',
+  'ओ': 'oː',
+  'ऑ': 'ɔː',
+};
+
+const MATRAS_COMMON = {
+  'ा': 'ɑː',
+  'ि': 'ɪ',
+  'ी': 'iː',
+  'ु': 'ʊ',
+  'ू': 'uː',
+  'ृ': 'ɾɪ',
+  'ॄ': 'ɾiː',
+  'ॢ': 'lɪ',
+  'ॣ': 'liː',
+  '\u0946': 'ɛ',
+  'े': 'eː',
+  'ॅ': 'æː',
+  '\u094a': 'o',
+  'ो': 'oː',
+  'ॉ': 'ɔː',
+};
+
+const LONG_VOWEL_IPA = new Set(['ɑː', 'iː', 'uː', 'ɾiː', 'eː', 'æː', 'oː', 'ɔː', 'aɪ', 'əɪ', 'aʊ']);
+const VOWEL_CHARS = new Set([...'əɑɪiuʊeɛæoɔaᵊ']);
+
+function vowelIpa(ch, isMatra, lang) {
+  if (isMatra) {
+    if (ch === 'ै') return lang === 'hi' ? 'æː' : 'aɪ';
+    if (ch === 'ौ') return lang === 'hi' ? 'ɔː' : 'aʊ';
+    return MATRAS_COMMON[ch] || '';
+  }
+  if (ch === 'ऐ') return lang === 'hi' ? 'æː' : 'aɪ';
+  if (ch === 'औ') return lang === 'hi' ? 'ɔː' : 'aʊ';
+  return INDEP_VOWELS_COMMON[ch] || '';
+}
+
+function normalizeScriptWordToDev(word) {
+  const out = [];
+  for (const ch of String(word).normalize('NFC')) {
+    if (ML_CHILLU_IPA[ch] !== undefined) {
+      out.push(ch);
+      continue;
+    }
+    const cp = ch.codePointAt(0);
+    if (cp >= 0x0b80 && cp <= 0x0bff) {
+      if (ch === '\u0b83') out.push('ख़');
+      else out.push(String.fromCodePoint(cp - 0x0b80 + 0x0900));
+    } else if (cp >= 0x0c00 && cp <= 0x0c7f) {
+      out.push(String.fromCodePoint(cp - 0x0c00 + 0x0900));
+    } else if (cp >= 0x0c80 && cp <= 0x0cff) {
+      out.push(String.fromCodePoint(cp - 0x0c80 + 0x0900));
+    } else if (cp >= 0x0d00 && cp <= 0x0d7f) {
+      if (ch === '\u0d3a') out.push('ट');
+      else out.push(String.fromCodePoint(cp - 0x0d00 + 0x0900));
+    } else {
+      out.push(ch);
+    }
+  }
+  return out.join('');
+}
+
+function isModMark(ch) {
+  return (
+    ch === ANUSVARA ||
+    ch === CHANDRABINDU ||
+    ch === VISARGA ||
+    ch === '॑' ||
+    ch === '॒' ||
+    ch === '॓'
+  );
+}
+
+function parseWordUnits(devWord, lang) {
+  const chars = [...devWord];
+  const n = chars.length;
+  const units = [];
+  let i = 0;
+
+  while (i < n) {
+    const ch = chars[i];
+    if (ch === '\u200c' || ch === '\u200d') {
+      i += 1;
+      continue;
+    }
+    if (ML_CHILLU_IPA[ch] !== undefined) {
+      units.push({
+        kind: 'C',
+        cons: ML_CHILLU_IPA[ch],
+        rawC: ch,
+        vowel: '',
+        inherent: false,
+        nasal: '',
+        visarga: false,
+        stress: false,
+        finalVirama: true,
+      });
+      i += 1;
+      continue;
+    }
+    if (ch === '॑' || ch === '॓') {
+      if (units.length > 0) units[units.length - 1].stress = true;
+      i += 1;
+      continue;
+    }
+    if (ch === '॒') {
+      i += 1;
+      continue;
+    }
+    if (ch === AVAGRAHA) {
+      if (units.length > 0 && units[units.length - 1].vowel) {
+        const v = units[units.length - 1].vowel;
+        if (!v.endsWith('ː')) units[units.length - 1].vowel = `${v}ː`;
+      }
+      i += 1;
+      continue;
+    }
+
+    const vInd = vowelIpa(ch, false, lang);
+    if (vInd) {
+      i += 1;
+      let nasal = '';
+      let visarga = false;
+      let stress = false;
+      while (i < n && isModMark(chars[i])) {
+        const m = chars[i];
+        if (m === CHANDRABINDU) nasal = '̃';
+        else if (m === ANUSVARA) nasal = 'M';
+        else if (m === VISARGA) visarga = true;
+        else if (m === '॑' || m === '॓') stress = true;
+        i += 1;
+      }
+      units.push({
+        kind: 'V',
+        cons: '',
+        rawC: '',
+        vowel: vInd,
+        inherent: false,
+        nasal,
+        visarga,
+        stress,
+        finalVirama: false,
+      });
+      continue;
+    }
+
+    let cIpa = NUKTA_PRECOMPOSED[ch];
+    const rawC = ch;
+    if (cIpa !== undefined) {
+      i += 1;
+    } else if (CONSONANT_IPA[ch] !== undefined) {
+      if (i + 1 < n && chars[i + 1] === NUKTA) {
+        cIpa = NUKTA_BASE_MAP[ch] || CONSONANT_IPA[ch];
+        i += 2;
+      } else {
+        cIpa = CONSONANT_IPA[ch];
+        if (lang === 'ta' && ch === '\u0931') cIpa = 'ɾ';
+        i += 1;
+      }
+    } else {
+      i += 1;
+      continue;
+    }
+
+    if (i < n && chars[i] === VIRAMA) {
+      i += 1;
+      units.push({
+        kind: 'C',
+        cons: cIpa,
+        rawC,
+        vowel: '',
+        inherent: false,
+        nasal: '',
+        visarga: false,
+        stress: false,
+        finalVirama: i === n,
+      });
+      continue;
+    }
+
+    let vowel = 'ə';
+    let inherent = true;
+    if (i < n) {
+      const vMat = vowelIpa(chars[i], true, lang);
+      if (vMat) {
+        vowel = vMat;
+        inherent = false;
+        i += 1;
+      }
+    }
+
+    let nasal = '';
+    let visarga = false;
+    let stress = false;
+    while (i < n && isModMark(chars[i])) {
+      const m = chars[i];
+      if (m === CHANDRABINDU) nasal = '̃';
+      else if (m === ANUSVARA) nasal = 'M';
+      else if (m === VISARGA) visarga = true;
+      else if (m === '॑' || m === '॓') stress = true;
+      i += 1;
+    }
+
+    units.push({
+      kind: 'C',
+      cons: cIpa,
+      rawC,
+      vowel,
+      inherent,
+      nasal,
+      visarga,
+      stress,
+      finalVirama: false,
+    });
+  }
+
+  return units;
+}
+
+const HI_FRIC_SON = new Set(['श', 'ष', 'स', 'ह', 'य', 'र', 'ल', 'व']);
+const TA_VOICELESS_STOPS = new Set(['क', 'च', 'ट', 'त', 'प']);
+const TA_NASALS = new Set(['ङ', 'ञ', 'ण', 'न', '\u0929', 'म']);
+const ML_NASALS = new Set(['ङ', 'ञ', 'ण', 'न', 'म', '\u0d7a', '\u0d7b']);
+const IPA_NASALS = new Set(['ŋ', 'ɲ', 'ɳ', 'n', 'm']);
+const TA_SONORANTS = new Set(['र', 'ल', 'ळ', '\u0934', 'य']);
+const POST_NASAL_VOICING = { 'क': 'ɡ', 'च': 'ʤ', 'ट': 'ɖ', 'त': 'd', 'प': 'b' };
+const TA_LENITION = { 'क': 'ɡ', 'च': 's', 'ट': 'ɖ', 'त': 'ð', 'प': 'b' };
+
+function applyLanguageAllophony(units, lang) {
+  if (!units || units.length === 0) return;
+
+  for (let idx = 0; idx < units.length; idx++) {
+    const u = units[idx];
+    if (u.nasal === 'M') {
+      const nxtRaw = idx + 1 < units.length ? units[idx + 1].rawC : '';
+      if (STOP_HOMORGANIC_NASAL[nxtRaw]) {
+        u.nasal = STOP_HOMORGANIC_NASAL[nxtRaw];
+      } else if (lang === 'hi' && HI_FRIC_SON.has(nxtRaw)) {
+        u.nasal = '̃';
+      } else if (lang === 'hi' && idx === units.length - 1) {
+        u.nasal = '̃';
+      } else {
+        u.nasal = 'm';
+      }
+    }
+  }
+
+  if (lang === 'hi') {
+    const nuclei = [];
+    for (let idx = 0; idx < units.length; idx++) {
+      if (units[idx].vowel) nuclei.push(idx);
+    }
+    if (nuclei.length >= 2) {
+      const lastIdx = nuclei[nuclei.length - 1];
+      const uLast = units[lastIdx];
+      if (lastIdx === units.length - 1 && uLast.inherent && !uLast.nasal && !uLast.visarga) {
+        const prevIsClusterY = lastIdx >= 1 && units[lastIdx - 1].vowel === '' && uLast.rawC === 'य';
+        if (!prevIsClusterY) {
+          uLast.vowel = '';
+          uLast.inherent = false;
+        }
+      }
+    }
+    for (let idx = 1; idx < units.length - 1; idx++) {
+      const u = units[idx];
+      if (!u.inherent || u.nasal || u.visarga) continue;
+      const prevU = units[idx - 1];
+      const nextU = units[idx + 1];
+      if (prevU.vowel && nextU.vowel && !nextU.inherent) {
+        u.vowel = '';
+        u.inherent = false;
+      }
+    }
+  } else if (lang === 'ta') {
+    for (let idx = 0; idx < units.length; idx++) {
+      const u = units[idx];
+      const raw = u.rawC;
+      const prevU = idx > 0 ? units[idx - 1] : null;
+      const prevRaw = prevU ? prevU.rawC : '';
+      const prevBare = Boolean(prevU && prevU.vowel === '');
+
+      if (raw === '\u0931' && prevBare) {
+        if (prevRaw === '\u0931') {
+          prevU.cons = 't';
+          u.cons = 'tɾ';
+          continue;
+        }
+        if (prevRaw === '\u0929' || prevRaw === 'न') {
+          prevU.cons = 'n';
+          u.cons = 'dɾ';
+          continue;
+        }
+      }
+
+      if (prevBare && prevRaw === raw && TA_VOICELESS_STOPS.has(raw)) continue;
+      if (idx + 1 < units.length && u.vowel === '' && units[idx + 1].rawC === raw) continue;
+
+      const prevHasHomorganicNasal = Boolean(
+        (prevBare && TA_NASALS.has(prevRaw)) || (prevU && IPA_NASALS.has(prevU.nasal))
+      );
+      if (prevHasHomorganicNasal) {
+        if (POST_NASAL_VOICING[raw]) u.cons = POST_NASAL_VOICING[raw];
+        continue;
+      }
+
+      if (idx === 0) {
+        if (raw === 'च') u.cons = 's';
+        continue;
+      }
+
+      const prevVoicedSonorant = Boolean(
+        (prevU && prevU.vowel !== '') || (prevBare && TA_SONORANTS.has(prevRaw))
+      );
+      if (prevVoicedSonorant && u.vowel !== '') {
+        if (TA_LENITION[raw]) u.cons = TA_LENITION[raw];
+      }
+    }
+
+    for (let idx = 0; idx < units.length; idx++) {
+      if (idx > 0 && units[idx].vowel === 'aɪ') {
+        units[idx].vowel = 'əɪ';
+      }
+    }
+  } else if (lang === 'ml') {
+    for (let idx = 0; idx < units.length; idx++) {
+      const u = units[idx];
+      const raw = u.rawC;
+      const prevU = idx > 0 ? units[idx - 1] : null;
+      const prevRaw = prevU ? prevU.rawC : '';
+      const prevBare = Boolean(prevU && prevU.vowel === '');
+
+      if (raw === '\u0931' && prevBare) {
+        if (prevRaw === '\u0931') {
+          prevU.cons = 't';
+          u.cons = 't';
+        } else if (prevRaw === 'न' || prevRaw === '\u0d7b') {
+          prevU.cons = 'n';
+          u.cons = 'd';
+        }
+      } else if (TA_VOICELESS_STOPS.has(raw)) {
+        const prevNasal = Boolean(
+          (prevBare && ML_NASALS.has(prevRaw)) || (prevU && IPA_NASALS.has(prevU.nasal))
+        );
+        if (prevNasal && POST_NASAL_VOICING[raw]) {
+          u.cons = POST_NASAL_VOICING[raw];
+        }
+      }
+    }
+    const last = units[units.length - 1];
+    if (last.finalVirama && ML_CHILLU_IPA[last.rawC] === undefined) {
+      last.vowel = 'ə';
+    }
+  }
+
+  if (!units.some((u) => u.stress)) {
+    const vowelIndices = [];
+    for (let idx = 0; idx < units.length; idx++) {
+      if (units[idx].vowel) vowelIndices.push(idx);
+    }
+    if (vowelIndices.length > 0) {
+      let chosen = vowelIndices[0];
+      for (const vIdx of vowelIndices) {
+        const u = units[vIdx];
+        const isHeavy =
+          LONG_VOWEL_IPA.has(u.vowel) ||
+          Boolean(u.nasal) ||
+          Boolean(u.visarga) ||
+          (vIdx + 1 < units.length && units[vIdx + 1].vowel === '');
+        if (isHeavy) {
+          chosen = vIdx;
+          break;
+        }
+      }
+      units[chosen].stress = true;
+    }
+  }
+}
+
+function renderUnitsToIpa(units, lang) {
+  const parts = [];
+  for (let idx = 0; idx < units.length; idx++) {
+    const u = units[idx];
+    if (u.stress && u.vowel) parts.push(`${u.cons}ˈ${u.vowel}`);
+    else parts.push(`${u.cons}${u.vowel}`);
+
+    if (u.nasal) parts.push(u.nasal);
+
+    if (u.visarga) {
+      const nxtRaw = idx + 1 < units.length ? units[idx + 1].rawC : '';
+      if (nxtRaw === 'च' || nxtRaw === 'छ') parts.push('ɕ');
+      else if (nxtRaw === 'ट' || nxtRaw === 'ठ') parts.push('ʂ');
+      else if (nxtRaw === 'त' || nxtRaw === 'थ') parts.push('s');
+      else if (idx === units.length - 1 && lang === 'sa' && u.vowel) {
+        if (u.vowel === 'ə') parts.push('hᵊ');
+        else if (u.vowel === 'ɪ') parts.push('hɪ');
+        else if (u.vowel === 'ʊ') parts.push('hʊ');
+        else parts.push('h');
+      } else {
+        parts.push('h');
+      }
+    }
+  }
+  return parts.join('');
+}
+
+const DIGIT_WORDS_HI = {
+  '0': 'ɕˈuːnjə', '1': 'ˈeːk', '2': 'dˈoː', '3': 'tˈiːn', '4': 'ʧˈɑːɾ',
+  '5': 'pˈɑ̃ːʧ', '6': 'ʧʰˈɛː', '7': 'sˈɑːt', '8': 'ˈɑːʈʰ', '9': 'nˈɔː',
+};
+const INDIC_ZERO_BASES = [0x0966, 0x0be6, 0x0c66, 0x0ce6, 0x0d66];
+const LATIN_CHAR_IPA = {
+  a: 'ə', b: 'b', c: 'k', d: 'd', e: 'e', f: 'f', g: 'ɡ',
+  h: 'h', i: 'ɪ', j: 'ʤ', k: 'k', l: 'l', m: 'm', n: 'n',
+  o: 'o', p: 'p', q: 'k', r: 'ɾ', s: 's', t: 't', u: 'ʊ',
+  v: 'v', w: 'w', x: 'ks', y: 'j', z: 'z',
+};
+
+function latinWordToIpa(word) {
+  let w = String(word || '').toLowerCase();
+  for (const [dg, rep] of [['tion', 'ʃən'], ['sh', 'ʃ'], ['ch', 'ʧ'], ['th', 'tʰ'], ['ph', 'f'], ['ng', 'ŋ'], ['ee', 'iː'], ['oo', 'uː']]) {
+    w = w.split(dg).join(rep);
+  }
+  let out = '';
+  for (const ch of w) {
+    if (LATIN_CHAR_IPA[ch] !== undefined) out += LATIN_CHAR_IPA[ch];
+    else if (IPA_VOCAB[ch] !== undefined) out += ch;
+  }
+  return out;
+}
+
+function normalizeDigits(text) {
+  const out = [];
+  for (const ch of String(text)) {
+    const cp = ch.codePointAt(0);
+    let replaced = false;
+    for (const base of INDIC_ZERO_BASES) {
+      if (cp >= base && cp <= base + 9) {
+        out.push(String(cp - base));
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced) out.push(ch);
+  }
+  return out.join('');
+}
+
+const GUARD_PUNCT = new Set(['.', ',', '!', '?', ';', ':']);
+
+function textToIpa(text, lang = 'sa', normalizedDevFallback = null) {
+  let raw = normalizeDigits(String(text || '')).trim();
+  if (!raw) return 'ə';
+
+  raw = raw.replace(/\u0965/g, '.').replace(/\|\|/g, '.');
+  if (lang === 'sa' && (raw.includes('\u0964') || raw.includes('|'))) {
+    raw = raw.replace(/[\u0964|]\s*$/, '.');
+    raw = raw.replace(/\u0964/g, ';').replace(/\|/g, ';');
+  } else {
+    raw = raw.replace(/\u0964/g, '.').replace(/\|/g, '.');
+  }
+  raw = raw.replace(/\.\.\./g, '…').replace(/–/g, '—');
+
+  let work = raw;
+  if (normalizedDevFallback && /[A-Za-z\u0100-\u024F]/.test(raw)) {
+    work = String(normalizedDevFallback).replace(/\u0965/g, '.').replace(/\u0964/g, ',');
+  }
+
+  const tokens = work.match(/[^\s,.;:!?—…"()“”]+|[,.;:!?—…"()“”]+|\s+/g) || [];
+  const outChunks = [];
+
+  for (const tok of tokens) {
+    if (/^\s+$/.test(tok)) {
+      outChunks.push(' ');
+      continue;
+    }
+    if (/^[,.;:!?—…"()“”]+$/.test(tok)) {
+      const p = tok[0];
+      const prev = outChunks.length > 0 ? outChunks[outChunks.length - 1] : '';
+      const lastChar = prev ? [...prev].pop() : '';
+      if (lastChar && VOWEL_CHARS.has(lastChar) && GUARD_PUNCT.has(p)) {
+        outChunks.push(` ${p}`);
+      } else {
+        outChunks.push(p);
+      }
+      continue;
+    }
+    if (/^\d+$/.test(tok)) {
+      outChunks.push([...tok].map((d) => DIGIT_WORDS_HI[d] || 'ɕˈuːnjə').join(' '));
+      continue;
+    }
+    if (/^[A-Za-z']+$/.test(tok)) {
+      const latIpa = latinWordToIpa(tok);
+      if (latIpa) outChunks.push(latIpa);
+      continue;
+    }
+
+    const devWord = normalizeScriptWordToDev(tok);
+    const units = parseWordUnits(devWord, lang);
+    if (units.length === 0) continue;
+    applyLanguageAllophony(units, lang);
+    const ipaWord = renderUnitsToIpa(units, lang);
+    if (ipaWord) outChunks.push(ipaWord);
+  }
+
+  const ipa = outChunks.join('').replace(/\s+/g, ' ').trim();
+  const filteredChars = [];
+  for (const ch of ipa) {
+    if (IPA_VOCAB[ch] !== undefined) filteredChars.push(ch);
+  }
+  let filtered = filteredChars.join('');
+  if (!filtered) return 'ə';
+  const lastFiltered = filteredChars[filteredChars.length - 1];
+  if (VOWEL_CHARS.has(lastFiltered)) {
+    filtered = `${filtered} .`;
+  }
+  return filtered;
+}
+
+function ipaToIds(ipa, maxTokens = 510) {
+  const core = [];
+  for (const ch of String(ipa || '')) {
+    if (IPA_VOCAB[ch] !== undefined) core.push(IPA_VOCAB[ch]);
+  }
+  if (core.length === 0) core.push(IPA_VOCAB['ə']);
+  if (core.length > maxTokens) core.length = maxTokens;
+  return [0, ...core, 0];
+}
+
+  return { IPA_VOCAB, IPA_ID_TO_TOKEN, RETROFLEX_LATERAL_ID, textToIpa, ipaToIds };
+})();
 /**
  * Pan-Indic Akshara, Per-Language Native Brahmic & Classical/Vedic Sanskrit Phoneme G2P Front-End
  * Zero-dependency JS mirror of python/src/ninada/g2p.py.
  */
+
+
 
 const VOCAB_TOKENS = [
   '\u092b', '4', '1', '-', '\u0905', '\u0907', '8', ' ', '0', '\u091b',
@@ -18,7 +649,24 @@ const VOCAB_TOKENS = [
 ];
 
 const TOKEN_TO_ID = Object.fromEntries(VOCAB_TOKENS.map((t, i) => [t, i]));
-const BLANK_ID = 0;
+const PAD_TOKEN = '_';
+const BLANK_ID = TOKEN_TO_ID[PAD_TOKEN] ?? 33;
+const PAD_TOKEN_ID = {
+  sa: 49,
+  kn: 49,
+  hi: 33,
+  ta: 4,
+  te: 45,
+  ml: 43,
+};
+const VIRAMA_TOKEN_IDS = {
+  sa: 15,  // ್ (\u0ccd)
+  kn: 15,  // ್ (\u0ccd)
+  hi: 53,  // ् (\u094d)
+  ta: 18,  // ் (\u0bcd)
+  te: 48,  // ్ (\u0c4d)
+  ml: 36,  // ് (\u0d4d)
+};
 
 const LANGUAGE_IDS = {
   sa: 0,
@@ -29,7 +677,15 @@ const LANGUAGE_IDS = {
   ml: 5,
 };
 
-const KN_VOCAB = [
+function makeNativeVocab(tokens, donorChars = []) {
+  const arr = [...tokens];
+  const donorSet = new Set(donorChars);
+  const origIncludes = arr.includes.bind(arr);
+  arr.includes = (item, fromIndex) => origIncludes(item, fromIndex) || (fromIndex === undefined && donorSet.has(item));
+  return arr;
+}
+
+const KN_VOCAB = makeNativeVocab([
   "'", 'ಓ', 'ಮ', 'ಆ', 'ಭ', 'ಋ', 'ಚ', 'ಟ', 'ು', 'ೇ',
   'ಜ', 'ಏ', 'ಾ', 'ಪ', 'ಶ', '್', 'ಈ', 'ಔ', 'ಞ', '1',
   'ನ', 'ಎ', 'ಸ', 'ವ', 'ಇ', 'ಘ', '5', 'ಊ', 'ಳ', 'ಖ',
@@ -37,8 +693,8 @@ const KN_VOCAB = [
   'ಹ', 'ಯ', '9', 'ಫ', 'ಛ', '8', '6', 'ಲ', 'ಣ', '_',
   'ದ', 'ಬ', 'ಠ', 'ಡ', 'ಃ', '3', 'ೋ', 'ಂ', 'ಒ', 'ೀ',
   'ಕ', 'ಿ', 'ಥ', 'ರ', 'ೂ', 'ಐ', 'ೈ', 'ಉ', '2', '0',
-  'ಗ', 'ೊ', 'ಷ', '4', '7', '<unk>'
-];
+  'ಗ', 'ೊ', 'ಷ', '4', '7', '<unk>',
+], ['\u0c99']);
 
 const NATIVE_VOCABS = {
   kn: KN_VOCAB,
@@ -61,16 +717,16 @@ const NATIVE_VOCABS = {
     'ௌ', 'த', 'ோ', 'ள', '1', 'ஆ', 'ப', '0', 'ண', 'ஓ',
     'ங', 'ு', 'ஐ', 'ஜ', '4', 'ஷ', 'ொ', '5', '<unk>'
   ],
-  te: [
+  te: makeNativeVocab([
     'త', 'ఞ', 'భ', 'థ', 'ర', 'న', 'ో', 'ఘ', "'", 'ఐ',
     'గ', 'ే', 'జ', 'ఔ', 'హ', 'ా', 'డ', 'మ', 'స', ' ',
     'క', 'ఒ', 'ూ', 'వ', 'ధ', 'శ', 'ౌ', 'ప', 'ః', 'ఠ',
     'ఖ', 'ష', '–', 'ణ', 'ఫ', 'ి', 'ొ', 'ఏ', 'ఎ', 'ృ',
     'ఓ', 'య', 'అ', 'ీ', 'ె', '_', 'చ', 'ు', '్', 'ద',
     'ల', 'ఉ', 'ఢ', '-', 'బ', 'ఈ', 'ట', 'ఛ', 'ళ', 'ఊ',
-    '6', 'ం', 'ఇ', 'ఆ', 'ై', '<unk>'
-  ],
-  ml: [
+    '6', 'ం', 'ఇ', 'ఆ', 'ై', '<unk>',
+  ], ['\u0c1d']),
+  ml: makeNativeVocab([
     '—', 'ത', 'ര', 'ള', 'ഴ', 'ഒ', '0', 'ൂ', 'ഖ', 'ഞ',
     'ഇ', 'ഡ', 'ി', 'ഊ', 'ച', 'ാ', 'യ', 'ഷ', 'i', 'ഉ',
     'ഫ', 'ല', 'ഠ', '4', 'െ', 'ൗ', 'ആ', 'സ', 'ു', 'ം',
@@ -79,13 +735,42 @@ const NATIVE_VOCABS = {
     'ഘ', 'ഓ', 'ീ', 'ൈ', '2', 'േ', 'ക', '1', 'ൾ', 'ങ',
     'ഭ', ' ', 'ഢ', 'അ', 'മ', 'ബ', '3', 'ഈ', 'ഔ', 'പ',
     'ൺ', 'ന', 'ൊ', 'o', 'ൃ', 'c', 'വ', 'ൻ', 'ദ', '5',
-    'ഐ', "'", 'q', 'ശ', '<unk>'
-  ],
+    'ഐ', "'", 'q', 'ശ', '<unk>',
+  ], ['\u0d1d']),
 };
 
 const NATIVE_TOKEN_TO_ID = Object.fromEntries(
   Object.entries(NATIVE_VOCABS).map(([lc, toks]) => [lc, Object.fromEntries(toks.map((t, i) => [t, i]))])
 );
+
+const NATIVE_DONOR_MAP = {
+  sa: {
+    '\u0c99': '\u0ca3',  // ಙ (ṅa) <- ಣ (ṇa)
+    '\u0ce0': '\u0c8b',  // ೠ (ṝ)  <- ಋ (ṛ)
+    '\u0cc4': '\u0cc3',  // ೄ (ṝ)  <- ೃ (ṛ)
+  },
+  kn: {
+    '\u0c99': '\u0ca8',  // ಙ (ṅa) <- ನ (na)
+  },
+  te: {
+    '\u0c1d': '\u0c1c',  // ఝ (jha) <- జ (ja)
+  },
+  ml: {
+    '\u0d1d': '\u0d1c',  // ഝ (jha) <- ജ (ja)
+  },
+};
+
+const VEDIC_SVARA_MARKS = {
+  '\u0951': 'udatta',
+  '\u0952': 'anudatta',
+  '\u0953': 'svarita',
+  '\u0954': 'svarita',
+  '\u1cd4': 'udatta',
+  '\u1cda': 'udatta',
+  '\u1cdb': 'udatta',
+  '\u1cdc': 'anudatta',
+  '\u1cdd': 'svarita',
+};
 
 const BRAHMIC_BASES = [
   [0x0900, 0x097F, 'devanagari'],
@@ -322,14 +1007,150 @@ function homorganicNasal(nextConsonant) {
   return ANUSVARA;
 }
 
+function deleteHindiSchwaWord(word) {
+  const mLead = word.match(/^[^\w\u0900-\u097f]+/);
+  const lead = mLead ? mLead[0] : '';
+  const mTrail = word.match(/[^\w\u0900-\u097f]+$/);
+  const trail = mTrail ? mTrail[0] : '';
+  const core = lead || trail ? word.slice(lead.length, word.length - trail.length) : word;
+  if (!core) return word;
+
+  const chars = [...core];
+  const n = chars.length;
+  const tokens = [];
+  let i = 0;
+  while (i < n) {
+    const c = chars[i];
+    let hasNukta = false;
+    if (i + 1 < n && chars[i + 1] === '\u093c') {
+      hasNukta = true;
+    }
+    const isC = isDevConsonant(c);
+    const isV = isDevIndepVowel(c);
+    const isM = isDevMatra(c);
+    const isVir = (c === VIRAMA);
+    tokens.push({
+      char: c,
+      nukta: hasNukta,
+      isC,
+      isV,
+      isM,
+      isVir,
+      hasSchwa: false,
+      deleteSchwa: false,
+    });
+    i += 1;
+    if (hasNukta) i += 1;
+  }
+
+  const numTok = tokens.length;
+  for (let idx = 0; idx < numTok; idx++) {
+    const t = tokens[idx];
+    if (t.isC) {
+      if (idx + 1 < numTok) {
+        const nextT = tokens[idx + 1];
+        if (nextT.isVir || nextT.isM) {
+          t.hasSchwa = false;
+          continue;
+        }
+      }
+      t.hasSchwa = true;
+    }
+  }
+
+  const totalNuclei = tokens.filter((t) => t.isV || t.isM || t.hasSchwa).length;
+  if (totalNuclei <= 1) return word;
+
+  // 1. Word-Final Schwa Deletion (with Sanskrit Tatsama / final cluster protection)
+  let lastCIdx = null;
+  for (let idx = numTok - 1; idx >= 0; idx--) {
+    if (tokens[idx].isC) {
+      lastCIdx = idx;
+      break;
+    } else if (tokens[idx].isV || tokens[idx].isM) {
+      break;
+    }
+  }
+
+  if (lastCIdx !== null && tokens[lastCIdx].hasSchwa) {
+    if (!(lastCIdx > 0 && tokens[lastCIdx - 1].isVir)) {
+      tokens[lastCIdx].hasSchwa = false;
+      tokens[lastCIdx].deleteSchwa = true;
+    }
+  }
+
+  // 2. Medial Schwa Deletion (VC_CV evaluated right-to-left)
+  let firstNucleusIdx = null;
+  for (let idx = 0; idx < numTok; idx++) {
+    if (tokens[idx].isV || tokens[idx].isM || tokens[idx].hasSchwa) {
+      firstNucleusIdx = idx;
+      break;
+    }
+  }
+
+  for (let idx = numTok - 1; idx >= 0; idx--) {
+    const t = tokens[idx];
+    if (!t.hasSchwa) continue;
+    if (t.char === '\u0939') continue; // 'ह' resists deletion
+    if (firstNucleusIdx !== null && idx <= firstNucleusIdx) continue;
+
+    if (idx > 0 && tokens[idx - 1].isVir) continue;
+    if (idx >= 2 && tokens[idx - 2].isVir) continue;
+    if (idx + 2 < numTok && tokens[idx + 2].isVir) continue;
+
+    let hasPrecV = false;
+    for (let p = idx - 1; p >= 0; p--) {
+      if (tokens[p].isV || tokens[p].isM || tokens[p].hasSchwa) {
+        hasPrecV = true;
+        break;
+      }
+    }
+    if (!hasPrecV) continue;
+
+    let hasFollCv = false;
+    let follC = null;
+    for (let f = idx + 1; f < numTok; f++) {
+      if (tokens[f].isC) {
+        follC = f;
+        break;
+      }
+    }
+    if (follC !== null) {
+      if (follC + 1 < numTok && (tokens[follC + 1].isM || tokens[follC + 1].isV)) {
+        hasFollCv = true;
+      }
+    }
+
+    if (hasFollCv) {
+      t.hasSchwa = false;
+      t.deleteSchwa = true;
+    }
+  }
+
+  const out = [];
+  for (const t of tokens) {
+    out.push(t.char);
+    if (t.nukta) out.push('\u093c');
+    if (t.deleteSchwa) out.push(VIRAMA);
+  }
+  return lead + out.join('') + trail;
+}
+
+function deleteHindiSchwa(text) {
+  return String(text)
+    .split(' ')
+    .map(deleteHindiSchwaWord)
+    .join(' ');
+}
+
 function applyPhonologicalRules(devText, lang = 'sa') {
   let s = String(devText)
     .normalize('NFC')
     .replace(/[\u0951-\u0954\u1cd0-\u1cf4\u1cf7-\u1cf9]/g, '')
     .replace(/[\u1cf5\u1cf6]/g, VISARGA)
     .replace(/\u0950/g, '\u0913\u092e\u094d')
-    .replace(/([\u0947\u094b\u093e\u090f\u0913\u0906])\u093d+/g, '$1')
-    .replace(/\u093d/g, '\u0905')
+    .replace(/([\u0905-\u0914\u093e-\u094c\u0915-\u0939])\s*\u093d+/g, '$1')
+    .replace(/\u093d+/g, '')
     .replace(/\u0962/g, '\u0943')
     .replace(/\u0963/g, '\u0944')
     .replace(/\u090c/g, '\u0932\u0943');
@@ -342,7 +1163,9 @@ function applyPhonologicalRules(devText, lang = 'sa') {
   }
   s = dOut.join('');
 
-  if (lang === 'sa') {
+  if (lang === 'hi') {
+    s = deleteHindiSchwa(s);
+  } else if (lang === 'sa') {
     const chars = [...s];
     const res = [];
     for (let idx = 0; idx < chars.length; idx++) {
@@ -368,7 +1191,7 @@ function applyPhonologicalRules(devText, lang = 'sa') {
   }
 
   s = s.replace(/\|\|/g, '\u0965').replace(/\|/g, '\u0964');
-  s = s.replace(/[,;:!?]+/g, ' - ').replace(/\s+/g, ' ').trim();
+  s = s.replace(/[,;:!?]+/g, ' ').replace(/\s+/g, ' ').trim();
   return s;
 }
 
@@ -384,7 +1207,7 @@ const TA_FOLD = {
 
 function devanagariToTargetScript(devText, targetLang) {
   if (targetLang === 'hi') {
-    return devText.replace(/[\u0964\u0965]/g, ' - ');
+    return devText.replace(/[\u0964\u0965]/g, ' ');
   }
   const baseMap = { sa: 0x0C80, kn: 0x0C80, ta: 0x0B80, te: 0x0C00, ml: 0x0D00 };
   const targetBase = baseMap[targetLang] ?? 0x0C80;
@@ -395,7 +1218,7 @@ function devanagariToTargetScript(devText, targetLang) {
   const out = [];
   for (const ch of s) {
     if (ch === '\u0964' || ch === '\u0965') {
-      out.push(targetLang === 'ta' ? ' ' : ' - ');
+      out.push(' ');
       continue;
     }
     const cp = ch.codePointAt(0);
@@ -415,13 +1238,13 @@ function toNativeModelText(text, lang, detectedScript, phonemicDev) {
   let native;
 
   if (lang === 'sa') {
-    native = devanagariToTargetScript(phonemicDev, 'sa').replace(
-      /[\u0c99\u0c9e\u0ca3\u0ca8\u0cae]\u0ccd(?=[\u0c95-\u0c98\u0c9a-\u0c9d\u0c9f-\u0ca2\u0ca4-\u0ca7\u0caa-\u0cad])/g,
-      '\u0c82'
-    );
+    // Preserve homorganic nasal+stop clusters (ಙ್, ಞ್, ಣ್, ನ್, ಮ್) for accurate Sanskrit articulation
+    native = devanagariToTargetScript(phonemicDev, 'sa');
   } else if (detectedScript === scriptForLang[lang]) {
     native = sRaw;
-    if (lang === 'ml') {
+    if (lang === 'hi') {
+      native = deleteHindiSchwa(native);
+    } else if (lang === 'ml') {
       for (const [zwjSeq, atomic] of MALAYALAM_ZWJ_CHILLU) {
         native = native.split(zwjSeq).join(atomic);
       }
@@ -429,32 +1252,30 @@ function toNativeModelText(text, lang, detectedScript, phonemicDev) {
         .replace(/[\u200c\u200d]/g, '')
         .replace(/\u0d4c/g, '\u0d57')
         .replace(/\u0d7f/g, '\u0d15\u0d4d')
-        .replace(/\u0d0b/g, '\u0d31\u0d41')
-        .replace(/\u0d1d/g, '\u0d1c');
+        .replace(/\u0d0b/g, '\u0d31\u0d41');
     } else if (lang === 'te') {
       native = native
         .replace(/\u0c0b/g, '\u0c30\u0c41')
-        .replace(/\u0c1d/g, '\u0c1c')
         .replace(/\u0c19/g, '\u0c02');
     } else if (lang === 'ta') {
       native = native.toLowerCase().replace(/\u0b83/g, '\u0bb9\u0bcd');
     } else if (lang === 'kn') {
-      native = native.replace(/\u0c99/g, '\u0ca8');
+      // Preserve ಙ
     }
   } else {
     native = devanagariToTargetScript(phonemicDev, lang);
-    if (lang === 'ml') {
+    if (lang === 'hi') {
+      native = deleteHindiSchwa(native);
+    } else if (lang === 'ml') {
       native = native
         .replace(/\u0d4c/g, '\u0d57')
-        .replace(/\u0d0b/g, '\u0d31\u0d41')
-        .replace(/\u0d1d/g, '\u0d1c');
+        .replace(/\u0d0b/g, '\u0d31\u0d41');
     } else if (lang === 'te') {
       native = native
         .replace(/\u0c0b/g, '\u0c30\u0c41')
-        .replace(/\u0c1d/g, '\u0c1c')
         .replace(/\u0c19/g, '\u0c02');
     } else if (lang === 'kn') {
-      native = native.replace(/\u0c99/g, '\u0ca8');
+      // Preserve ಙ
     }
   }
 
@@ -472,12 +1293,8 @@ function toNativeModelText(text, lang, detectedScript, phonemicDev) {
   }
   native = normDigits.join('');
 
-  const sep = lang === 'ta' ? ' ' : ' - ';
-  native = native.replace(/[\u0964\u0965|.,;:!?]+/g, sep);
-  if (lang !== 'ta') {
-    native = native.replace(/\s*-\s*(?:-\s*)*/g, ' - ');
-  }
-  native = native.replace(/\s+/g, ' ').replace(/^[ -]+|[ -]+$/g, '');
+  native = native.replace(/[\u0964\u0965|.,;:!?]+/g, ' ');
+  native = native.replace(/\s+/g, ' ').trim();
   return native;
 }
 
@@ -500,12 +1317,23 @@ function segmentAksharas(devText) {
       let buf = ch;
       i += 1;
       let isLong = LONG_VOWELS.has(ch);
-      while (i < n && (chars[i] === ANUSVARA || chars[i] === VISARGA || chars[i] === CHANDRABINDU)) {
-        if (chars[i] === ANUSVARA || chars[i] === VISARGA) isLong = true;
-        buf += chars[i];
+      let akSvara = null;
+      while (
+        i < n &&
+        (chars[i] === ANUSVARA ||
+          chars[i] === VISARGA ||
+          chars[i] === CHANDRABINDU ||
+          VEDIC_SVARA_MARKS[chars[i]] !== undefined)
+      ) {
+        if (VEDIC_SVARA_MARKS[chars[i]] !== undefined) {
+          akSvara = VEDIC_SVARA_MARKS[chars[i]];
+        } else {
+          if (chars[i] === ANUSVARA || chars[i] === VISARGA) isLong = true;
+          buf += chars[i];
+        }
         i += 1;
       }
-      aksharas.push({ akshara: buf, weight: isLong ? 'G' : 'L' });
+      aksharas.push({ akshara: buf, weight: isLong ? 'G' : 'L', svara: akSvara });
       continue;
     }
     if (isDevConsonant(ch)) {
@@ -520,7 +1348,7 @@ function segmentAksharas(devText) {
         buf += VIRAMA;
         i += 1;
         if (aksharas.length > 0) aksharas[aksharas.length - 1].weight = 'G';
-        aksharas.push({ akshara: buf, weight: 'C' });
+        aksharas.push({ akshara: buf, weight: 'C', svara: null });
         continue;
       }
       if (i < n && isDevMatra(chars[i])) {
@@ -528,9 +1356,20 @@ function segmentAksharas(devText) {
         buf += chars[i];
         i += 1;
       }
-      while (i < n && (chars[i] === ANUSVARA || chars[i] === VISARGA || chars[i] === CHANDRABINDU)) {
-        if (chars[i] === ANUSVARA || chars[i] === VISARGA) isLong = true;
-        buf += chars[i];
+      let akSvara = null;
+      while (
+        i < n &&
+        (chars[i] === ANUSVARA ||
+          chars[i] === VISARGA ||
+          chars[i] === CHANDRABINDU ||
+          VEDIC_SVARA_MARKS[chars[i]] !== undefined)
+      ) {
+        if (VEDIC_SVARA_MARKS[chars[i]] !== undefined) {
+          akSvara = VEDIC_SVARA_MARKS[chars[i]];
+        } else {
+          if (chars[i] === ANUSVARA || chars[i] === VISARGA) isLong = true;
+          buf += chars[i];
+        }
         i += 1;
       }
       let j = i;
@@ -538,7 +1377,7 @@ function segmentAksharas(devText) {
       if (j + 1 < n && isDevConsonant(chars[j]) && chars[j + 1] === VIRAMA) {
         isLong = true;
       }
-      aksharas.push({ akshara: buf, weight: isLong ? 'G' : 'L' });
+      aksharas.push({ akshara: buf, weight: isLong ? 'G' : 'L', svara: akSvara });
       continue;
     }
     i += 1;
@@ -546,12 +1385,22 @@ function segmentAksharas(devText) {
   return aksharas;
 }
 
-function textToIds(text, { lang = null, addBlank = true, minLen = 8 } = {}) {
+function textToIds(
+  text,
+  {
+    lang = null,
+    addBlank = true,
+    minLen = 8,
+    blankId = null,
+    legacyBlank = false,
+  } = {}
+) {
   const [detectedScript, detectedLang] = detectScriptAndLang(text, lang || 'sa');
   const activeLang = lang && LANGUAGE_IDS[lang] !== undefined ? lang : detectedLang;
   const dev = (detectedScript === 'iast' || detectedScript === 'latin')
     ? iastToDevanagari(text)
     : brahmicToDevanagari(text);
+  const aksharas = segmentAksharas(dev);
   const phonemic = applyPhonologicalRules(dev, activeLang);
 
   const tokens = [];
@@ -562,11 +1411,15 @@ function textToIds(text, { lang = null, addBlank = true, minLen = 8 } = {}) {
 
   const nativeText = toNativeModelText(text, activeLang, detectedScript, phonemic);
   const langMap = NATIVE_TOKEN_TO_ID[activeLang];
+  const donorMap = NATIVE_DONOR_MAP[activeLang] ?? {};
   const rawIds = [];
   const nativeTokens = [];
   for (const ch of nativeText) {
     if (langMap[ch] !== undefined) {
       rawIds.push(langMap[ch]);
+      nativeTokens.push(ch);
+    } else if (donorMap[ch] !== undefined && langMap[donorMap[ch]] !== undefined) {
+      rawIds.push(langMap[donorMap[ch]]);
       nativeTokens.push(ch);
     }
   }
@@ -576,25 +1429,68 @@ function textToIds(text, { lang = null, addBlank = true, minLen = 8 } = {}) {
     nativeTokens.push(fb);
   }
 
+  const effectiveBlankId = legacyBlank
+    ? 0
+    : blankId !== null
+    ? blankId
+    : PAD_TOKEN_ID[activeLang] ?? BLANK_ID;
+
   let inputIds;
+  let isBlank;
+  let tokenTypeIds;
+
   if (addBlank) {
     const spId = langMap[' '];
     if (spId !== undefined && rawIds[rawIds.length - 1] !== spId) {
       rawIds.push(spId);
       nativeTokens.push(' ');
     }
-    inputIds = [BLANK_ID];
+    inputIds = [effectiveBlankId];
+    isBlank = [true];
+    tokenTypeIds = [1];
     for (const tid of rawIds) {
-      inputIds.push(tid, BLANK_ID);
+      inputIds.push(tid, effectiveBlankId);
+      isBlank.push(false, true);
+      tokenTypeIds.push(0, 1);
     }
   } else {
     inputIds = [...rawIds];
+    isBlank = new Array(inputIds.length).fill(false);
+    tokenTypeIds = new Array(inputIds.length).fill(0);
   }
-  while (inputIds.length < minLen) inputIds.push(BLANK_ID);
+  while (inputIds.length < minLen) {
+    inputIds.push(effectiveBlankId);
+    isBlank.push(true);
+    tokenTypeIds.push(1);
+  }
+
+  const viramaTok = {
+    sa: '\u0ccd',
+    kn: '\u0ccd',
+    hi: '\u094d',
+    ta: '\u0bcd',
+    te: '\u0c4d',
+    ml: '\u0d4d',
+  }[activeLang] ?? '\u0ccd';
+  const viramaId = langMap[viramaTok] ?? -1;
+  const isVirama = inputIds.map((tid) => (tid === viramaId ? 1 : 0));
+
+  const ipa = textToIpa(text, activeLang, phonemic);
+  const ipaIds = ipaToIds(ipa);
 
   return {
     inputIds,
     attentionMask: new Array(inputIds.length).fill(1),
+    ipa,
+    ipaIds,
+    ipa_ids: ipaIds,
+    isBlank,
+    is_blank: isBlank,
+    tokenTypeIds,
+    token_type_ids: tokenTypeIds,
+    isVirama,
+    is_virama: isVirama,
+    svaras: aksharas.map((a) => a.svara ?? null),
     lang: activeLang,
     langId: LANGUAGE_IDS[activeLang],
     script: detectedScript,
@@ -602,7 +1498,7 @@ function textToIds(text, { lang = null, addBlank = true, minLen = 8 } = {}) {
     nativeText,
     tokens,
     nativeTokens,
-    aksharas: segmentAksharas(phonemic),
+    aksharas,
   };
 }
 
@@ -611,7 +1507,7 @@ function textToIds(text, { lang = null, addBlank = true, minLen = 8 } = {}) {
  */
 
 
-const SAMPLE_RATE = 16000;
+const SAMPLE_RATE = 24000;
 
 const VOWEL_FORMANTS = {
   '\u0905': [640, 1240, 2550, 0.085],
@@ -683,7 +1579,7 @@ function synthesizeKlattPcm(text, { lang = null, rate = 1.0, f0Base = 132.0 } = 
 
     let [f1, f2, f3, durV] = VOWEL_FORMANTS['\u0905'];
     if (s.endsWith('\u094d')) {
-      durV = 0.032;
+      durV = 0.000;
     } else {
       for (const ch of s) {
         if (VOWEL_FORMANTS[ch]) [f1, f2, f3, durV] = VOWEL_FORMANTS[ch];
@@ -744,22 +1640,29 @@ function synthesizeKlattPcm(text, { lang = null, rate = 1.0, f0Base = 132.0 } = 
   }
 
   if (totalSamples === 0) {
-    return { pcm: new Float32Array(1600), meta: { ...parsed, tier: 'klatt_zero_dep' } };
+    return { pcm: new Float32Array(2400), meta: { ...parsed, tier: 'klatt_zero_dep' } };
   }
 
   const out = new Float32Array(totalSamples);
   let offset = 0;
-  let peak = 1e-5;
   for (const ch of chunks) {
-    for (let i = 0; i < ch.length; i++) {
-      const a = Math.abs(ch[i]);
-      if (a > peak) peak = a;
-    }
     out.set(ch, offset);
     offset += ch.length;
   }
+
+  // Remove DC bias from cascaded resonators before peak scaling
+  let sum = 0.0;
+  for (let idx = 0; idx < out.length; idx++) sum += out[idx];
+  const mean = sum / out.length;
+  for (let idx = 0; idx < out.length; idx++) out[idx] -= mean;
+
+  let peak = 1e-5;
+  for (let idx = 0; idx < out.length; idx++) {
+    const a = Math.abs(out[idx]);
+    if (a > peak) peak = a;
+  }
   const gain = 0.82 / peak;
-  for (let i = 0; i < out.length; i++) out[i] *= gain;
+  for (let idx = 0; idx < out.length; idx++) out[idx] *= gain;
 
   return { pcm: out, meta: { ...parsed, tier: 'klatt_zero_dep' } };
 }
@@ -795,22 +1698,25 @@ function encodeWavBuffer(pcm, sr = SAMPLE_RATE) {
 }
 
 /**
- * ninada — Streaming Pan-Indic & Classical Sanskrit Specialist Neural TTS (Browser WASM SIMD & Node.js)
+ * ninada v3.0 — Streaming 24 kHz Studio Pan-Indic & Classical Sanskrit Neural TTS
+ * (StyleTTS2 + PL-BERT + Harmonic-Source iSTFTNet ONNX for Browser WASM SIMD & Node.js)
  *
  * Streaming quick start:
  *   import ninada from 'ninada';
  *   const voice = await ninada('sanskrit', {
- *     encoderModel: './encoder_flow_quantized.onnx',
- *     vocoderModel: './vocoder_quantized.onnx',
+ *     model: './ninada_24k_q8f16.onnx',
+ *     voice: './voices/sa.bin',
  *   });
  *   for await (const chunk of voice.stream('प्रज्ञापूर्वकव्यापारवत्त्वं जीवत्वम् ।')) {
- *     // chunk.pcm (Float32Array @ 16kHz), chunk.ttfaMs (<250ms!)
+ *     // chunk.pcm (Float32Array @ 24kHz), chunk.ttfaMs (<250ms!)
  *   }
  */
 
 
 
-const HOP_LENGTH = 256;
+const HOP_LENGTH = 600;
+const VOICE_BANK_FLOATS = 510 * 256;
+const VOICE_BANK_BYTES = VOICE_BANK_FLOATS * 4;
 
 const LANG_ALIASES = {
   sa: 'sa', sanskrit: 'sa',
@@ -827,9 +1733,10 @@ function resolveLang(val) {
   return LANG_ALIASES[k] || 'sa';
 }
 
-function buildStreamingClauses(text, maxChars = 180) {
+function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
   const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
   if (!cleaned) return [];
+  const effMax = fastFirstClause ? Math.min(maxChars, 64) : maxChars;
   const rawParts = cleaned.split(/(?<=\|\||[\u0964\u0965|.?!;\n])\s+/g);
   const rawClauses = [];
   for (const part of rawParts) {
@@ -839,7 +1746,7 @@ function buildStreamingClauses(text, maxChars = 180) {
       if (rawClauses.length > 0) rawClauses[rawClauses.length - 1].text += ` ${p}`;
       continue;
     }
-    if (p.length <= maxChars) {
+    if (p.length <= effMax) {
       rawClauses.push({ text: p, sentenceEnd: true });
       continue;
     }
@@ -847,7 +1754,7 @@ function buildStreamingClauses(text, maxChars = 180) {
     let buf = '';
     for (const w of words) {
       if (!buf) buf = w;
-      else if (buf.length + 1 + w.length <= maxChars) buf = `${buf} ${w}`;
+      else if (buf.length + 1 + w.length <= effMax) buf = `${buf} ${w}`;
       else {
         rawClauses.push({ text: buf, sentenceEnd: false });
         buf = w;
@@ -860,7 +1767,7 @@ function buildStreamingClauses(text, maxChars = 180) {
     if (
       merged.length > 0 &&
       merged[merged.length - 1].text.length < 10 &&
-      merged[merged.length - 1].text.length + 1 + item.text.length <= maxChars
+      merged[merged.length - 1].text.length + 1 + item.text.length <= effMax
     ) {
       merged[merged.length - 1].text += ` ${item.text}`;
       merged[merged.length - 1].sentenceEnd = item.sentenceEnd;
@@ -868,11 +1775,97 @@ function buildStreamingClauses(text, maxChars = 180) {
       merged.push(item);
     }
   }
-  return merged.length > 0 ? merged : [{ text: cleaned, sentenceEnd: true }];
+  const result = merged.length > 0 ? merged : [{ text: cleaned, sentenceEnd: true }];
+
+  // Balanced sub-clause breath/foot split on Clause 0 (>36 chars) so Clause 0 >= ~1.8s audio while TTFA stays ~1.0s
+  if (fastFirstClause && result.length > 0 && result[0].text.length > 36) {
+    const first = result[0];
+    const subParts = first.text.split(/(?<=[,;—–:])\s+/g).filter((s) => s && s.trim());
+    if (subParts.length >= 2 && subParts[0].length >= 16 && subParts[0].length <= 44) {
+      const rest = subParts.slice(1).join(' ');
+      result.splice(
+        0,
+        1,
+        { text: subParts[0].trim(), sentenceEnd: false },
+        { text: rest.trim(), sentenceEnd: first.sentenceEnd }
+      );
+    } else {
+      const words = first.text.split(' ').filter(Boolean);
+      if (words.length >= 3) {
+        const splitIdx = words[0].length >= 14 ? 1 : Math.max(2, Math.floor(words.length / 2));
+        const foot = words.slice(0, splitIdx).join(' ');
+        const rest = words.slice(splitIdx).join(' ');
+        if (foot.length >= 12 && rest.length >= 8) {
+          result.splice(
+            0,
+            1,
+            { text: foot, sentenceEnd: false },
+            { text: rest, sentenceEnd: first.sentenceEnd }
+          );
+        }
+      }
+    }
+  }
+  return result;
 }
 
 function splitProsodicClauses(text, maxChars = 180) {
-  return buildStreamingClauses(text, maxChars).map((c) => c.text);
+  return buildStreamingClauses(text, maxChars, false).map((c) => c.text);
+}
+
+function generateRoomTone(numSamples = 1920, seed = 1337) {
+  let s = seed >>> 0;
+  const randU = () => {
+    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
+    return (s + 1.0) / 4294967296.0;
+  };
+  const nTot = Math.max(1, Math.floor(numSamples));
+  const buf = new Float32Array(nTot);
+  let y = 0.0;
+  const alpha = 0.28;
+  const raw = new Float32Array(nTot);
+  let sum = 0.0;
+  for (let i = 0; i < nTot; i++) {
+    const u1 = randU();
+    const u2 = randU();
+    const n = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2) * 0.0035;
+    y = y + alpha * (n - y);
+    raw[i] = y;
+    sum += y;
+  }
+  const mean = sum / nTot;
+  const fadeLen = Math.min(192, Math.floor(nTot / 4));
+  for (let i = 0; i < nTot; i++) {
+    let env = 1.0;
+    if (fadeLen > 0) {
+      if (i < fadeLen) {
+        env = 0.5 * (1.0 - Math.cos((Math.PI * i) / fadeLen));
+      } else if (i >= nTot - fadeLen) {
+        env = 0.5 * (1.0 + Math.cos((Math.PI * (i - (nTot - fadeLen))) / fadeLen));
+      }
+    }
+    buf[i] = (raw[i] - mean) * env;
+  }
+  return buf;
+}
+
+function hasPronounceableContent(parsed) {
+  const ak = parsed?.aksharas;
+  if (!Array.isArray(ak) || ak.length === 0) return false;
+  for (let i = 0; i < ak.length; i++) {
+    const core = String(ak[i]?.akshara || '').replace(/\u094d/g, '').trim();
+    if (core.length > 0) return true;
+  }
+  return false;
+}
+
+function isNodeEnv() {
+  return (
+    typeof process !== 'undefined' &&
+    Boolean(process.versions?.node) &&
+    typeof window === 'undefined' &&
+    typeof WorkerGlobalScope === 'undefined'
+  );
 }
 
 async function resolveOrt(explicitOrt) {
@@ -890,20 +1883,24 @@ async function resolveOrt(explicitOrt) {
   return null;
 }
 
-const BROWSER_MODEL_CACHE = 'ninada-onnx-v2.0.0';
+const BROWSER_MODEL_CACHE = 'ninada-onnx-v3.0.0';
 
-async function fetchBrowserCachedBytes(url, useCache = true) {
+async function fetchBrowserCachedBytes(url, useCache = true, validator = null) {
   const absUrl =
     typeof location !== 'undefined' && location?.href
       ? new URL(url, location.href).href
       : url;
+  const isOk =
+    validator ||
+    ((arr) => arr.byteLength >= 1000000 && arr[0] === 0x08);
+
   if (useCache && typeof caches !== 'undefined' && caches?.open) {
     try {
       const cache = await caches.open(BROWSER_MODEL_CACHE);
       const hit = await cache.match(absUrl);
       if (hit) {
         const arr = new Uint8Array(await hit.arrayBuffer());
-        if (arr.byteLength >= 1000000 && arr[0] === 0x08) {
+        if (isOk(arr)) {
           return arr;
         }
         await cache.delete(absUrl).catch(() => {});
@@ -914,10 +1911,10 @@ async function fetchBrowserCachedBytes(url, useCache = true) {
   }
   const res = await fetch(absUrl);
   if (!res.ok) {
-    throw new Error(`Failed to fetch ONNX model (${res.status}): ${absUrl}`);
+    throw new Error(`Failed to fetch binary asset (${res.status}): ${absUrl}`);
   }
   const arr = new Uint8Array(await res.arrayBuffer());
-  if (useCache && arr.byteLength >= 1000000 && arr[0] === 0x08 && typeof caches !== 'undefined' && caches?.open) {
+  if (useCache && isOk(arr) && typeof caches !== 'undefined' && caches?.open) {
     try {
       const cache = await caches.open(BROWSER_MODEL_CACHE);
       await cache.put(
@@ -936,17 +1933,58 @@ async function fetchBrowserCachedBytes(url, useCache = true) {
   return arr;
 }
 
+function toFloat32VoiceBank(raw) {
+  if (!raw) return null;
+  if (raw instanceof Float32Array) {
+    return raw.length === VOICE_BANK_FLOATS ? raw : null;
+  }
+  if (raw instanceof ArrayBuffer) {
+    return raw.byteLength === VOICE_BANK_BYTES ? new Float32Array(raw) : null;
+  }
+  if (ArrayBuffer.isView(raw)) {
+    if (raw.byteLength !== VOICE_BANK_BYTES) return null;
+    if (raw.byteOffset % 4 === 0) {
+      return new Float32Array(raw.buffer, raw.byteOffset, VOICE_BANK_FLOATS);
+    }
+    const copy = new Uint8Array(VOICE_BANK_BYTES);
+    copy.set(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength));
+    return new Float32Array(copy.buffer);
+  }
+  return null;
+}
+
+async function loadVoiceBankSource(source, useCache = true) {
+  if (!source) return null;
+  const direct = toFloat32VoiceBank(source);
+  if (direct) return direct;
+  if (typeof source === 'string') {
+    if (isNodeEnv() && !/^https?:\/\//i.test(source)) {
+      try {
+        const fsMod = await import('node:fs/promises');
+        const buf = await fsMod.readFile(source);
+        return toFloat32VoiceBank(buf);
+      } catch {
+        return null;
+      }
+    }
+    if (typeof fetch === 'function') {
+      const bytes = await fetchBrowserCachedBytes(
+        source,
+        useCache,
+        (arr) => arr.byteLength === VOICE_BANK_BYTES
+      );
+      return toFloat32VoiceBank(bytes);
+    }
+  }
+  return null;
+}
+
 async function createOrtSession(ort, source, providers, useCache = true) {
   if (!source || !ort || !ort.InferenceSession) return null;
-  const isNode =
-    typeof process !== 'undefined' &&
-    Boolean(process.versions?.node) &&
-    typeof window === 'undefined' &&
-    typeof WorkerGlobalScope === 'undefined';
+  const isNode = isNodeEnv();
   let resolved = source;
   if (isNode && typeof source === 'string' && !/^https?:\/\//i.test(source) && ort.env?.wasm) {
-    const fsPkg = 'node:fs/promises';
-    const fsMod = await import(fsPkg);
+    const fsMod = await import('node:fs/promises');
     const buf = await fsMod.readFile(source);
     resolved = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
   } else if (!isNode && typeof source === 'string' && typeof fetch === 'function') {
@@ -989,6 +2027,8 @@ export default async function ninada(input = 'sa', opts = {}) {
     vocSource = opts.vocoderModel || null;
   }
 
+  const modelBasePath = typeof modelSource === 'string' && !/^https?:\/\//i.test(modelSource) ? modelSource : null;
+
   let session = opts.session || null;
   let encSession = opts.encoderSession || null;
   let vocSession = opts.vocoderSession || null;
@@ -1011,6 +2051,66 @@ export default async function ninada(input = 'sa', opts = {}) {
   encSource = null;
   vocSource = null;
 
+  // Voice banks: Map<lang, Float32Array(510 * 256)>
+  const voiceBanks = new Map();
+  const voiceSources = new Map();
+  if (opts.voices && typeof opts.voices === 'object') {
+    for (const [k, v] of Object.entries(opts.voices)) {
+      const lc = resolveLang(k);
+      const direct = toFloat32VoiceBank(v);
+      if (direct) voiceBanks.set(lc, direct);
+      else if (v) voiceSources.set(lc, v);
+    }
+  }
+  const initialVoice = opts.voiceBank || opts.voice || null;
+  if (initialVoice) {
+    const loaded = await loadVoiceBankSource(initialVoice, useCache);
+    if (loaded) voiceBanks.set(defaultLang, loaded);
+  } else if (voiceSources.has(defaultLang)) {
+    const loaded = await loadVoiceBankSource(voiceSources.get(defaultLang), useCache);
+    if (loaded) voiceBanks.set(defaultLang, loaded);
+  }
+
+  async function resolveVoiceStyle(lang, numIpaTokens) {
+    const lc = resolveLang(lang);
+    let bank = voiceBanks.get(lc);
+    if (!bank && voiceSources.has(lc)) {
+      bank = await loadVoiceBankSource(voiceSources.get(lc), useCache);
+      if (bank) voiceBanks.set(lc, bank);
+    }
+    if (!bank && modelBasePath && isNodeEnv()) {
+      try {
+        const pathMod = await import('node:path');
+        const dir = pathMod.dirname(modelBasePath);
+        for (const cand of [
+          pathMod.join(dir, 'voices', `${lc}.bin`),
+          pathMod.join(dir, '..', 'voices', `${lc}.bin`),
+        ]) {
+          bank = await loadVoiceBankSource(cand, false);
+          if (bank) {
+            voiceBanks.set(lc, bank);
+            break;
+          }
+        }
+      } catch {}
+    }
+    if (!bank && voiceBanks.has(defaultLang)) {
+      bank = voiceBanks.get(defaultLang);
+    }
+    if (!bank) {
+      return new Float32Array(256);
+    }
+    const row = Math.min(509, Math.max(0, (numIpaTokens | 0) - 2));
+    const offset = row * 256;
+    return bank.subarray(offset, offset + 256);
+  }
+
+  function isUnified24kSession() {
+    if (!session) return false;
+    const names = Array.isArray(session.inputNames) ? session.inputNames : [];
+    return names.includes('style') && names.includes('speed');
+  }
+
   const listeners = new Map();
   const emit = (ev, payload) => {
     const arr = listeners.get(ev);
@@ -1025,7 +2125,15 @@ export default async function ninada(input = 'sa', opts = {}) {
       return Boolean((encSession && vocSession) || session);
     },
     get isStreamingNeural() {
-      return Boolean(encSession && vocSession);
+      return Boolean(isUnified24kSession() || (encSession && vocSession));
+    },
+    setVoiceBank(lang, bank) {
+      const lc = resolveLang(lang);
+      const f32 = toFloat32VoiceBank(bank);
+      if (f32) {
+        voiceBanks.set(lc, f32);
+      }
+      return this;
     },
     async dispose() {
       try { await encSession?.release?.(); } catch {}
@@ -1034,6 +2142,7 @@ export default async function ninada(input = 'sa', opts = {}) {
       encSession = null;
       vocSession = null;
       session = null;
+      voiceBanks.clear();
     },
     on(event, handler) {
       if (!listeners.has(event)) listeners.set(event, []);
@@ -1045,14 +2154,13 @@ export default async function ninada(input = 'sa', opts = {}) {
     },
     async *stream(text, callOpts = {}) {
       const lang = callOpts.lang ? resolveLang(callOpts.lang) : defaultLang;
-      const rate = callOpts.rate ?? opts.rate ?? 1.0;
+      const effRate = Math.max(0.45, Math.min(2.5, Number(callOpts.rate ?? opts.rate ?? 1.0) || 1.0));
       const noise = callOpts.noise ?? opts.noise ?? 0.667;
-      const noiseDuration = callOpts.noiseDuration ?? opts.noiseDuration ?? 0.80;
+      const noiseDuration = callOpts.noiseDuration ?? callOpts.noise_duration ?? opts.noiseDuration ?? opts.noise_duration ?? 0.80;
       const tier = callOpts.tier || 'auto';
       const firstChunkFrames = Math.max(24, Number(callOpts.firstChunkFrames || 44));
-      const chunkFrames = Math.max(32, Number(callOpts.chunkFrames || 96));
+      const chunkFrames = Math.max(24, Number(callOpts.chunkFrames || 72));
       const haloFrames = Math.max(8, Number(callOpts.haloFrames || 12));
-      const crossfadeSamples = Math.max(0, Math.min(Number(callOpts.crossfadeSamples ?? 256), (haloFrames * HOP_LENGTH) >> 1));
       const signal = callOpts.signal || null;
 
       const attachLazyWav = (obj, pcmBuf) => {
@@ -1068,13 +2176,195 @@ export default async function ninada(input = 'sa', opts = {}) {
         return obj;
       };
 
-      const clauses = buildStreamingClauses(text, callOpts.maxClauseChars || 180);
+      const is24k = tier !== 'klatt' && isUnified24kSession() && Boolean(ort);
+      const fastFirst = is24k && callOpts.fastFirstClause !== false;
+      const clauses = buildStreamingClauses(text, callOpts.maxClauseChars || (is24k ? 140 : 180), fastFirst);
       const tStart = nowMs();
       let ttfaMs = null;
       let chunkIndex = 0;
 
-      // Path 1: 12-Frame Halo + 256-Sample Raised-Cosine Crossfaded Neural Streaming (122.1 dB SNR)
+      // Continuous 1-pole high-pass DC blocker across streaming chunks (R = 0.9965, fc ≈ 13.3 Hz @ 24 kHz)
+      let dcXPrev = 0.0;
+      let dcYPrev = 0.0;
+      const dcR = 0.9965;
+
+      // Path 1: Primary 24 kHz Unified Studio Neural Streaming (StyleTTS2 + PL-BERT + iSTFTNet)
+      if (is24k) {
+        if (clauses.length === 0) {
+          const silent = generateRoomTone(Math.round(0.10 * SAMPLE_RATE), 1337);
+          ttfaMs = nowMs() - tStart;
+          const chunkObj = attachLazyWav(
+            {
+              pcm: silent,
+              sampleRate: SAMPLE_RATE,
+              index: 0,
+              clauseIndex: 0,
+              clauseCount: 1,
+              isFinal: true,
+              durationSec: silent.length / SAMPLE_RATE,
+              latencyMs: ttfaMs,
+              ttfaMs,
+              lang,
+              script: 'devanagari',
+              tier: 'neural_onnx',
+              aksharas: [],
+              durations: [],
+            },
+            silent
+          );
+          emit('chunk', chunkObj);
+          yield chunkObj;
+          return;
+        }
+
+        const chunkSamples = chunkFrames * HOP_LENGTH;
+        const firstChunkSamples = firstChunkFrames * HOP_LENGTH;
+        const minTailSamples = 16 * HOP_LENGTH;
+
+        for (let cIdx = 0; cIdx < clauses.length; cIdx++) {
+          if (signal?.aborted) return;
+          const clauseItem = clauses[cIdx];
+          const tClause = nowMs();
+          const parsed = textToIds(clauseItem.text, { lang });
+
+          if (!hasPronounceableContent(parsed)) {
+            const silent = generateRoomTone(Math.round(0.10 * SAMPLE_RATE), 1337 + cIdx);
+            if (ttfaMs === null) ttfaMs = nowMs() - tStart;
+            const chunkObj = attachLazyWav(
+              {
+                pcm: silent,
+                sampleRate: SAMPLE_RATE,
+                index: chunkIndex++,
+                clauseIndex: cIdx,
+                clauseCount: clauses.length,
+                isFinal: cIdx === clauses.length - 1,
+                durationSec: silent.length / SAMPLE_RATE,
+                latencyMs: nowMs() - tClause,
+                ttfaMs,
+                lang: parsed.lang,
+                script: parsed.script,
+                tier: 'neural_onnx',
+                aksharas: parsed.aksharas,
+                durations: [],
+              },
+              silent
+            );
+            emit('chunk', chunkObj);
+            yield chunkObj;
+            continue;
+          }
+
+          const ipaIds = parsed.ipaIds;
+          const styleSlice = await resolveVoiceStyle(parsed.lang, ipaIds.length);
+          const idTensor = new ort.Tensor('int64', BigInt64Array.from(ipaIds.map(BigInt)), [1, ipaIds.length]);
+          const styleTensor = new ort.Tensor('float32', new Float32Array(styleSlice), [1, 256]);
+          const speedTensor = new ort.Tensor('float32', Float32Array.from([effRate]), [1]);
+
+          const out = await session.run({
+            input_ids: idTensor,
+            style: styleTensor,
+            speed: speedTensor,
+          });
+          const clauseElapsedMs = nowMs() - tClause;
+          idTensor.dispose?.();
+          styleTensor.dispose?.();
+          speedTensor.dispose?.();
+
+          if (signal?.aborted) {
+            out.waveform?.dispose?.();
+            out.durations?.dispose?.();
+            return;
+          }
+
+          const rawWav = out.waveform.data;
+          const dursArr = out.durations ? Array.from(out.durations.data, Number) : [];
+          const hasPause = cIdx < clauses.length - 1;
+          const pauseSamples = hasPause ? Math.round((clauseItem.sentenceEnd ? 0.052 : 0.020) * SAMPLE_RATE) : 0;
+          const clausePcm = new Float32Array(rawWav.length + pauseSamples);
+
+          let peak = 1e-5;
+          for (let i = 0; i < rawWav.length; i++) {
+            const x = rawWav[i] || 0;
+            const y = x - dcXPrev + dcR * dcYPrev;
+            dcXPrev = x;
+            dcYPrev = y;
+            clausePcm[i] = y;
+            const a = Math.abs(y);
+            if (a > peak) peak = a;
+          }
+          if (Math.abs(dcYPrev) < 1e-15) dcYPrev = 0.0;
+          out.waveform?.dispose?.();
+          out.durations?.dispose?.();
+
+          const gain = peak > 0.96 ? 0.92 / peak : 1.0;
+          if (gain !== 1.0) {
+            for (let i = 0; i < rawWav.length; i++) clausePcm[i] *= gain;
+          }
+          if (rawWav.length > 192) {
+            for (let i = 0; i < 192; i++) {
+              clausePcm[i] *= 0.5 * (1.0 - Math.cos((Math.PI * i) / 192.0));
+            }
+          }
+          if (rawWav.length > 256) {
+            const off = rawWav.length - 256;
+            for (let i = 0; i < 256; i++) {
+              clausePcm[off + i] *= 0.5 * (1.0 + Math.cos((Math.PI * i) / 256.0));
+            }
+          }
+          if (pauseSamples > 0) {
+            const rt = generateRoomTone(pauseSamples, 1337 + cIdx);
+            clausePcm.set(rt, rawWav.length);
+          }
+
+          const totalS = clausePcm.length;
+          const bounds = [];
+          for (let cur = 0; cur < totalS; ) {
+            const step = chunkIndex === 0 && bounds.length === 0 ? Math.min(chunkSamples, firstChunkSamples) : chunkSamples;
+            let nxt = Math.min(totalS, cur + step);
+            if (totalS - nxt < minTailSamples) nxt = totalS;
+            bounds.push([cur, nxt]);
+            cur = nxt;
+          }
+          if (bounds.length === 0) bounds.push([0, totalS]);
+
+          for (let subIdx = 0; subIdx < bounds.length; subIdx++) {
+            if (signal?.aborted) return;
+            const [stS, edS] = bounds[subIdx];
+            const pcm = clausePcm.slice(stS, edS);
+            const isLastSub = subIdx === bounds.length - 1;
+            if (ttfaMs === null) ttfaMs = nowMs() - tStart;
+            const chunkObj = attachLazyWav(
+              {
+                pcm,
+                sampleRate: SAMPLE_RATE,
+                index: chunkIndex++,
+                clauseIndex: cIdx,
+                clauseCount: clauses.length,
+                isFinal: cIdx === clauses.length - 1 && isLastSub,
+                durationSec: pcm.length / SAMPLE_RATE,
+                clauseDurationSec: totalS / SAMPLE_RATE,
+                latencyMs: subIdx === 0 ? clauseElapsedMs : 0.05,
+                vocoderMs: subIdx === 0 ? clauseElapsedMs : 0.05,
+                ttfaMs,
+                lang: parsed.lang,
+                script: parsed.script,
+                tier: 'neural_onnx',
+                aksharas: subIdx === 0 ? parsed.aksharas : [],
+                durations: subIdx === 0 ? dursArr : [],
+              },
+              pcm
+            );
+            emit('chunk', chunkObj);
+            yield chunkObj;
+          }
+        }
+        return;
+      }
+
+      // Path 2: Legacy 2-stage Encoder + Vocoder Streaming (if explicitly configured)
       if (tier !== 'klatt' && encSession && vocSession && ort) {
+        const legacyHop = 256;
+        const crossfadeSamples = Math.max(0, Math.min(Number(callOpts.crossfadeSamples ?? 256), (haloFrames * legacyHop) >> 1));
         const encInNames = Array.isArray(encSession.inputNames) ? encSession.inputNames : [];
         const vocInNames = Array.isArray(vocSession.inputNames) ? vocSession.inputNames : [];
         const hasLangId = encInNames.includes('lang_id');
@@ -1089,7 +2379,6 @@ export default async function ninada(input = 'sa', opts = {}) {
         }
 
         let globalChunkOrdinal = 0;
-
         for (let cIdx = 0; cIdx < clauses.length; cIdx++) {
           if (signal?.aborted) return;
           const clauseItem = clauses[cIdx];
@@ -1101,9 +2390,9 @@ export default async function ninada(input = 'sa', opts = {}) {
           };
           if (hasLangId) {
             feeds.lang_id = new ort.Tensor('int64', BigInt64Array.from([BigInt(parsed.langId)]), [1]);
-            feeds.scales = new ort.Tensor('float32', Float32Array.from([Number(rate), Number(noise)]), [2]);
+            feeds.scales = new ort.Tensor('float32', Float32Array.from([effRate, Number(noise)]), [2]);
           } else {
-            feeds.scales = new ort.Tensor('float32', Float32Array.from([Number(rate), Number(noise), Number(noiseDuration)]), [3]);
+            feeds.scales = new ort.Tensor('float32', Float32Array.from([effRate, Number(noise), Number(noiseDuration)]), [3]);
           }
 
           const encOut = await encSession.run(feeds);
@@ -1129,21 +2418,11 @@ export default async function ninada(input = 'sa', opts = {}) {
           encOut.voice_cond?.dispose?.();
           encOut.durations.dispose?.();
 
-          // Progressive geometric chunk ladder + sliver merging prevents Chunk 0->1 buffer underruns
           const bounds = [];
           for (let cur = 0; cur < totalFrames; ) {
-            let step = chunkFrames;
-            if (globalChunkOrdinal === 0) {
-              step = firstChunkFrames;
-            } else if (globalChunkOrdinal === 1 && chunkFrames > firstChunkFrames) {
-              step = Math.round(firstChunkFrames + (chunkFrames - firstChunkFrames) * 0.30);
-            } else if (globalChunkOrdinal === 2 && chunkFrames > firstChunkFrames) {
-              step = Math.round(firstChunkFrames + (chunkFrames - firstChunkFrames) * 0.65);
-            }
+            const step = globalChunkOrdinal === 0 ? firstChunkFrames : chunkFrames;
             let nxt = Math.min(totalFrames, cur + step);
-            if (totalFrames - nxt < 36) {
-              nxt = totalFrames;
-            }
+            if (totalFrames - nxt < 36) nxt = totalFrames;
             bounds.push([cur, nxt]);
             cur = nxt;
             globalChunkOrdinal += 1;
@@ -1183,8 +2462,8 @@ export default async function ninada(input = 'sa', opts = {}) {
             }
 
             const raw = vocOut.waveform.data;
-            const cropL = (st - wSt) * HOP_LENGTH;
-            const cropLen = (ed - st) * HOP_LENGTH;
+            const cropL = (st - wSt) * legacyHop;
+            const cropLen = (ed - st) * legacyHop;
             const cropR = cropL + cropLen;
             const extraR = Math.min(raw.length, cropR + (isLastSub ? 0 : crossfadeSamples));
             const segLen = Math.max(0, extraR - cropL);
@@ -1210,31 +2489,17 @@ export default async function ninada(input = 'sa', opts = {}) {
               basePcm = seg.subarray(0, Math.min(seg.length, cropLen));
             }
 
-            if (subIdx === 0 && basePcm.length > 192) {
-              for (let i = 0; i < 192; i++) {
-                basePcm[i] *= 0.5 * (1.0 - Math.cos((Math.PI * i) / 192.0));
-              }
+            const pcm = new Float32Array(basePcm.length);
+            for (let idx = 0; idx < basePcm.length; idx++) {
+              const x = basePcm[idx];
+              const y = x - dcXPrev + dcR * dcYPrev;
+              dcXPrev = x;
+              dcYPrev = y;
+              pcm[idx] = y;
             }
-            if (isLastSub && basePcm.length > 256) {
-              const off = basePcm.length - 256;
-              for (let i = 0; i < 256; i++) {
-                basePcm[off + i] *= 0.5 * (1.0 + Math.cos((Math.PI * i) / 256.0));
-              }
-            }
+            if (Math.abs(dcYPrev) < 1e-15) dcYPrev = 0.0;
 
-            let pcm;
-            if (isLastSub && cIdx < clauses.length - 1 && clauseItem.sentenceEnd) {
-              const pauseSamples = Math.round(0.048 * SAMPLE_RATE);
-              pcm = new Float32Array(basePcm.length + pauseSamples);
-              pcm.set(basePcm, 0);
-            } else {
-              pcm = new Float32Array(basePcm.length);
-              pcm.set(basePcm, 0);
-            }
-
-            const elapsedNow = nowMs() - tStart;
-            if (ttfaMs === null) ttfaMs = elapsedNow;
-            const isFinal = cIdx === clauses.length - 1 && isLastSub;
+            if (ttfaMs === null) ttfaMs = nowMs() - tStart;
             const vocMs = nowMs() - tChunk;
             const chunkObj = attachLazyWav(
               {
@@ -1243,7 +2508,7 @@ export default async function ninada(input = 'sa', opts = {}) {
                 index: chunkIndex++,
                 clauseIndex: cIdx,
                 clauseCount: clauses.length,
-                isFinal,
+                isFinal: cIdx === clauses.length - 1 && isLastSub,
                 durationSec: pcm.length / SAMPLE_RATE,
                 latencyMs: vocMs + (subIdx === 0 ? encElapsedMs : 0),
                 vocoderMs: vocMs,
@@ -1263,7 +2528,7 @@ export default async function ninada(input = 'sa', opts = {}) {
         return;
       }
 
-      // Path 2: Clause-Level Neural Streaming over Monolithic ONNX
+      // Path 3: Legacy Monolithic VITS ONNX
       if (tier !== 'klatt' && session && ort) {
         const sessInNames = Array.isArray(session.inputNames) ? session.inputNames : [];
         const hasLangId = sessInNames.includes('lang_id');
@@ -1277,22 +2542,21 @@ export default async function ninada(input = 'sa', opts = {}) {
           };
           if (hasLangId) {
             feeds.lang_id = new ort.Tensor('int64', BigInt64Array.from([BigInt(parsed.langId)]), [1]);
-            feeds.scales = new ort.Tensor('float32', Float32Array.from([Number(rate), Number(noise)]), [2]);
+            feeds.scales = new ort.Tensor('float32', Float32Array.from([effRate, Number(noise)]), [2]);
           } else {
-            feeds.scales = new ort.Tensor('float32', Float32Array.from([Number(rate), Number(noise), Number(noiseDuration)]), [3]);
+            feeds.scales = new ort.Tensor('float32', Float32Array.from([effRate, Number(noise), Number(noiseDuration)]), [3]);
           }
           const out = await session.run(feeds);
           if (signal?.aborted) return;
           const raw = out.waveform.data;
           const pcm = new Float32Array(raw.length);
-          let peak = 1e-5;
-          for (let i = 0; i < raw.length; i++) {
-            const a = Math.abs(raw[i]);
-            if (a > peak) peak = a;
+          for (let idx = 0; idx < raw.length; idx++) {
+            const x = raw[idx];
+            const y = x - dcXPrev + dcR * dcYPrev;
+            dcXPrev = x;
+            dcYPrev = y;
+            pcm[idx] = y;
           }
-          const gain = peak > 1e-4 ? 0.88 / Math.max(1.0, peak) : 1.0;
-          for (let i = 0; i < raw.length; i++) pcm[i] = raw[i] * gain;
-
           if (ttfaMs === null) ttfaMs = nowMs() - tStart;
           const chunkObj = attachLazyWav(
             {
@@ -1319,11 +2583,21 @@ export default async function ninada(input = 'sa', opts = {}) {
         return;
       }
 
-      // Path 3: Zero-Dependency Klatt Tier-2 Clause Streaming
-      for (let cIdx = 0; cIdx < clauses.length; cIdx++) {
+      // Path 4: Zero-Dependency Klatt Tier-2 Clause Streaming
+      const klattClauses = clauses.length > 0 ? clauses : [{ text: '', sentenceEnd: true }];
+      for (let cIdx = 0; cIdx < klattClauses.length; cIdx++) {
         if (signal?.aborted) return;
         const tChunk = nowMs();
-        const { pcm, meta: baseMeta } = synthesizeKlattPcm(clauses[cIdx].text, { lang, rate });
+        const { pcm: rawPcm, meta: baseMeta } = synthesizeKlattPcm(klattClauses[cIdx].text, { lang, rate: effRate });
+        const pcm = new Float32Array(rawPcm.length);
+        for (let idx = 0; idx < pcm.length; idx++) {
+          const x = rawPcm[idx];
+          const y = x - dcXPrev + dcR * dcYPrev;
+          dcXPrev = x;
+          dcYPrev = y;
+          pcm[idx] = y;
+        }
+        if (Math.abs(dcYPrev) < 1e-15) dcYPrev = 0.0;
         if (ttfaMs === null) ttfaMs = nowMs() - tStart;
         const chunkObj = attachLazyWav(
           {
@@ -1331,8 +2605,8 @@ export default async function ninada(input = 'sa', opts = {}) {
             sampleRate: SAMPLE_RATE,
             index: chunkIndex++,
             clauseIndex: cIdx,
-            clauseCount: clauses.length,
-            isFinal: cIdx === clauses.length - 1,
+            clauseCount: klattClauses.length,
+            isFinal: cIdx === klattClauses.length - 1,
             durationSec: pcm.length / SAMPLE_RATE,
             latencyMs: nowMs() - tChunk,
             ttfaMs,
@@ -1358,7 +2632,7 @@ export default async function ninada(input = 'sa', opts = {}) {
       let activeTier = 'klatt_zero_dep';
       let ttfaMs = 0;
 
-      for await (const ch of this.stream(text, callOpts)) {
+      for await (const ch of this.stream(text, { ...callOpts, fastFirstClause: false })) {
         chunks.push(ch.pcm);
         totalLen += ch.pcm.length;
         activeTier = ch.tier;
@@ -1374,6 +2648,11 @@ export default async function ninada(input = 'sa', opts = {}) {
         pcm.set(c, offset);
         offset += c.length;
       }
+
+      let dcSum = 0.0;
+      for (let idx = 0; idx < pcm.length; idx++) dcSum += pcm[idx];
+      const mean = dcSum / pcm.length;
+      for (let idx = 0; idx < pcm.length; idx++) pcm[idx] -= mean;
 
       let peak = 1e-5;
       for (let i = 0; i < pcm.length; i++) {
@@ -1414,6 +2693,9 @@ export {
   HOP_LENGTH,
   VOCAB_TOKENS,
   TOKEN_TO_ID,
+  IPA_VOCAB,
+  IPA_ID_TO_TOKEN,
+  RETROFLEX_LATERAL_ID,
   BLANK_ID,
   LANGUAGE_IDS,
   NATIVE_VOCABS,
@@ -1424,7 +2706,11 @@ export {
   brahmicToDevanagari,
   applyPhonologicalRules,
   segmentAksharas,
+  toNativeModelText,
+  textToIpa,
+  ipaToIds,
   textToIds,
   synthesizeKlattPcm,
   encodeWavBuffer,
+  generateRoomTone,
 };

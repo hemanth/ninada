@@ -1,564 +1,497 @@
 {
-  "benchmark": "ninada-pan-indic-6lang-sota-v2",
-  "num_test_utterances": 144,
+  "benchmark": "ninada-v3-24khz-studio-6lang",
+  "version": "3.0.0",
+  "sample_rate_hz": 24000,
+  "num_test_utterances": 240,
+  "num_train_utterances": 1920,
+  "num_val_utterances": 240,
   "bootstrap_resamples": 1000,
+  "wise_ft_best_alpha": 1.0,
   "onnx_parity": {
-    "fp32_size_mb": 138.43,
-    "quantized_size_mb": 54.7,
-    "mean_snr_db": 33.46,
-    "mean_stream_seam_snr_db": 123.72,
-    "mean_pearson_r": 0.965623
+    "fp32_size_mb": 312.68,
+    "quantized_size_mb": 87.48,
+    "voice_bank_kb": 510,
+    "pt_vs_onnx_mcd_db": 2.715,
+    "duration_corr_r": 0.96868
   },
   "systems": {
-    "studio_ground_truth": {
-      "size_mb": null,
-      "sanskrit_cer_pct": {
-        "mean": 1.78,
-        "ci95_low": 1.144,
-        "ci95_high": 2.46
-      },
-      "sanskrit_wer_pct": {
-        "mean": 19.063,
-        "ci95_low": 12.811,
-        "ci95_high": 25.705
-      },
-      "pan_indic_phonetic_cer_pct": {
-        "mean": 18.864,
-        "ci95_low": 16.424,
-        "ci95_high": 21.311
-      }
-    },
     "mms_hin_raw": {
+      "sample_rate_hz": 16000,
       "size_mb": 138.8,
-      "voiced_rate_pct": 43.06,
+      "voiced_rate_pct": 35.0,
       "mcd_db": {
-        "mean": 6.498,
-        "ci95_low": 6.303,
-        "ci95_high": 6.71
+        "mean": 7.978,
+        "ci95_low": 7.696,
+        "ci95_high": 8.242
+      },
+      "hf_8_12k_err_db": {
+        "mean": 66.39,
+        "ci95_low": 65.648,
+        "ci95_high": 67.016
       },
       "f0_rmse_cents": {
-        "mean": 961.119,
-        "ci95_low": 918.094,
-        "ci95_high": 1006.528
+        "mean": 1015.508,
+        "ci95_low": 983.332,
+        "ci95_high": 1047.168
       },
       "dur_mae_sec": {
-        "mean": 3.095,
-        "ci95_low": 2.708,
-        "ci95_high": 3.525
+        "mean": 3.262,
+        "ci95_low": 2.938,
+        "ci95_high": 3.606
       },
-      "sanskrit_cer_pct": {
-        "mean": 19.48,
-        "ci95_low": 16.51,
-        "ci95_high": 22.601
-      },
-      "sanskrit_wer_pct": {
-        "mean": 70.295,
-        "ci95_low": 60.814,
-        "ci95_high": 79.409
-      },
-      "pan_indic_phonetic_cer_pct": {
-        "mean": 65.359,
-        "ci95_low": 58.994,
-        "ci95_high": 72.161
-      },
-      "rtf_mean": 0.04254,
+      "rtf_mean": 0.03237,
       "ttfa_ms": {
-        "mean": 209.01,
-        "p50": 0.61,
-        "p95": 672.21
+        "mean": 132.08,
+        "p50": 0.33,
+        "p95": 573.55
       },
       "latency_ms": {
-        "p50": 0.61,
-        "p95": 672.21,
-        "p99": 875.18
+        "p50": 0.33,
+        "p95": 573.55,
+        "p99": 743.34
       },
       "per_lang": {
         "sa": {
-          "n": 39,
-          "mcd_mean": 5.346,
-          "f0_rmse_cents_mean": 637.77,
-          "dur_mae_sec_mean": 1.027,
-          "phonetic_cer_mean": 19.41
+          "n": 40,
+          "mcd_mean": 5.328,
+          "hf_8_12k_err_db_mean": 66.165,
+          "f0_rmse_cents_mean": 735.22,
+          "dur_mae_sec_mean": 0.832
         },
         "hi": {
-          "n": 21,
-          "mcd_mean": 4.896,
-          "f0_rmse_cents_mean": 651.81,
-          "dur_mae_sec_mean": 0.608,
-          "phonetic_cer_mean": 17.39
+          "n": 40,
+          "mcd_mean": 4.851,
+          "hf_8_12k_err_db_mean": 64.187,
+          "f0_rmse_cents_mean": 622.09,
+          "dur_mae_sec_mean": 0.509
         },
         "kn": {
-          "n": 21,
-          "mcd_mean": 7.7,
-          "f0_rmse_cents_mean": 1182.48,
-          "dur_mae_sec_mean": 4.909,
-          "phonetic_cer_mean": 98.56
+          "n": 40,
+          "mcd_mean": 9.009,
+          "hf_8_12k_err_db_mean": 67.936,
+          "f0_rmse_cents_mean": 1181.76,
+          "dur_mae_sec_mean": 5.113
         },
         "ta": {
-          "n": 21,
-          "mcd_mean": 7.329,
+          "n": 40,
+          "mcd_mean": 9.714,
+          "hf_8_12k_err_db_mean": 67.607,
           "f0_rmse_cents_mean": 1200.0,
-          "dur_mae_sec_mean": 3.912,
-          "phonetic_cer_mean": 98.79
+          "dur_mae_sec_mean": 4.191
         },
         "te": {
-          "n": 21,
-          "mcd_mean": 7.286,
-          "f0_rmse_cents_mean": 1171.8,
-          "dur_mae_sec_mean": 5.379,
-          "phonetic_cer_mean": 98.81
+          "n": 40,
+          "mcd_mean": 9.354,
+          "hf_8_12k_err_db_mean": 67.82,
+          "f0_rmse_cents_mean": 1185.13,
+          "dur_mae_sec_mean": 4.984
         },
         "ml": {
-          "n": 21,
-          "mcd_mean": 7.421,
-          "f0_rmse_cents_mean": 1200.0,
-          "dur_mae_sec_mean": 4.509,
-          "phonetic_cer_mean": 98.58
-        }
-      }
-    },
-    "mms_hin_g2p": {
-      "size_mb": 138.8,
-      "voiced_rate_pct": 100.0,
-      "mcd_db": {
-        "mean": 5.489,
-        "ci95_low": 5.4,
-        "ci95_high": 5.584
-      },
-      "f0_rmse_cents": {
-        "mean": 654.812,
-        "ci95_low": 635.612,
-        "ci95_high": 673.725
-      },
-      "dur_mae_sec": {
-        "mean": 0.889,
-        "ci95_low": 0.763,
-        "ci95_high": 1.014
-      },
-      "sanskrit_cer_pct": {
-        "mean": 20.269,
-        "ci95_low": 17.074,
-        "ci95_high": 23.623
-      },
-      "sanskrit_wer_pct": {
-        "mean": 70.83,
-        "ci95_low": 60.995,
-        "ci95_high": 80.349
-      },
-      "pan_indic_phonetic_cer_pct": {
-        "mean": 34.442,
-        "ci95_low": 31.859,
-        "ci95_high": 37.15
-      },
-      "rtf_mean": 0.09342,
-      "ttfa_ms": {
-        "mean": 491.1,
-        "p50": 463.4,
-        "p95": 863.72
-      },
-      "latency_ms": {
-        "p50": 463.4,
-        "p95": 863.72,
-        "p99": 1009.02
-      },
-      "per_lang": {
-        "sa": {
-          "n": 39,
-          "mcd_mean": 5.341,
-          "f0_rmse_cents_mean": 641.8,
-          "dur_mae_sec_mean": 1.041,
-          "phonetic_cer_mean": 20.2
-        },
-        "hi": {
-          "n": 21,
-          "mcd_mean": 4.882,
-          "f0_rmse_cents_mean": 640.48,
-          "dur_mae_sec_mean": 0.658,
-          "phonetic_cer_mean": 15.71
-        },
-        "kn": {
-          "n": 21,
-          "mcd_mean": 5.51,
-          "f0_rmse_cents_mean": 585.61,
-          "dur_mae_sec_mean": 0.93,
-          "phonetic_cer_mean": 40.84
-        },
-        "ta": {
-          "n": 21,
-          "mcd_mean": 5.305,
-          "f0_rmse_cents_mean": 717.27,
-          "dur_mae_sec_mean": 0.819,
-          "phonetic_cer_mean": 52.08
-        },
-        "te": {
-          "n": 21,
-          "mcd_mean": 6.078,
-          "f0_rmse_cents_mean": 654.94,
-          "dur_mae_sec_mean": 0.711,
-          "phonetic_cer_mean": 43.94
-        },
-        "ml": {
-          "n": 21,
-          "mcd_mean": 5.949,
-          "f0_rmse_cents_mean": 699.93,
-          "dur_mae_sec_mean": 1.045,
-          "phonetic_cer_mean": 46.1
+          "n": 40,
+          "mcd_mean": 9.61,
+          "hf_8_12k_err_db_mean": 64.624,
+          "f0_rmse_cents_mean": 1168.85,
+          "dur_mae_sec_mean": 3.945
         }
       }
     },
     "mms_5_fleet": {
+      "sample_rate_hz": 16000,
       "size_mb": 694.0,
       "voiced_rate_pct": 100.0,
       "mcd_db": {
-        "mean": 5.09,
-        "ci95_low": 5.017,
-        "ci95_high": 5.166
+        "mean": 5.101,
+        "ci95_low": 5.042,
+        "ci95_high": 5.161
+      },
+      "hf_8_12k_err_db": {
+        "mean": 65.941,
+        "ci95_low": 65.512,
+        "ci95_high": 66.355
       },
       "f0_rmse_cents": {
-        "mean": 663.74,
-        "ci95_low": 644.928,
-        "ci95_high": 684.778
+        "mean": 673.924,
+        "ci95_low": 659.621,
+        "ci95_high": 688.249
       },
       "dur_mae_sec": {
-        "mean": 1.309,
-        "ci95_low": 1.143,
-        "ci95_high": 1.482
+        "mean": 1.272,
+        "ci95_low": 1.134,
+        "ci95_high": 1.408
       },
-      "sanskrit_cer_pct": {
-        "mean": 19.48,
-        "ci95_low": 16.51,
-        "ci95_high": 22.601
-      },
-      "sanskrit_wer_pct": {
-        "mean": 70.295,
-        "ci95_low": 60.814,
-        "ci95_high": 79.409
-      },
-      "pan_indic_phonetic_cer_pct": {
-        "mean": 26.734,
-        "ci95_low": 24.705,
-        "ci95_high": 28.771
-      },
-      "rtf_mean": 0.0885,
+      "rtf_mean": 0.08432,
       "ttfa_ms": {
-        "mean": 519.08,
-        "p50": 507.51,
-        "p95": 980.61
+        "mean": 464.4,
+        "p50": 425.02,
+        "p95": 879.33
       },
       "latency_ms": {
-        "p50": 507.51,
-        "p95": 980.61,
-        "p99": 1067.45
+        "p50": 425.02,
+        "p95": 879.33,
+        "p99": 969.93
       },
       "per_lang": {
         "sa": {
-          "n": 39,
-          "mcd_mean": 5.346,
-          "f0_rmse_cents_mean": 637.77,
-          "dur_mae_sec_mean": 1.027,
-          "phonetic_cer_mean": 19.41
+          "n": 40,
+          "mcd_mean": 5.328,
+          "hf_8_12k_err_db_mean": 66.165,
+          "f0_rmse_cents_mean": 735.22,
+          "dur_mae_sec_mean": 0.832
         },
         "hi": {
-          "n": 21,
-          "mcd_mean": 4.896,
-          "f0_rmse_cents_mean": 651.81,
-          "dur_mae_sec_mean": 0.608,
-          "phonetic_cer_mean": 17.39
+          "n": 40,
+          "mcd_mean": 4.851,
+          "hf_8_12k_err_db_mean": 64.187,
+          "f0_rmse_cents_mean": 622.09,
+          "dur_mae_sec_mean": 0.509
         },
         "kn": {
-          "n": 21,
-          "mcd_mean": 4.856,
-          "f0_rmse_cents_mean": 609.5,
-          "dur_mae_sec_mean": 2.637,
-          "phonetic_cer_mean": 23.16
+          "n": 40,
+          "mcd_mean": 5.057,
+          "hf_8_12k_err_db_mean": 66.625,
+          "f0_rmse_cents_mean": 632.43,
+          "dur_mae_sec_mean": 2.581
         },
         "ta": {
-          "n": 21,
-          "mcd_mean": 4.814,
-          "f0_rmse_cents_mean": 759.73,
-          "dur_mae_sec_mean": 1.573,
-          "phonetic_cer_mean": 36.35
+          "n": 40,
+          "mcd_mean": 4.877,
+          "hf_8_12k_err_db_mean": 66.179,
+          "f0_rmse_cents_mean": 733.88,
+          "dur_mae_sec_mean": 1.49
         },
         "te": {
-          "n": 21,
-          "mcd_mean": 5.595,
-          "f0_rmse_cents_mean": 724.52,
-          "dur_mae_sec_mean": 1.119,
-          "phonetic_cer_mean": 31.28
+          "n": 40,
+          "mcd_mean": 5.616,
+          "hf_8_12k_err_db_mean": 67.301,
+          "f0_rmse_cents_mean": 679.29,
+          "dur_mae_sec_mean": 1.201
         },
         "ml": {
-          "n": 21,
-          "mcd_mean": 4.814,
-          "f0_rmse_cents_mean": 621.37,
-          "dur_mae_sec_mean": 1.13,
-          "phonetic_cer_mean": 39.09
+          "n": 40,
+          "mcd_mean": 4.878,
+          "hf_8_12k_err_db_mean": 65.187,
+          "f0_rmse_cents_mean": 640.63,
+          "dur_mae_sec_mean": 1.018
         }
       }
     },
-    "ninada_pytorch_fp32": {
-      "size_mb": 138.43,
+    "ninada_v3_warmstart": {
+      "sample_rate_hz": 24000,
+      "size_mb": 312.68,
       "voiced_rate_pct": 100.0,
       "mcd_db": {
-        "mean": 4.696,
-        "ci95_low": 4.626,
-        "ci95_high": 4.771
+        "mean": 5.257,
+        "ci95_low": 5.206,
+        "ci95_high": 5.31
+      },
+      "hf_8_12k_err_db": {
+        "mean": 17.881,
+        "ci95_low": 17.337,
+        "ci95_high": 18.421
       },
       "f0_rmse_cents": {
-        "mean": 627.986,
-        "ci95_low": 609.334,
-        "ci95_high": 648.106
+        "mean": 714.12,
+        "ci95_low": 702.175,
+        "ci95_high": 725.852
       },
       "dur_mae_sec": {
-        "mean": 0.72,
-        "ci95_low": 0.619,
-        "ci95_high": 0.818
+        "mean": 1.699,
+        "ci95_low": 1.586,
+        "ci95_high": 1.811
       },
-      "sanskrit_cer_pct": {
-        "mean": 16.651,
-        "ci95_low": 13.17,
-        "ci95_high": 20.358
-      },
-      "sanskrit_wer_pct": {
-        "mean": 57.945,
-        "ci95_low": 49.771,
-        "ci95_high": 66.54
-      },
-      "pan_indic_phonetic_cer_pct": {
-        "mean": 29.492,
-        "ci95_low": 27.255,
-        "ci95_high": 31.842
-      },
-      "rtf_mean": 0.12998,
+      "rtf_mean": 0.09121,
       "ttfa_ms": {
-        "mean": 158.4,
-        "p50": 150.85,
-        "p95": 204.79
+        "mean": 258.18,
+        "p50": 237.27,
+        "p95": 463.64
       },
       "latency_ms": {
-        "p50": 653.41,
-        "p95": 1079.57,
-        "p99": 1211.44
+        "p50": 527.27,
+        "p95": 1030.31,
+        "p99": 1276.08
       },
       "per_lang": {
         "sa": {
-          "n": 39,
-          "mcd_mean": 4.897,
-          "f0_rmse_cents_mean": 601.25,
-          "dur_mae_sec_mean": 0.89,
-          "phonetic_cer_mean": 16.58
+          "n": 40,
+          "mcd_mean": 5.364,
+          "hf_8_12k_err_db_mean": 20.496,
+          "f0_rmse_cents_mean": 824.92,
+          "dur_mae_sec_mean": 0.651
         },
         "hi": {
-          "n": 21,
-          "mcd_mean": 4.26,
-          "f0_rmse_cents_mean": 644.3,
-          "dur_mae_sec_mean": 0.929,
-          "phonetic_cer_mean": 20.22
+          "n": 40,
+          "mcd_mean": 5.082,
+          "hf_8_12k_err_db_mean": 14.174,
+          "f0_rmse_cents_mean": 705.43,
+          "dur_mae_sec_mean": 1.492
         },
         "kn": {
-          "n": 21,
-          "mcd_mean": 4.513,
-          "f0_rmse_cents_mean": 590.75,
-          "dur_mae_sec_mean": 0.443,
-          "phonetic_cer_mean": 30.41
+          "n": 40,
+          "mcd_mean": 5.372,
+          "hf_8_12k_err_db_mean": 18.93,
+          "f0_rmse_cents_mean": 688.38,
+          "dur_mae_sec_mean": 1.846
         },
         "ta": {
-          "n": 21,
-          "mcd_mean": 4.587,
-          "f0_rmse_cents_mean": 741.59,
-          "dur_mae_sec_mean": 0.478,
-          "phonetic_cer_mean": 40.68
+          "n": 40,
+          "mcd_mean": 4.794,
+          "hf_8_12k_err_db_mean": 16.186,
+          "f0_rmse_cents_mean": 687.34,
+          "dur_mae_sec_mean": 2.096
         },
         "te": {
-          "n": 21,
-          "mcd_mean": 5.235,
-          "f0_rmse_cents_mean": 635.91,
-          "dur_mae_sec_mean": 0.824,
-          "phonetic_cer_mean": 37.76
+          "n": 40,
+          "mcd_mean": 5.39,
+          "hf_8_12k_err_db_mean": 17.535,
+          "f0_rmse_cents_mean": 667.21,
+          "dur_mae_sec_mean": 1.81
         },
         "ml": {
-          "n": 21,
-          "mcd_mean": 4.508,
-          "f0_rmse_cents_mean": 577.03,
-          "dur_mae_sec_mean": 0.607,
-          "phonetic_cer_mean": 42.36
+          "n": 40,
+          "mcd_mean": 5.541,
+          "hf_8_12k_err_db_mean": 19.963,
+          "f0_rmse_cents_mean": 711.43,
+          "dur_mae_sec_mean": 2.297
         }
       }
     },
-    "ninada_onnx_quant": {
-      "size_mb": 54.7,
+    "ninada_v3_pytorch": {
+      "sample_rate_hz": 24000,
+      "size_mb": 312.68,
       "voiced_rate_pct": 100.0,
       "mcd_db": {
-        "mean": 4.686,
-        "ci95_low": 4.611,
-        "ci95_high": 4.764
+        "mean": 4.804,
+        "ci95_low": 4.757,
+        "ci95_high": 4.851
+      },
+      "hf_8_12k_err_db": {
+        "mean": 9.452,
+        "ci95_low": 9.206,
+        "ci95_high": 9.705
       },
       "f0_rmse_cents": {
-        "mean": 626.406,
-        "ci95_low": 607.732,
-        "ci95_high": 647.464
+        "mean": 825.504,
+        "ci95_low": 814.05,
+        "ci95_high": 835.807
       },
       "dur_mae_sec": {
-        "mean": 0.733,
-        "ci95_low": 0.643,
-        "ci95_high": 0.832
+        "mean": 0.577,
+        "ci95_low": 0.511,
+        "ci95_high": 0.646
       },
-      "sanskrit_cer_pct": {
-        "mean": 16.954,
-        "ci95_low": 13.455,
-        "ci95_high": 20.282
-      },
-      "sanskrit_wer_pct": {
-        "mean": 58.787,
-        "ci95_low": 49.938,
-        "ci95_high": 67.288
-      },
-      "pan_indic_phonetic_cer_pct": {
-        "mean": 29.611,
-        "ci95_low": 27.256,
-        "ci95_high": 32.009
-      },
-      "rtf_mean": 0.20907,
+      "rtf_mean": 0.09315,
       "ttfa_ms": {
-        "mean": 197.23,
-        "p50": 180.14,
-        "p95": 253.64
+        "mean": 185.96,
+        "p50": 174.7,
+        "p95": 345.37
       },
       "latency_ms": {
-        "p50": 1056.14,
-        "p95": 1946.25,
-        "p99": 2458.05
+        "p50": 388.22,
+        "p95": 767.48,
+        "p99": 853.56
       },
       "per_lang": {
         "sa": {
-          "n": 39,
-          "mcd_mean": 4.87,
-          "f0_rmse_cents_mean": 599.47,
-          "dur_mae_sec_mean": 0.954,
-          "phonetic_cer_mean": 16.88
+          "n": 40,
+          "mcd_mean": 4.992,
+          "hf_8_12k_err_db_mean": 10.748,
+          "f0_rmse_cents_mean": 860.02,
+          "dur_mae_sec_mean": 1.121
         },
         "hi": {
-          "n": 21,
-          "mcd_mean": 4.249,
-          "f0_rmse_cents_mean": 625.18,
-          "dur_mae_sec_mean": 0.834,
-          "phonetic_cer_mean": 18.89
+          "n": 40,
+          "mcd_mean": 4.7,
+          "hf_8_12k_err_db_mean": 8.227,
+          "f0_rmse_cents_mean": 841.34,
+          "dur_mae_sec_mean": 0.39
         },
         "kn": {
-          "n": 21,
-          "mcd_mean": 4.593,
-          "f0_rmse_cents_mean": 575.52,
-          "dur_mae_sec_mean": 0.434,
-          "phonetic_cer_mean": 31.52
+          "n": 40,
+          "mcd_mean": 4.926,
+          "hf_8_12k_err_db_mean": 9.302,
+          "f0_rmse_cents_mean": 773.75,
+          "dur_mae_sec_mean": 0.347
         },
         "ta": {
-          "n": 21,
-          "mcd_mean": 4.593,
-          "f0_rmse_cents_mean": 747.73,
-          "dur_mae_sec_mean": 0.633,
-          "phonetic_cer_mean": 44.05
+          "n": 40,
+          "mcd_mean": 4.432,
+          "hf_8_12k_err_db_mean": 8.296,
+          "f0_rmse_cents_mean": 823.69,
+          "dur_mae_sec_mean": 0.546
         },
         "te": {
-          "n": 21,
-          "mcd_mean": 5.189,
-          "f0_rmse_cents_mean": 635.18,
-          "dur_mae_sec_mean": 0.759,
-          "phonetic_cer_mean": 36.73
+          "n": 40,
+          "mcd_mean": 4.898,
+          "hf_8_12k_err_db_mean": 9.455,
+          "f0_rmse_cents_mean": 819.2,
+          "dur_mae_sec_mean": 0.559
         },
         "ml": {
-          "n": 21,
-          "mcd_mean": 4.469,
-          "f0_rmse_cents_mean": 598.45,
-          "dur_mae_sec_mean": 0.595,
-          "phonetic_cer_mean": 40.5
+          "n": 40,
+          "mcd_mean": 4.877,
+          "hf_8_12k_err_db_mean": 10.685,
+          "f0_rmse_cents_mean": 835.01,
+          "dur_mae_sec_mean": 0.501
+        }
+      }
+    },
+    "ninada_v3_onnx": {
+      "sample_rate_hz": 24000,
+      "size_mb": 87.98,
+      "voiced_rate_pct": 100.0,
+      "mcd_db": {
+        "mean": 5.051,
+        "ci95_low": 5.002,
+        "ci95_high": 5.101
+      },
+      "hf_8_12k_err_db": {
+        "mean": 10.865,
+        "ci95_low": 10.571,
+        "ci95_high": 11.16
+      },
+      "f0_rmse_cents": {
+        "mean": 828.062,
+        "ci95_low": 817.707,
+        "ci95_high": 838.244
+      },
+      "dur_mae_sec": {
+        "mean": 0.571,
+        "ci95_low": 0.511,
+        "ci95_high": 0.635
+      },
+      "rtf_mean": 0.09138,
+      "ttfa_ms": {
+        "mean": 386.44,
+        "p50": 361.02,
+        "p95": 785.09
+      },
+      "latency_ms": {
+        "p50": 399.02,
+        "p95": 829.07,
+        "p99": 898.93
+      },
+      "per_lang": {
+        "sa": {
+          "n": 40,
+          "mcd_mean": 5.213,
+          "hf_8_12k_err_db_mean": 11.817,
+          "f0_rmse_cents_mean": 857.31,
+          "dur_mae_sec_mean": 0.986
+        },
+        "hi": {
+          "n": 40,
+          "mcd_mean": 5.039,
+          "hf_8_12k_err_db_mean": 9.376,
+          "f0_rmse_cents_mean": 842.8,
+          "dur_mae_sec_mean": 0.435
+        },
+        "kn": {
+          "n": 40,
+          "mcd_mean": 5.176,
+          "hf_8_12k_err_db_mean": 10.847,
+          "f0_rmse_cents_mean": 791.7,
+          "dur_mae_sec_mean": 0.308
+        },
+        "ta": {
+          "n": 40,
+          "mcd_mean": 4.776,
+          "hf_8_12k_err_db_mean": 9.979,
+          "f0_rmse_cents_mean": 836.2,
+          "dur_mae_sec_mean": 0.594
+        },
+        "te": {
+          "n": 40,
+          "mcd_mean": 5.042,
+          "hf_8_12k_err_db_mean": 10.42,
+          "f0_rmse_cents_mean": 807.45,
+          "dur_mae_sec_mean": 0.537
+        },
+        "ml": {
+          "n": 40,
+          "mcd_mean": 5.059,
+          "hf_8_12k_err_db_mean": 12.75,
+          "f0_rmse_cents_mean": 832.92,
+          "dur_mae_sec_mean": 0.564
         }
       }
     },
     "ninada_klatt_tier2": {
+      "sample_rate_hz": 24000,
       "size_mb": 0.0,
       "voiced_rate_pct": 100.0,
       "mcd_db": {
-        "mean": 11.321,
-        "ci95_low": 11.125,
-        "ci95_high": 11.519
+        "mean": 10.38,
+        "ci95_low": 10.261,
+        "ci95_high": 10.501
+      },
+      "hf_8_12k_err_db": {
+        "mean": 41.938,
+        "ci95_low": 41.275,
+        "ci95_high": 42.559
       },
       "f0_rmse_cents": {
-        "mean": 533.534,
-        "ci95_low": 515.792,
-        "ci95_high": 551.437
+        "mean": 613.77,
+        "ci95_low": 597.328,
+        "ci95_high": 630.072
       },
       "dur_mae_sec": {
-        "mean": 1.326,
-        "ci95_low": 1.16,
-        "ci95_high": 1.516
+        "mean": 0.985,
+        "ci95_low": 0.877,
+        "ci95_high": 1.084
       },
-      "sanskrit_cer_pct": {
-        "mean": 87.775,
-        "ci95_low": 85.775,
-        "ci95_high": 89.795
-      },
-      "sanskrit_wer_pct": {
-        "mean": 100.0,
-        "ci95_low": 100.0,
-        "ci95_high": 100.0
-      },
-      "pan_indic_phonetic_cer_pct": {
-        "mean": 89.705,
-        "ci95_low": 88.526,
-        "ci95_high": 90.84
-      },
-      "rtf_mean": 0.00915,
+      "rtf_mean": 0.01097,
       "ttfa_ms": {
-        "mean": 36.17,
-        "p50": 34.6,
-        "p95": 65.2
+        "mean": 40.48,
+        "p50": 37.92,
+        "p95": 74.17
       },
       "latency_ms": {
-        "p50": 34.6,
-        "p95": 65.2,
-        "p99": 75.68
+        "p50": 37.92,
+        "p95": 74.17,
+        "p99": 84.97
       },
       "per_lang": {
         "sa": {
-          "n": 39,
-          "mcd_mean": 10.838,
-          "f0_rmse_cents_mean": 557.55,
-          "dur_mae_sec_mean": 2.487,
-          "phonetic_cer_mean": 87.78
+          "n": 40,
+          "mcd_mean": 10.089,
+          "hf_8_12k_err_db_mean": 36.844,
+          "f0_rmse_cents_mean": 785.47,
+          "dur_mae_sec_mean": 1.955
         },
         "hi": {
-          "n": 21,
-          "mcd_mean": 11.283,
-          "f0_rmse_cents_mean": 575.43,
-          "dur_mae_sec_mean": 0.991,
-          "phonetic_cer_mean": 89.95
+          "n": 40,
+          "mcd_mean": 10.333,
+          "hf_8_12k_err_db_mean": 45.683,
+          "f0_rmse_cents_mean": 603.93,
+          "dur_mae_sec_mean": 0.518
         },
         "kn": {
-          "n": 21,
-          "mcd_mean": 11.676,
-          "f0_rmse_cents_mean": 466.27,
-          "dur_mae_sec_mean": 1.093,
-          "phonetic_cer_mean": 87.06
+          "n": 40,
+          "mcd_mean": 10.72,
+          "hf_8_12k_err_db_mean": 39.551,
+          "f0_rmse_cents_mean": 561.17,
+          "dur_mae_sec_mean": 1.134
         },
         "ta": {
-          "n": 21,
-          "mcd_mean": 10.968,
-          "f0_rmse_cents_mean": 533.9,
-          "dur_mae_sec_mean": 0.487,
-          "phonetic_cer_mean": 89.6
+          "n": 40,
+          "mcd_mean": 9.932,
+          "hf_8_12k_err_db_mean": 44.866,
+          "f0_rmse_cents_mean": 582.05,
+          "dur_mae_sec_mean": 0.682
         },
         "te": {
-          "n": 21,
-          "mcd_mean": 12.346,
-          "f0_rmse_cents_mean": 533.43,
-          "dur_mae_sec_mean": 1.223,
-          "phonetic_cer_mean": 93.89
+          "n": 40,
+          "mcd_mean": 10.787,
+          "hf_8_12k_err_db_mean": 43.661,
+          "f0_rmse_cents_mean": 575.58,
+          "dur_mae_sec_mean": 0.999
         },
         "ml": {
-          "n": 21,
-          "mcd_mean": 11.226,
-          "f0_rmse_cents_mean": 514.04,
-          "dur_mae_sec_mean": 0.678,
-          "phonetic_cer_mean": 91.62
+          "n": 40,
+          "mcd_mean": 10.419,
+          "hf_8_12k_err_db_mean": 41.022,
+          "f0_rmse_cents_mean": 574.42,
+          "dur_mae_sec_mean": 0.623
         }
       }
     }

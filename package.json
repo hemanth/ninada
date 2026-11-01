@@ -1,8 +1,8 @@
 {
   "name": "ninada-workspace",
   "private": true,
-  "version": "1.1.0",
-  "description": "Ninada (निनाद) — Streaming SOTA Pan-Indic & Classical Sanskrit Neural TTS (GCP L4 VITS + Browser Web Worker WASM SIMD ONNX + Zero-Dep Klatt Akshara Engine)",
+  "version": "3.0.0",
+  "description": "Ninada (निनाद) — 24,000 Hz Studio Classical Sanskrit & Pan-Indic Streaming Neural TTS (Unified Q8F16 ONNX + AudioWorklet WASM SIMD + Zero-Dep Klatt Fallback)",
   "type": "module",
   "scripts": {
     "test": "node --test js/test/*.test.js",

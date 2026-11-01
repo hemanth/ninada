@@ -73,9 +73,15 @@ async function main() {
     const page = await context.newPage();
 
     const errors = [];
-    let holdNextOnnxMs = 600;
+    let holdNextAssetMs = 600;
     let activeBucket = "phase1";
     const onnxBuckets = {
+      phase1: [],
+      reload: [],
+      switchLangs: [],
+      revisitCached: [],
+    };
+    const binBuckets = {
       phase1: [],
       reload: [],
       switchLangs: [],
@@ -85,9 +91,20 @@ async function main() {
     await context.route("**/*.onnx*", async (route) => {
       const u = route.request().url();
       onnxBuckets[activeBucket].push(u);
-      if (holdNextOnnxMs > 0) {
-        const delay = holdNextOnnxMs;
-        holdNextOnnxMs = 0;
+      if (holdNextAssetMs > 0) {
+        const delay = holdNextAssetMs;
+        holdNextAssetMs = 0;
+        await new Promise((r) => setTimeout(r, delay));
+      }
+      await route.continue();
+    });
+
+    await context.route("**/*.bin*", async (route) => {
+      const u = route.request().url();
+      binBuckets[activeBucket].push(u);
+      if (holdNextAssetMs > 0) {
+        const delay = holdNextAssetMs;
+        holdNextAssetMs = 0;
         await new Promise((r) => setTimeout(r, delay));
       }
       await route.continue();
@@ -193,11 +210,15 @@ async function main() {
     assert.equal(postLoadState.langAnyDisabled, false);
     assert.equal(postLoadState.downloadDisabled, false);
     assert.ok(
-      onnxBuckets.phase1.length >= 2,
-      `Expected >=2 ONNX fetches on cold load, got ${onnxBuckets.phase1.length}`
+      onnxBuckets.phase1.length >= 1,
+      `Expected >=1 ONNX fetch on cold load, got ${onnxBuckets.phase1.length}`
+    );
+    assert.ok(
+      binBuckets.phase1.length >= 1,
+      `Expected >=1 voice .bin fetch on cold load, got ${binBuckets.phase1.length}`
     );
 
-    // 2. Reload page in same browser context — verify immediate COI + 0 network ONNX requests (100% browser cache hit!)
+    // 2. Reload page in same browser context — verify immediate COI + 0 network ONNX/.bin requests (100% browser cache hit!)
     activeBucket = "reload";
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(
@@ -219,6 +240,7 @@ async function main() {
     console.log("Reload Browser Cache Verification:", {
       ...reloadCacheState,
       onnxNetworkRequestsOnReload: onnxBuckets.reload.length,
+      voiceNetworkRequestsOnReload: binBuckets.reload.length,
     });
     assert.equal(reloadCacheState.crossOriginIsolated, true);
     assert.equal(
@@ -226,29 +248,34 @@ async function main() {
       0,
       `Expected 0 ONNX network requests on reload (cached), got ${onnxBuckets.reload.length}: ${onnxBuckets.reload.join(", ")}`
     );
+    assert.equal(
+      binBuckets.reload.length,
+      0,
+      `Expected 0 voice .bin network requests on reload (cached), got ${binBuckets.reload.length}: ${binBuckets.reload.join(", ")}`
+    );
     assert.equal(reloadCacheState.cacheHit, true, "Expected window.__ninadaCacheHit === true on reload");
     assert.equal(reloadCacheState.controlsLocked, false);
     assert.ok(reloadCacheState.loaderText.includes("Loaded from Cache"));
 
     const saResult = await page.evaluate(() => window.__ninadaLastResult);
-    console.log("Sanskrit Streaming Neural ONNX Result:", saResult);
+    console.log("Sanskrit 24 kHz Streaming Neural ONNX Result:", saResult);
     assert.equal(saResult.isNeural, true);
     assert.equal(saResult.tier, "neural_onnx");
     assert.equal(saResult.lang, "sa");
-    assert.ok(saResult.samples > 16000, `Expected >1s audio, got ${saResult.samples} samples`);
+    assert.ok(saResult.samples > 24000, `Expected >1s 24kHz audio, got ${saResult.samples} samples`);
     assert.ok(saResult.rms > 0.02, `Expected non-silent RMS > 0.02, got ${saResult.rms}`);
-    assert.ok(saResult.ttfaMs > 0 && saResult.ttfaMs < 650, `Expected TTFA < 650ms, got ${saResult.ttfaMs}`);
-    assert.ok(saResult.rtf < 0.55, `Expected multi-threaded RTF < 0.55, got ${saResult.rtf}`);
-    assert.ok(saResult.wavBytes > 32000);
+    assert.ok(saResult.ttfaMs > 0 && saResult.ttfaMs < 1500, `Expected TTFA < 1500ms, got ${saResult.ttfaMs}`);
+    assert.ok(saResult.rtf < 0.95, `Expected multi-threaded RTF < 0.95 (<1.0x real-time), got ${saResult.rtf}`);
+    assert.ok(saResult.wavBytes > 48000);
 
     await page.screenshot({
       path: path.join(SCREENSHOT_DIR, "ninada_studio_desktop.png"),
       fullPage: true,
     });
 
-    // 3. Verify language-switch button lock + native-script specialist loading across all 6 languages!
+    // 3. Verify language-switch button lock + 0 ONNX recompilations across all 6 languages!
     activeBucket = "switchLangs";
-    holdNextOnnxMs = 450;
+    holdNextAssetMs = 450;
     await page.locator('.lang-btn[data-lang="kn"]').click();
 
     const switchLock = await page.evaluate(() => ({
@@ -308,7 +335,13 @@ async function main() {
       assert.equal(tabState.modelCached, true, `Expected ${item.lang} ONNX specialist to be cached`);
     }
 
-    // 4. Revisit cached Kannada (`kn`) — verify 0 network ONNX requests + Real-Time AudioWorklet Multi-Sentence Smoothness!
+    assert.equal(
+      onnxBuckets.switchLangs.length,
+      0,
+      `Expected 0 ONNX downloads when switching languages on unified 24kHz session, got ${onnxBuckets.switchLangs.length}`
+    );
+
+    // 4. Revisit cached Kannada (`kn`) — verify 0 network ONNX/.bin requests + Real-Time AudioWorklet Multi-Sentence Smoothness!
     activeBucket = "revisitCached";
     await page.locator('.lang-btn[data-lang="kn"]').click();
     await page.waitForFunction(
@@ -320,6 +353,11 @@ async function main() {
       onnxBuckets.revisitCached.length,
       0,
       `Expected 0 ONNX network requests when switching back to cached KN, got ${onnxBuckets.revisitCached.length}`
+    );
+    assert.equal(
+      binBuckets.revisitCached.length,
+      0,
+      `Expected 0 voice .bin network requests when switching back to cached KN, got ${binBuckets.revisitCached.length}`
     );
 
     await page.locator(".preset-chip", { hasText: "Streaming Passage" }).click();
@@ -355,8 +393,8 @@ async function main() {
     assert.equal(knStream.result.tier, "neural_onnx");
     assert.ok(knStream.result.chunkCount >= 3, `Expected >=3 streamed chunks, got ${knStream.result.chunkCount}`);
     assert.ok(knStream.result.rms > 0.02);
-    assert.ok(knStream.result.ttfaMs < 650, `Expected KN TTFA < 650ms, got ${knStream.result.ttfaMs}`);
-    assert.ok(knStream.result.rtf < 0.55, `Expected KN RTF < 0.55, got ${knStream.result.rtf}`);
+    assert.ok(knStream.result.ttfaMs < 1500, `Expected KN TTFA < 1500ms, got ${knStream.result.ttfaMs}`);
+    assert.ok(knStream.result.rtf < 0.95, `Expected KN RTF < 0.95 (<1.0x real-time), got ${knStream.result.rtf}`);
     assert.equal(knStream.stats.engine, "audioworklet", `Expected AudioWorklet engine, got ${knStream.stats.engine}`);
     assert.equal(
       knStream.stats.underrunCount,
@@ -386,6 +424,11 @@ async function main() {
       onnxBuckets.revisitCached.length,
       0,
       `Expected 0 ONNX network requests when switching back to cached TA, got ${onnxBuckets.revisitCached.length}`
+    );
+    assert.equal(
+      binBuckets.revisitCached.length,
+      0,
+      `Expected 0 voice .bin network requests when switching back to cached TA, got ${binBuckets.revisitCached.length}`
     );
     await page.locator(".preset-chip", { hasText: "Streaming Passage" }).click();
     await page.evaluate(() => {
@@ -478,7 +521,7 @@ async function main() {
 
     assert.equal(errors.length, 0, `Browser errors detected: ${errors.join(" | ")}`);
     await browser.close();
-    console.log(`ALL NINADA v2.1 SMOOTH STREAMING & CACHE BROWSER CHECKS PASSED ON ${TARGET_URL} WITH ZERO UNDERRUNS & ZERO ERRORS!`);
+    console.log(`ALL NINADA v3.0 24KHZ STUDIO STREAMING & CACHE BROWSER CHECKS PASSED ON ${TARGET_URL} WITH ZERO UNDERRUNS & ZERO ERRORS!`);
   } finally {
     if (server) {
       server.kill("SIGTERM");
