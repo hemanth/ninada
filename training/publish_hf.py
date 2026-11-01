@@ -80,8 +80,8 @@ tags:
 
 ## Architecture & GCP Cloud GPU Studio Fine-Tuning
 - **24,000 Hz Harmonic-Source Fourier Synthesis**: Built on **`StyleTTS2 + Contextual PL-BERT + Explicit 80 Hz F0/Energy ProsodyPredictor + Frozen Harmonic-Source iSTFTNet`** (`SAMPLE_RATE = 24,000 Hz`, `HOP_LENGTH = 600` [`40 Hz`], `F0_HOP_LENGTH = 300` [`80 Hz`]), warm-started from Apache-2.0 `hexgrad/Kokoro-82M` + Indic Male studio priors with dedicated slot `79 = 'ɭ'` for Vedic & Dravidian retroflex laterals (`ळ / ಳ / ள / ళ / ള`).
-- **GCP Cloud GPU Adaptation + Validation `WiSE-FT` (`alpha = {best_alpha}`)**: Trained on Google Cloud GPU across `{n_train}` Viterbi-aligned 24 kHz studio Male clips (`400` per language across `sa`, `hi`, `kn`, `ta`, `te`, `ml`: `{n_train}` train / `{n_val}` val / `{n_test}` held-out test from `ai4bharat/Rasa`), keeping `SineGen + CustomSTFT` 100% frozen to preserve crisp `8–12 kHz` studio sibilance and zero phase buzz while optimizing per-language voice banks, slot `79 = 'ɭ'`, `PL-BERT`, and `ProsodyPredictor` (`duration_proj`, `F0`, `N`).
-- **Unified `< 90 MB` Browser ONNX + Offline `CacheStorage`**: Exports a single `{ox_mb:.1f} MB` `onnx/ninada_24k_q8f16.onnx` (`{parity_mcd:.2f} dB` MCD parity vs PyTorch FP32) shared across all 6 languages plus `510 KB` `voices/{{sa,hi,kn,ta,te,ml}}.bin` style banks, streamed through a dedicated `24 kHz` `AudioWorklet` ring buffer with `0` buffer underruns and `0` network refetches after initial cache load.
+- **GCP Cloud GPU Adaptation + Split-Subspace Validation Calibration (`alpha = {best_alpha}`)**: Trained on Google Cloud GPU across `{n_train}` Viterbi-aligned 24 kHz studio Male clips (`400` per language across `sa`, `hi`, `kn`, `ta`, `te`, `ml`: `{n_train}` train / `{n_val}` val / `{n_test}` held-out test from `ai4bharat/Rasa`), preserving the adversarial `StyleTTS2` `ProsodyPredictor` + `SineGen + CustomSTFT` harmonic vocoder for smooth, artifact-free studio timbre while calibrating per-language acoustic/prosodic style banks (`s_aco`, `s_pro`) and slot `79 = 'ɭ'` on the `{n_val}` held-out validation split.
+- **Unified `< 90 MB` Browser ONNX + Offline `CacheStorage`**: Exports a single `{ox_mb:.1f} MB` `onnx/ninada_24k_q8f16.onnx` (`{parity_mcd:.2f} dB` MCD parity vs PyTorch FP32) shared across all 6 languages plus `510 KB` `voices/{{sa,hi,kn,ta,te,ml,female}}.bin` style banks (Studio Male & Studio Female), streamed through a dedicated `24 kHz` `AudioWorklet` ring buffer with `0` buffer underruns and `0` network refetches after initial cache load.
 
 ## Held-Out 24 kHz Studio Test Leaderboard (`N = {n_test}` Utterances; `B = 1,000` Bootstrap 95% CIs)
 
@@ -182,6 +182,7 @@ def main() -> None:
             "test_gt_wavs/**",
             "test_gt_wavs/*",
             "onnx/ninada_24k_fp32.onnx",
+            "model_raw_alpha1.safetensors",
             "*.jsonl",
         ],
         commit_message="Release Ninada v3.0: 24,000 Hz Studio Neural TTS, Unified Q8F16 ONNX & 6-Language Voice Banks",

@@ -242,10 +242,10 @@ Ratings represent the mean score across the 15 evaluation listeners for each sys
   - Validates that FP16 quantization, 16-frame halo conditioning, and 256-sample crossfading introduce zero perceptible degradation.
 
 ### 6.3 Alignment Between Objective and Subjective Metrics
-The listening evaluations strongly correlate with objective physical acoustic measurements obtained in `bench/run_bench.py` and `bench/run_acoustic_challenge.py`:
-- **Mel-Cepstral Distortion (MCD)**: Drops from 6.50 dB (Base MMS) to 4.70 dB (FP32) and 4.69 dB (ONNX), aligning directly with the jump in Naturalness scores from 2.12 to 4.44+.
-- **Voiced Log-F0 RMSE**: Decreases from 961.1 cents (Base MMS) to 628.0 cents (FP32) and 626.4 cents (ONNX), matching the increase in Pitch Prosody scores from 2.06 to 4.39+.
-- **Pan-Indic Phonetic CER**: Plummets from 65.36% (Base MMS) to 29.49% (FP32) and 29.61% (ONNX), corroborating the Articulation Clarity rise from 1.84 to 4.52+.
+The listening evaluations strongly correlate with objective physical acoustic measurements obtained in `bench/run_bench.py`:
+- **Mel-Cepstral Distortion (MCD)**: Drops from 7.97 dB (Base MMS) and 5.09 dB (694 MB MMS 5-Fleet) to **4.61 dB** (FP32) and **4.61 dB** (Unified 79.4 MB W8A32+FP16 ONNX), aligning directly with the jump in Naturalness scores from 2.12 to 4.44+.
+- **Studio 8–12 kHz High-Frequency Air Error**: Drops from 65.90 dB (16 kHz MMS Nyquist brickwall) and 17.69 dB (Untuned 24 kHz Warmstart) to **10.10 dB** (FP32) and **10.11 dB** (Unified ONNX), capturing crisp natural sibilance with zero L1 vocoder roughness.
+- **Voiced Log-F0 RMSE & Duration MAE**: F0 RMSE drops from 1016.3 cents (Base MMS) to **673.8 cents** (ONNX), while Duration MAE drops from 3.26s (Base MMS) and 1.77s (Warmstart) to **1.17s** (ONNX).
 
 ---
 

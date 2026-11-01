@@ -247,11 +247,17 @@ def synthesize_klatt_pcm(
 
 def encode_wav_bytes(pcm: Any, sr: int = SAMPLE_RATE) -> bytes:
     """Encode float32 [-1, 1] iterable/array into standard 16-bit mono RIFF WAV bytes."""
-    buf = bytearray()
-    for s in pcm:
-        v = max(-1.0, min(1.0, float(s)))
-        buf.extend(struct.pack("<h", int(round(v * 32767.0))))
-    pcm16 = bytes(buf)
+    try:
+        import numpy as np
+
+        arr = np.asarray(pcm, dtype=np.float32).reshape(-1)
+        pcm16 = np.round(np.clip(arr, -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+    except Exception:
+        buf = bytearray()
+        for s in pcm:
+            v = max(-1.0, min(1.0, float(s)))
+            buf.extend(struct.pack("<h", int(round(v * 32767.0))))
+        pcm16 = bytes(buf)
     byte_rate = sr * 2
     header = struct.pack(
         "<4sI4s4sIHHIIHH4sI",
@@ -282,6 +288,18 @@ def _has_pronounceable_content(parsed: dict[str, Any]) -> bool:
         if core:
             return True
     return False
+
+
+def _make_ort_cpu_session(onnx_path: Path) -> Any:
+    import os
+    import onnxruntime as ort
+
+    so = ort.SessionOptions()
+    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    n_thr = int(os.environ.get("NINADA_ORT_THREADS", str(min(6, max(2, (os.cpu_count() or 4) // 2)))))
+    so.intra_op_num_threads = max(1, n_thr)
+    so.inter_op_num_threads = 1
+    return ort.InferenceSession(str(onnx_path), sess_options=so, providers=["CPUExecutionProvider"])
 
 
 class Ninada:
@@ -339,12 +357,12 @@ class Ninada:
                 import onnxruntime as ort
 
                 if encoder_path and vocoder_path and Path(encoder_path).exists() and Path(vocoder_path).exists():
-                    self.enc_session = ort.InferenceSession(str(encoder_path), providers=["CPUExecutionProvider"])
-                    self.voc_session = ort.InferenceSession(str(vocoder_path), providers=["CPUExecutionProvider"])
+                    self.enc_session = _make_ort_cpu_session(Path(encoder_path))
+                    self.voc_session = _make_ort_cpu_session(Path(vocoder_path))
                     self.model_path = Path(encoder_path)
                 elif model_path is not None and Path(model_path).exists():
                     self.model_path = Path(model_path)
-                    self.session = ort.InferenceSession(str(self.model_path), providers=["CPUExecutionProvider"])
+                    self.session = _make_ort_cpu_session(self.model_path)
                     if self._voice_dir is None and (self.model_path.parent / "voices").is_dir():
                         self._voice_dir = self.model_path.parent / "voices"
                     elif self._voice_dir is None and (self.model_path.parent.parent / "voices").is_dir():
@@ -395,32 +413,31 @@ class Ninada:
 
         if onnx_path is not None and onnx_path.exists():
             try:
-                import onnxruntime as ort
-
-                sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+                sess = _make_ort_cpu_session(onnx_path)
                 self.model_path = onnx_path
                 return sess
             except Exception:
                 return None
         return None
 
-    def _get_voice_style(self, lang: str, num_ipa_tokens: int) -> Any:
+    def _get_voice_style(self, lang: str, num_ipa_tokens: int, voice: str | None = None) -> Any:
         import numpy as np
 
-        lc = lang if lang in LANGUAGE_IDS else "sa"
-        bank = self._voice_banks.get(lc)
+        v_norm = (voice or "").strip().lower()
+        key = "female" if v_norm == "female" else (lang if lang in LANGUAGE_IDS else "sa")
+        bank = self._voice_banks.get(key)
         if bank is None:
             search_paths: list[Path] = []
             if self._voice_dir is not None:
-                search_paths.append(self._voice_dir / f"{lc}.bin")
+                search_paths.append(self._voice_dir / f"{key}.bin")
             if self.model_path is not None:
-                search_paths.append(self.model_path.parent / "voices" / f"{lc}.bin")
-                search_paths.append(self.model_path.parent.parent / "voices" / f"{lc}.bin")
+                search_paths.append(self.model_path.parent / "voices" / f"{key}.bin")
+                search_paths.append(self.model_path.parent.parent / "voices" / f"{key}.bin")
             search_paths.extend(
                 [
-                    self._repo_root / "docs" / "voices" / f"{lc}.bin",
-                    self._repo_root / "artifacts" / "ninada_v3" / "voices" / f"{lc}.bin",
-                    self._repo_root / "artifacts" / "ninada" / "voices" / f"{lc}.bin",
+                    self._repo_root / "docs" / "voices" / f"{key}.bin",
+                    self._repo_root / "artifacts" / "ninada_v3" / "voices" / f"{key}.bin",
+                    self._repo_root / "artifacts" / "ninada" / "voices" / f"{key}.bin",
                 ]
             )
             bin_path: Path | None = None
@@ -432,16 +449,18 @@ class Ninada:
                 try:
                     from huggingface_hub import hf_hub_download
 
-                    dl = Path(hf_hub_download(repo_id="gnumanth/ninada", filename=f"voices/{lc}.bin"))
+                    dl = Path(hf_hub_download(repo_id="gnumanth/ninada", filename=f"voices/{key}.bin"))
                     if dl.exists() and dl.stat().st_size == 510 * 256 * 4:
                         bin_path = dl
                 except Exception:
                     bin_path = None
+            if bin_path is None and key == "female":
+                return self._get_voice_style(lang, num_ipa_tokens, voice=None)
             if bin_path is not None:
                 bank = np.fromfile(str(bin_path), dtype=np.float32).reshape(510, 1, 256)
             else:
                 bank = np.zeros((510, 1, 256), dtype=np.float32)
-            self._voice_banks[lc] = bank
+            self._voice_banks[key] = bank
 
         row = min(509, max(0, int(num_ipa_tokens) - 2))
         return bank[row].astype(np.float32)
@@ -515,6 +534,7 @@ class Ninada:
         chunk_frames: int = 64,
         halo_frames: int = 12,
         crossfade_samples: int = 256,
+        voice: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         """Stream 24 kHz studio neural audio chunks (StyleTTS2 + PL-BERT + iSTFTNet ONNX) or Tier-2 Klatt fallback."""
         use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
@@ -583,7 +603,7 @@ class Ninada:
                     continue
 
                 ipa_ids = parsed["ipa_ids"]
-                style_vec = self._get_voice_style(parsed["lang"], len(ipa_ids))
+                style_vec = self._get_voice_style(parsed["lang"], len(ipa_ids), voice=voice)
                 ort_in = {
                     "input_ids": np.array([ipa_ids], dtype=np.int64),
                     "style": style_vec,
@@ -601,9 +621,9 @@ class Ninada:
                     r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 256.0))
                     clause_pcm[-256:] *= r_out
                 if c_idx < len(clauses) - 1:
-                    pause_samples = int(0.055 * SAMPLE_RATE)
-                    room_tone = generate_room_tone(num_samples=pause_samples, seed=1337 + c_idx)
-                    clause_pcm = np.concatenate([clause_pcm, room_tone])
+                    pause_samples = int(0.048 * SAMPLE_RATE)
+                    silence = np.zeros(pause_samples, dtype=np.float32)
+                    clause_pcm = np.concatenate([clause_pcm, silence])
 
                 peak = float(np.max(np.abs(clause_pcm))) if len(clause_pcm) > 0 else 0.0
                 if peak > 0.96:
@@ -864,6 +884,7 @@ class Ninada:
         noise: float = 0.667,
         noise_duration: float = 0.80,
         tier: str = "auto",
+        voice: str | None = None,
     ) -> bytes:
         """Synthesize text into 24 kHz mono WAV bytes."""
         pcm, _ = self.synthesize(
@@ -873,6 +894,7 @@ class Ninada:
             noise=noise,
             noise_duration=noise_duration,
             tier=tier,
+            voice=voice,
         )
         return encode_wav_bytes(pcm, sr=SAMPLE_RATE)
 
@@ -884,6 +906,7 @@ class Ninada:
         noise: float = 0.667,
         noise_duration: float = 0.80,
         tier: str = "auto",
+        voice: str | None = None,
     ) -> tuple[Any, dict[str, Any]]:
         """Synthesize full 24 kHz waveform array + linguistic metadata."""
         use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
@@ -902,6 +925,7 @@ class Ninada:
                 noise=noise,
                 noise_duration=noise_duration,
                 tier=tier,
+                voice=voice,
             ):
                 pieces.append(np.asarray(ch["pcm"], dtype=np.float32))
                 if ch.get("durations"):
@@ -929,6 +953,7 @@ def speak(
     noise: float = 0.667,
     noise_duration: float = 0.80,
     tier: str = "auto",
+    voice: str | None = None,
 ) -> bytes:
     """One-line convenience helper to synthesize 24 kHz RIFF WAV bytes."""
     return Ninada(lang=lang).speak(
@@ -938,6 +963,7 @@ def speak(
         noise=noise,
         noise_duration=noise_duration,
         tier=tier,
+        voice=voice,
     )
 
 
@@ -949,6 +975,7 @@ def stream(
     noise_duration: float = 0.80,
     tier: str = "auto",
     chunk_frames: int = 64,
+    voice: str | None = None,
 ) -> Iterator[dict[str, Any]]:
     """One-line convenience generator to stream 24 kHz audio chunks with low TTFA."""
     yield from Ninada(lang=lang).stream(
@@ -959,4 +986,5 @@ def stream(
         noise_duration=noise_duration,
         tier=tier,
         chunk_frames=chunk_frames,
+        voice=voice,
     )

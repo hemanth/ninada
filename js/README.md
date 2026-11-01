@@ -1,6 +1,6 @@
 # ninada
 
-> Stream Classical Sanskrit and 6 Indic languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser and Node.js via 6 native Halo-Chunked VITS+HiFi-GAN FP16 ONNX specialists (`54.7 MB` per specialist, persistent `CacheStorage` + `IndexedDB` caching, `123.7 dB` crossfaded seam SNR) or zero-dependency Klatt synthesis.
+> Stream 24,000 Hz studio speech for Classical Sanskrit and 5 Indian languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser and Node.js from a single `78.9 MB` W8A32+FP16 ONNX model (`ninada_24k_q8f16.onnx`) + `510 KB` studio voice banks (`voices/{sa,hi,kn,ta,te,ml,female}.bin`), with persistent `CacheStorage` caching (`0` reload network refetches) and zero-dependency Klatt Tier-2 fallback.
 
 - **Live Web Worker WASM SIMD Studio:** <https://hemanth.github.io/ninada/>
 - **Hugging Face Model:** <https://huggingface.co/gnumanth/ninada>
@@ -19,19 +19,18 @@ import ninada from 'ninada';
 import * as ort from 'onnxruntime-web';
 
 const voice = await ninada('kannada', {
-  encoderModel: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/kn/encoder_flow_quantized.onnx',
-  vocoderModel: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/kn/vocoder_quantized.onnx',
-  cacheModels: true, // persists in browser CacheStorage / IndexedDB across reloads
+  model: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ninada_24k_q8f16.onnx',
+  voice: 'https://huggingface.co/gnumanth/ninada/resolve/main/voices/kn.bin',
   ort,
 });
 
 for await (const chunk of voice.stream('ಕನ್ನಡ ಭಾಷೆಯ ನೈಸರ್ಗಿಕ ಧ್ವನಿ ಸಂಶ್ಲೇಷಣೆಗೆ ಸ್ವಾಗತ.')) {
-  playPcm16k(chunk.pcm); // Float32Array @ 16 kHz
+  playPcm24k(chunk.pcm, chunk.sampleRate); // Float32Array @ 24,000 Hz
 }
 
-// Or synthesize full 16 kHz RIFF WAV bytes
-const wav = await voice.speak('ಕನ್ನಡವೇ ಸತ್ಯ ಕನ್ನಡವೇ ನಿತ್ಯ', { lang: 'kn' });
-await voice.dispose(); // release WASM session heap when switching languages
+// Synthesize full 24 kHz RIFF WAV bytes (male or female studio timbre)
+const wav = await voice.speak('ಕನ್ನಡವೇ ಸತ್ಯ ಕನ್ನಡವೇ ನಿತ್ಯ', { lang: 'kn', voice: 'female' });
+await voice.dispose();
 ```
 
 ## CLI

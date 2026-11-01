@@ -56,7 +56,7 @@ function resolveLang(val) {
 function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
   const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
   if (!cleaned) return [];
-  const effMax = fastFirstClause ? Math.min(maxChars, 64) : maxChars;
+  const effMax = maxChars;
   const rawParts = cleaned.split(/(?<=\|\||[\u0964\u0965|.?!;\n])\s+/g);
   const rawClauses = [];
   for (const part of rawParts) {
@@ -76,7 +76,8 @@ function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
       if (!buf) buf = w;
       else if (buf.length + 1 + w.length <= effMax) buf = `${buf} ${w}`;
       else {
-        rawClauses.push({ text: buf, sentenceEnd: false });
+        const bufWithComma = /[,;—–:|\u0964\u0965.?!]$/.test(buf) ? buf : `${buf},`;
+        rawClauses.push({ text: bufWithComma, sentenceEnd: false });
         buf = w;
       }
     }
@@ -97,11 +98,11 @@ function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
   }
   const result = merged.length > 0 ? merged : [{ text: cleaned, sentenceEnd: true }];
 
-  // Balanced sub-clause breath/foot split on Clause 0 (>36 chars) so Clause 0 >= ~1.8s audio while TTFA stays ~1.0s
-  if (fastFirstClause && result.length > 0 && result[0].text.length > 36) {
+  // Sub-clause breath split ONLY ONCE on Clause 0 (>34 chars) for sub-second TTFA while preventing orphan tails
+  if (fastFirstClause && result.length > 0 && result[0].text.length > 34) {
     const first = result[0];
     const subParts = first.text.split(/(?<=[,;—–:])\s+/g).filter((s) => s && s.trim());
-    if (subParts.length >= 2 && subParts[0].length >= 16 && subParts[0].length <= 44) {
+    if (subParts.length >= 2 && subParts[0].length >= 12 && subParts[0].length <= 54) {
       const rest = subParts.slice(1).join(' ');
       result.splice(
         0,
@@ -111,15 +112,23 @@ function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
       );
     } else {
       const words = first.text.split(' ').filter(Boolean);
-      if (words.length >= 3) {
-        const splitIdx = words[0].length >= 14 ? 1 : Math.max(2, Math.floor(words.length / 2));
+      if (words.length >= 2) {
+        let splitIdx = words[0].length >= 16 ? 1 : Math.max(2, Math.floor(words.length / 2));
+        for (let i = 2; i < words.length - 1; i++) {
+          if (/^(ಮತ್ತು|और|तथा|மற்றும்|మరియు|കൂടാതെ|च)$/.test(words[i])) {
+            splitIdx = i;
+            break;
+          }
+        }
         const foot = words.slice(0, splitIdx).join(' ');
         const rest = words.slice(splitIdx).join(' ');
-        if (foot.length >= 12 && rest.length >= 8) {
+        const restLetters = rest.replace(/[\u0964\u0965|.?!;,\s-]+/g, '');
+        if (foot.length >= 14 && restLetters.length >= 8) {
+          const footWithComma = /[,;—–:|\u0964\u0965.?!]$/.test(foot) ? foot : `${foot},`;
           result.splice(
             0,
             1,
-            { text: foot, sentenceEnd: false },
+            { text: footWithComma, sentenceEnd: false },
             { text: rest, sentenceEnd: first.sentenceEnd }
           );
         }
@@ -203,7 +212,7 @@ async function resolveOrt(explicitOrt) {
   return null;
 }
 
-const BROWSER_MODEL_CACHE = 'ninada-onnx-v3.0.0';
+const BROWSER_MODEL_CACHE = 'ninada-onnx-v3.2.0';
 
 async function fetchBrowserCachedBytes(url, useCache = true, validator = null) {
   const absUrl =
@@ -391,28 +400,32 @@ export default async function ninada(input = 'sa', opts = {}) {
     if (loaded) voiceBanks.set(defaultLang, loaded);
   }
 
-  async function resolveVoiceStyle(lang, numIpaTokens) {
-    const lc = resolveLang(lang);
-    let bank = voiceBanks.get(lc);
-    if (!bank && voiceSources.has(lc)) {
-      bank = await loadVoiceBankSource(voiceSources.get(lc), useCache);
-      if (bank) voiceBanks.set(lc, bank);
+  async function resolveVoiceStyle(lang, numIpaTokens, voiceOverride = null) {
+    const vNorm = typeof voiceOverride === 'string' ? voiceOverride.trim().toLowerCase() : '';
+    const key = vNorm === 'female' ? 'female' : resolveLang(lang);
+    let bank = voiceBanks.get(key);
+    if (!bank && voiceSources.has(key)) {
+      bank = await loadVoiceBankSource(voiceSources.get(key), useCache);
+      if (bank) voiceBanks.set(key, bank);
     }
     if (!bank && modelBasePath && isNodeEnv()) {
       try {
         const pathMod = await import('node:path');
         const dir = pathMod.dirname(modelBasePath);
         for (const cand of [
-          pathMod.join(dir, 'voices', `${lc}.bin`),
-          pathMod.join(dir, '..', 'voices', `${lc}.bin`),
+          pathMod.join(dir, 'voices', `${key}.bin`),
+          pathMod.join(dir, '..', 'voices', `${key}.bin`),
         ]) {
           bank = await loadVoiceBankSource(cand, false);
           if (bank) {
-            voiceBanks.set(lc, bank);
+            voiceBanks.set(key, bank);
             break;
           }
         }
       } catch {}
+    }
+    if (!bank && key === 'female') {
+      return resolveVoiceStyle(lang, numIpaTokens, null);
     }
     if (!bank && voiceBanks.has(defaultLang)) {
       bank = voiceBanks.get(defaultLang);
@@ -448,10 +461,10 @@ export default async function ninada(input = 'sa', opts = {}) {
       return Boolean(isUnified24kSession() || (encSession && vocSession));
     },
     setVoiceBank(lang, bank) {
-      const lc = resolveLang(lang);
+      const kNorm = typeof lang === 'string' && lang.trim().toLowerCase() === 'female' ? 'female' : resolveLang(lang);
       const f32 = toFloat32VoiceBank(bank);
       if (f32) {
-        voiceBanks.set(lc, f32);
+        voiceBanks.set(kNorm, f32);
       }
       return this;
     },
@@ -575,7 +588,7 @@ export default async function ninada(input = 'sa', opts = {}) {
           }
 
           const ipaIds = parsed.ipaIds;
-          const styleSlice = await resolveVoiceStyle(parsed.lang, ipaIds.length);
+          const styleSlice = await resolveVoiceStyle(parsed.lang, ipaIds.length, callOpts.voice || null);
           const idTensor = new ort.Tensor('int64', BigInt64Array.from(ipaIds.map(BigInt)), [1, ipaIds.length]);
           const styleTensor = new ort.Tensor('float32', new Float32Array(styleSlice), [1, 256]);
           const speedTensor = new ort.Tensor('float32', Float32Array.from([effRate]), [1]);
@@ -599,7 +612,7 @@ export default async function ninada(input = 'sa', opts = {}) {
           const rawWav = out.waveform.data;
           const dursArr = out.durations ? Array.from(out.durations.data, Number) : [];
           const hasPause = cIdx < clauses.length - 1;
-          const pauseSamples = hasPause ? Math.round((clauseItem.sentenceEnd ? 0.052 : 0.020) * SAMPLE_RATE) : 0;
+          const pauseSamples = hasPause ? Math.round((clauseItem.sentenceEnd ? 0.048 : 0.018) * SAMPLE_RATE) : 0;
           const clausePcm = new Float32Array(rawWav.length + pauseSamples);
 
           let peak = 1e-5;
@@ -630,10 +643,6 @@ export default async function ninada(input = 'sa', opts = {}) {
             for (let i = 0; i < 256; i++) {
               clausePcm[off + i] *= 0.5 * (1.0 + Math.cos((Math.PI * i) / 256.0));
             }
-          }
-          if (pauseSamples > 0) {
-            const rt = generateRoomTone(pauseSamples, 1337 + cIdx);
-            clausePcm.set(rt, rawWav.length);
           }
 
           const totalS = clausePcm.length;

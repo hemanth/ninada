@@ -126,4 +126,27 @@ test('Tier-1 24kHz Studio Neural ONNX streaming produces low-TTFA chunks and 24k
   assert.equal(meta.tier, 'neural_onnx');
   assert.equal(meta.sampleRate, 24000);
   assert.ok(pcm.length > 18000);
+
+  const femRes = await voice.synthesize('\u0938\u0924\u094d\u092f\u092e\u0947\u0935 \u091c\u092f\u0924\u0947', { voice: 'female' });
+  assert.equal(femRes.meta.tier, 'neural_onnx');
+  assert.ok(femRes.pcm.length > 18000);
+  await voice.dispose();
 });
+
+test('Pan-Indic IPA G2P enforces jna allophony, Dravidian close-mid short-e, medial ɐ, and zero ˈə stress', () => {
+  const saIpa = textToIds('प्रज्ञा ज्ञानं', { lang: 'sa' }).ipa;
+  const hiIpa = textToIds('प्रज्ञा विज्ञान', { lang: 'hi' }).ipa;
+  const teIpa = textToIds('తెలుగు భాష', { lang: 'te' }).ipa;
+  const knIpa = textToIds('ಕನ್ನಡ ಭಾಷೆಯ ನೈಸರ್ಗಿಕ ಧ್ವನಿ', { lang: 'kn' }).ipa;
+  const mlIpa = textToIds('മലയാള ഭാഷയുടെ സ്വാഗതം', { lang: 'ml' }).ipa;
+
+  assert.ok(saIpa.includes('ɡɲ'));
+  assert.ok(hiIpa.includes('ɡj'));
+  assert.ok(teIpa.includes('tˈɛlʊɡʊ'));
+  assert.equal(saIpa.includes('ˈə'), false);
+  assert.equal(knIpa.includes('ˈə'), false);
+  assert.equal(mlIpa.includes('ˈə'), false);
+  assert.ok(knIpa.includes('ɐ'));
+  assert.ok(mlIpa.includes('jʊɖɛ'));
+});
+

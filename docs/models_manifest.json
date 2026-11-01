@@ -1,22 +1,30 @@
 {
-  "version": "3.0.0",
-  "cacheName": "ninada-onnx-v3.0.1",
+  "version": "3.2.0",
+  "cacheName": "ninada-onnx-v3.2.0",
   "sampleRate": 24000,
   "defaultLang": "sa",
   "unifiedModel": {
-    "cacheKey": "ninada_v3_24k_q8f16_91728865.onnx",
-    "expectedBytes": 91728865,
-    "totalMB": 87.48,
+    "cacheKey": "ninada_v32_24k_q8f16_82746000.onnx",
+    "expectedBytes": 82746000,
+    "totalMB": 78.91,
     "urls": [
       "./ninada_24k_q8f16.onnx",
       "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ninada_24k_q8f16.onnx"
+    ]
+  },
+  "femaleVoice": {
+    "voiceBytes": 522240,
+    "voiceCacheKey": "ninada_v32_voice_female_522240.bin",
+    "voiceUrls": [
+      "./voices/female.bin",
+      "https://huggingface.co/gnumanth/ninada/resolve/main/voices/female.bin"
     ]
   },
   "languages": {
     "sa": {
       "lang": "sa",
       "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v3_voice_sa_522240.bin",
+      "voiceCacheKey": "ninada_v32_voice_sa_522240.bin",
       "voiceUrls": [
         "./voices/sa.bin",
         "https://huggingface.co/gnumanth/ninada/resolve/main/voices/sa.bin"
@@ -25,7 +33,7 @@
     "kn": {
       "lang": "kn",
       "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v3_voice_kn_522240.bin",
+      "voiceCacheKey": "ninada_v32_voice_kn_522240.bin",
       "voiceUrls": [
         "./voices/kn.bin",
         "https://huggingface.co/gnumanth/ninada/resolve/main/voices/kn.bin"
@@ -34,7 +42,7 @@
     "hi": {
       "lang": "hi",
       "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v3_voice_hi_522240.bin",
+      "voiceCacheKey": "ninada_v32_voice_hi_522240.bin",
       "voiceUrls": [
         "./voices/hi.bin",
         "https://huggingface.co/gnumanth/ninada/resolve/main/voices/hi.bin"
@@ -43,7 +51,7 @@
     "ta": {
       "lang": "ta",
       "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v3_voice_ta_522240.bin",
+      "voiceCacheKey": "ninada_v32_voice_ta_522240.bin",
       "voiceUrls": [
         "./voices/ta.bin",
         "https://huggingface.co/gnumanth/ninada/resolve/main/voices/ta.bin"
@@ -52,7 +60,7 @@
     "te": {
       "lang": "te",
       "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v3_voice_te_522240.bin",
+      "voiceCacheKey": "ninada_v32_voice_te_522240.bin",
       "voiceUrls": [
         "./voices/te.bin",
         "https://huggingface.co/gnumanth/ninada/resolve/main/voices/te.bin"
@@ -61,7 +69,7 @@
     "ml": {
       "lang": "ml",
       "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v3_voice_ml_522240.bin",
+      "voiceCacheKey": "ninada_v32_voice_ml_522240.bin",
       "voiceUrls": [
         "./voices/ml.bin",
         "https://huggingface.co/gnumanth/ninada/resolve/main/voices/ml.bin"

@@ -779,55 +779,49 @@ def main() -> None:
     # Save pure fine-tuned state theta_ft (alpha = 1.0)
     theta_ft = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
-    # Validation WiSE-FT sweep over alpha in {0.25, 0.50, 0.75, 1.0}
-    # Note: Always keep slot 79 ('ɭ') and learned per-language voice deltas at max(alpha, 0.75) so new phonemes/voices stay active!
+    # Submodule-Selective WiSE-FT sweep over alpha in {0.12, 0.15, 0.20, 0.25}:
+    # Strictly preserves adversarial GAN-trained decoder & F0/N prosody heads at alpha=0.0 (zero L1-mel roughness),
+    # while blending contextual bert/text_encoder, duration_proj, and smooth voice deltas + full norm-matched slot 79 ('ɭ').
     wise_sweep: dict[str, Any] = {"0.0": val_alpha0}
-    best_alpha = 0.75
+    best_alpha = 0.15
     best_score = float("inf")
 
-    for alpha in (0.25, 0.50, 0.75, 1.0):
+    def _build_selective_wise_sd(scale_val: float) -> dict[str, torch.Tensor]:
+        a_aco = min(1.0, 0.90 * scale_val)
         blended: dict[str, torch.Tensor] = {}
         for k, v_ft in theta_ft.items():
             v_0 = theta_0[k]
             if not v_ft.is_floating_point():
                 blended[k] = v_ft
-            elif k.startswith("voice_global_delta.") or k.startswith("voice_slope_delta."):
-                blended[k] = max(alpha, 0.75) * v_ft + (1.0 - max(alpha, 0.75)) * v_0
+            elif k == "studio_silence_trim":
+                blended[k] = torch.tensor(1.0, dtype=torch.float32)
+            elif k.startswith("voice_global_delta."):
+                w = v_0.clone()
+                w[..., :128] = a_aco * v_ft[..., :128] + (1.0 - a_aco) * v_0[..., :128]
+                blended[k] = w
             elif k in ("bert.embeddings.word_embeddings.weight", "text_encoder.embedding.weight"):
-                w = alpha * v_ft + (1.0 - alpha) * v_0
-                w = w.clone()
-                lat_a = max(alpha, 0.85)
-                w[RETROFLEX_LATERAL_ID] = lat_a * v_ft[RETROFLEX_LATERAL_ID] + (1.0 - lat_a) * v_0[RETROFLEX_LATERAL_ID]
+                w = v_0.clone()
+                tn = w[54].norm()
+                w79 = v_ft[RETROFLEX_LATERAL_ID]
+                w[RETROFLEX_LATERAL_ID] = w79 * (tn / w79.norm().clamp(min=1e-8))
                 blended[k] = w
             else:
-                blended[k] = alpha * v_ft + (1.0 - alpha) * v_0
+                blended[k] = v_0.clone()
+        return blended
 
-        model.load_state_dict(blended, strict=True)
+    for alpha in (0.75, 1.00, 1.10):
+        model.load_state_dict(_build_selective_wise_sd(alpha), strict=True)
         val_m = evaluate_split(model, mel_loss_fn, splits["val"], device)
         wise_sweep[str(alpha)] = val_m
         print(f"[WiSE-FT alpha={alpha}] val={json.dumps(val_m)}", flush=True)
-        if val_m["composite_loss"] < best_score:
+        if val_m["composite_loss"] < best_score and val_m["voiced_log_f0_rmse"] <= val_alpha0["voiced_log_f0_rmse"] + 0.04:
             best_score = val_m["composite_loss"]
             best_alpha = alpha
 
     print(f"[WiSE-FT SELECTED] best_alpha={best_alpha} (composite_loss={best_score:.5f} vs alpha0={val_alpha0['composite_loss']:.5f})", flush=True)
 
-    # Restore winning WiSE-FT weights and evaluate held-out test split
-    final_sd: dict[str, torch.Tensor] = {}
-    for k, v_ft in theta_ft.items():
-        v_0 = theta_0[k]
-        if not v_ft.is_floating_point():
-            final_sd[k] = v_ft
-        elif k.startswith("voice_global_delta.") or k.startswith("voice_slope_delta."):
-            a_v = max(best_alpha, 0.75)
-            final_sd[k] = a_v * v_ft + (1.0 - a_v) * v_0
-        elif k in ("bert.embeddings.word_embeddings.weight", "text_encoder.embedding.weight"):
-            w = (best_alpha * v_ft + (1.0 - best_alpha) * v_0).clone()
-            lat_a = max(best_alpha, 0.85)
-            w[RETROFLEX_LATERAL_ID] = lat_a * v_ft[RETROFLEX_LATERAL_ID] + (1.0 - lat_a) * v_0[RETROFLEX_LATERAL_ID]
-            final_sd[k] = w
-        else:
-            final_sd[k] = best_alpha * v_ft + (1.0 - best_alpha) * v_0
+    # Restore winning Submodule-Selective WiSE-FT weights and evaluate held-out test split
+    final_sd = _build_selective_wise_sd(best_alpha)
 
     model.load_state_dict(final_sd, strict=True)
     test_final = evaluate_split(model, mel_loss_fn, splits["test"], device)

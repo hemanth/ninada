@@ -1,6 +1,6 @@
 # ninada
 
-Stream 24,000 Hz studio speech for Classical Sanskrit and five Indian languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser, Node.js, and Python from a single `87.5 MB` ONNX model.
+Stream 24,000 Hz studio speech for Classical Sanskrit and five Indian languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser, Node.js, and Python from a single `78.9 MB` ONNX model with Studio Male and Studio Female voice banks.
 
 ```bash
 npm install ninada onnxruntime-web
@@ -44,7 +44,7 @@ wav_bytes = tts.speak("सत्यमेव जयते नानृतम्"
 open("satyam.wav", "wb").write(wav_bytes)
 ```
 
-`Ninada` auto-downloads the unified `87.5 MB` Q8F16 ONNX model (`ninada_24k_q8f16.onnx`) and `510 KB` per-language studio voice banks (`voices/{sa,hi,kn,ta,te,ml}.bin`), switching languages without recompiling the ONNX session.
+`Ninada` auto-downloads the unified `78.9 MB` W8A32+FP16 ONNX model (`ninada_24k_q8f16.onnx`) and `510 KB` studio voice banks (`voices/{sa,hi,kn,ta,te,ml,female}.bin`), switching languages and male/female studio timbres (`voice="female"`) without recompiling the ONNX session.
 
 ## CLI
 
@@ -71,14 +71,14 @@ const { aksharas } = textToIds('प्रज्ञापूर्वकव्य
 
 | System | Rate | Footprint (↓) | Coverage (↑) | TTFA p50 (↓) | MCD 0–8 kHz (dB, ↓) | 8–12 kHz HF Err (dB, ↓) | Dur MAE (↓) |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Base `facebook/mms-tts-hin` | 16 kHz | 138.8 MB | 35.0% | 0.3 ms* | `7.98 [7.70, 8.24]` | 66.39 dB | 3.26s |
-| Meta MMS 5-Specialist Fleet (`5x` VITS) | 16 kHz | 694.0 MB | 100.0% | 425.0 ms | `5.10 [5.04, 5.16]` | 65.94 dB | 1.27s |
-| `ninada` v3.0 Untuned Prior (`alpha=0`) | 24 kHz | 312.7 MB | 100.0% | 237.3 ms | `5.26 [5.21, 5.31]` | 17.88 dB | 1.70s |
-| **`ninada` v3.0 Studio FP32** | **24 kHz** | 312.7 MB | **100.0%** | **174.7 ms** | **`4.80 [4.76, 4.85]`** | **9.45 dB** | **0.58s** |
-| **`ninada` v3.0 Unified Q8F16 ONNX** | **24 kHz** | **88.0 MB** | **100.0%** | **361.0 ms** | **`5.05 [5.00, 5.10]`** | **10.87 dB** | **0.57s** |
-| `ninada` Tier-2 Klatt Fallback | 24 kHz | **0.0 MB** | **100.0%** | **37.9 ms** | `10.38 [10.26, 10.50]` | 41.94 dB | 0.98s |
+| Base `facebook/mms-tts-hin` | 16 kHz | 138.8 MB | 35.0% | 1.1 ms* | `7.97 [7.69, 8.23]` | 66.35 dB | 3.26s |
+| Meta MMS 5-Specialist Fleet (`5x` VITS) | 16 kHz | 694.0 MB | 100.0% | 184.9 ms | `5.09 [5.03, 5.16]` | 65.90 dB | 1.27s |
+| `ninada` v3.0 Untuned Prior (`alpha=0`) | 24 kHz | 312.7 MB | 100.0% | 84.6 ms | `5.24 [5.18, 5.29]` | 17.69 dB | 1.77s |
+| **`ninada` v3.0 Studio FP32** | **24 kHz** | 312.7 MB | **100.0%** | **33.3 ms** | **`4.61 [4.56, 4.65]`** | **10.10 dB** | **1.18s** |
+| **`ninada` v3.0 Unified Q8F16 ONNX** | **24 kHz** | **79.4 MB** | **100.0%** | **1215.7 ms** | **`4.61 [4.57, 4.65]`** | **10.11 dB** | **1.17s** |
+| `ninada` Tier-2 Klatt Fallback | 24 kHz | **0.0 MB** | **100.0%** | **104.9 ms** | `10.38 [10.26, 10.50]` | 41.94 dB | 0.98s |
 
-Per-language held-out `MCD 0–8 kHz (dB, ↓)`: Sanskrit **`4.99`** (`5.21` ONNX vs `5.33` MMS), Hindi **`4.70`** (`5.04` ONNX), Kannada **`4.93`** (`5.18` ONNX), Tamil **`4.43`** (`4.78` ONNX vs `4.88` MMS), Telugu **`4.90`** (`5.04` ONNX vs `5.62` MMS), Malayalam **`4.88`** (`5.06` ONNX). Full bootstrap CIs and parity telemetry in [`bench/SCIENCE_REPORT.md`](./bench/SCIENCE_REPORT.md) and [`bench/results.json`](./bench/results.json).
+Per-language held-out `MCD 0–8 kHz (dB, ↓)`: Sanskrit **`4.88`** (`4.88` ONNX vs `5.31` MMS), Hindi **`4.41`** (`4.42` ONNX vs `4.84` MMS), Kannada **`4.59`** (`4.59` ONNX vs `5.07` MMS), Tamil **`4.34`** (`4.35` ONNX vs `4.86` MMS), Telugu **`4.68`** (`4.69` ONNX vs `5.61` MMS), Malayalam **`4.72`** (`4.73` ONNX vs `4.87` MMS). Full bootstrap CIs and parity telemetry in [`bench/SCIENCE_REPORT.md`](./bench/SCIENCE_REPORT.md) and [`bench/results.json`](./bench/results.json).
 
 ## Reproduce & Verify
 

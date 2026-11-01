@@ -78,7 +78,7 @@ _CONSONANT_IPA: dict[str, str] = {
     "त": "t", "थ": "tʰ", "द": "d", "ध": "dʰ", "न": "n", "\u0929": "n",
     "प": "p", "फ": "pʰ", "ब": "b", "भ": "bʰ", "म": "m",
     "य": "j", "र": "ɾ", "\u0931": "r", "ल": "l", "ळ": "ɭ", "\u0934": "ɻ",
-    "व": "ʋ", "श": "ɕ", "ष": "ʂ", "स": "s", "ह": "h",
+    "व": "ʋ", "श": "ʃ", "ष": "ʂ", "स": "s", "ह": "h",
 }
 
 _STOP_HOMORGANIC_NASAL: dict[str, str] = {
@@ -110,7 +110,7 @@ _INDEP_VOWELS_COMMON: dict[str, str] = {
     "ॠ": "ɾiː",
     "ऌ": "lɪ",
     "ॡ": "liː",
-    "\u090e": "ɛ",   # short e (Dravidian എ/ఎ/எ/ಎ -> unmuted [e̞/ɛ])
+    "\u090e": "ɛ",   # short e (Dravidian എ/ఎ/எ/ಎ -> espeak-native [ɛ])
     "ए": "eː",
     "ऍ": "æː",
     "\u0912": "o",   # short o (Dravidian ഒ/ఒ/ஒ/ഒ)
@@ -128,7 +128,7 @@ _MATRAS_COMMON: dict[str, str] = {
     "ॄ": "ɾiː",
     "ॢ": "lɪ",
     "ॣ": "liː",
-    "\u0946": "ɛ",   # short e matra (Dravidian െ/ె/ெ/ೆ -> unmuted [e̞/ɛ])
+    "\u0946": "ɛ",   # short e matra (Dravidian െ/ె/ெ/ೆ -> espeak-native [ɛ])
     "े": "eː",
     "ॅ": "æː",
     "\u094a": "o",   # short o matra
@@ -136,21 +136,22 @@ _MATRAS_COMMON: dict[str, str] = {
     "ॉ": "ɔː",
 }
 
-_LONG_VOWEL_IPA = {"ɑː", "iː", "uː", "ɾiː", "eː", "æː", "oː", "ɔː", "aɪ", "əɪ", "aʊ"}
-_VOWEL_CHARS = set("əɑɪiuʊeɛæoɔaᵊ")
+_LONG_VOWEL_IPA = {"ɑː", "iː", "uː", "ɾiː", "eː", "ɛː", "æː", "oː", "ɔː", "aɪ", "əɪ", "aʊ", "əʊ"}
+_VOWEL_CHARS = set("əɐʌɑɪiuʊeɛæoɔaᵊ")
+_RELEASE_TAIL_CHARS = _VOWEL_CHARS | {"ː", "\u0303"}
 
 
 def _vowel_ipa(ch: str, is_matra: bool, lang: str) -> str:
     if is_matra:
         if ch == "ै":
-            return "æː" if lang == "hi" else "aɪ"
+            return "ɛː" if lang == "hi" else "əɪ"
         if ch == "ौ":
-            return "ɔː" if lang == "hi" else "aʊ"
+            return "ɔː" if lang == "hi" else "əʊ"
         return _MATRAS_COMMON.get(ch, "")
     if ch == "ऐ":
-        return "æː" if lang == "hi" else "aɪ"
+        return "ɛː" if lang == "hi" else "əɪ"
     if ch == "औ":
-        return "ɔː" if lang == "hi" else "aʊ"
+        return "ɔː" if lang == "hi" else "əʊ"
     return _INDEP_VOWELS_COMMON.get(ch, "")
 
 
@@ -331,7 +332,15 @@ def _apply_language_allophony(units: list[dict[str, object]], lang: str) -> None
     if not units:
         return
 
-    # 1. Resolve Anusvara ('M') homorganic assimilation across all 6 languages
+    # 1. Resolve ज्ञ / ಜ್ಞ / జ్ఞ (ज + ् + ञ -> ɡj in Hindi, ɡɲ in Sanskrit/Dravidian)
+    for idx in range(len(units) - 1):
+        u_cur = units[idx]
+        u_nxt = units[idx + 1]
+        if u_cur["raw_c"] == "ज" and u_cur["vowel"] == "" and u_nxt["raw_c"] == "ञ":
+            u_cur["cons"] = "ɡ"
+            u_nxt["cons"] = "j" if lang == "hi" else "ɲ"
+
+    # 2. Resolve Anusvara ('M') homorganic assimilation across all 6 languages
     for idx, u in enumerate(units):
         if u["nasal"] == "M":
             nxt_raw = str(units[idx + 1]["raw_c"]) if idx + 1 < len(units) else ""
@@ -456,12 +465,20 @@ def _apply_language_allophony(units: list[dict[str, object]], lang: str) -> None
                     prev_u["cons"] = "n"
                     u["cons"] = "d"
             elif raw in ("क", "च", "ट", "त", "प"):
+                is_geminate = bool(
+                    (prev_bare and prev_raw == raw)
+                    or (idx + 1 < len(units) and u["vowel"] == "" and units[idx + 1]["raw_c"] == raw)
+                )
                 prev_nasal = bool(
                     (prev_bare and prev_raw in ("ङ", "ञ", "ण", "न", "म", "\u0d7a", "\u0d7b"))
                     or (prev_u and prev_u["nasal"] in ("ŋ", "ɲ", "ɳ", "n", "m"))
                 )
                 if prev_nasal:
                     u["cons"] = {"क": "ɡ", "च": "ʤ", "ट": "ɖ", "त": "d", "प": "b"}[raw]
+                elif not is_geminate and idx > 0 and u["vowel"] != "" and prev_u and prev_u["vowel"] != "":
+                    # Malayalam intervocalic dental/retroflex stop voicing (e.g. ഭാഷയുടെ -> bʰɑːʂɐjʊɖe, സ്വാഗതം -> sʋɑːɡɐdəm)
+                    if raw in ("ट", "त"):
+                        u["cons"] = {"ट": "ɖ", "त": "d"}[raw]
 
         # Word-final chandrakkala (samvruthokaram, e.g. ഇന്ന്, ആണ്) -> clean central schwa release ə
         if units[-1]["final_virama"] and units[-1]["raw_c"] not in _ML_CHILLU_IPA:
@@ -472,19 +489,44 @@ def _apply_language_allophony(units: list[dict[str, object]], lang: str) -> None
         vowel_indices = [idx for idx, u in enumerate(units) if u["vowel"]]
         if vowel_indices:
             chosen = vowel_indices[0]
-            # Prefer first heavy syllable (long vowel, nasal coda, visarga, or followed by cluster)
+            # Prefer long-vowel heavy syllable first (e.g. नमस्कारम् -> kˈɑː, संश्लेषण -> lˈeː)
+            found_long = False
             for v_idx in vowel_indices:
-                u = units[v_idx]
-                is_heavy = (
-                    str(u["vowel"]) in _LONG_VOWEL_IPA
-                    or bool(u["nasal"])
-                    or bool(u["visarga"])
-                    or (v_idx + 1 < len(units) and units[v_idx + 1]["vowel"] == "")
-                )
-                if is_heavy:
+                if str(units[v_idx]["vowel"]) in _LONG_VOWEL_IPA:
                     chosen = v_idx
+                    found_long = True
                     break
+            if not found_long:
+                for v_idx in vowel_indices:
+                    u = units[v_idx]
+                    is_closed = (
+                        bool(u["nasal"])
+                        or bool(u["visarga"])
+                        or (v_idx + 1 < len(units) and units[v_idx + 1]["vowel"] == "")
+                    )
+                    if is_closed:
+                        chosen = v_idx
+                        break
             units[chosen]["stress"] = True
+
+    # 6. Stressed central vowel ('ˈʌ' instead of out-of-distribution 'ˈə') + Medial anti-elision 'ɐ' for non-Hindi
+    for idx, u in enumerate(units):
+        if u["stress"] and u["vowel"] == "ə":
+            u["vowel"] = "ʌ"
+        elif u["stress"] and u["vowel"] == "əɪ":
+            u["vowel"] = "ʌɪ"
+        elif u["stress"] and u["vowel"] == "əʊ":
+            u["vowel"] = "ʌʊ"
+        elif (
+            lang != "hi"
+            and 0 < idx < len(units) - 1
+            and u["inherent"]
+            and u["vowel"] == "ə"
+            and not u["stress"]
+            and not u["nasal"]
+            and not u["visarga"]
+        ):
+            u["vowel"] = "ɐ"
 
 
 def _render_units_to_ipa(units: list[dict[str, object]], lang: str) -> str:
@@ -529,12 +571,12 @@ def _render_units_to_ipa(units: list[dict[str, object]], lang: str) -> str:
 
 
 _DIGIT_WORDS_HI = {
-    "0": "ɕˈuːnjə", "1": "ˈeːk", "2": "dˈoː", "3": "tˈiːn", "4": "ʧˈɑːɾ",
+    "0": "ʃˈuːnjə", "1": "ˈeːk", "2": "dˈoː", "3": "tˈiːn", "4": "ʧˈɑːɾ",
     "5": "pˈɑ̃ːʧ", "6": "ʧʰˈɛː", "7": "sˈɑːt", "8": "ˈɑːʈʰ", "9": "nˈɔː",
 }
 _INDIC_ZERO_BASES = (0x0966, 0x0BE6, 0x0C66, 0x0CE6, 0x0D66)
 _LATIN_CHAR_IPA = {
-    "a": "ə", "b": "b", "c": "k", "d": "d", "e": "e", "f": "f", "g": "ɡ",
+    "a": "ə", "b": "b", "c": "k", "d": "d", "e": "ɛ", "f": "f", "g": "ɡ",
     "h": "h", "i": "ɪ", "j": "ʤ", "k": "k", "l": "l", "m": "m", "n": "n",
     "o": "o", "p": "p", "q": "k", "r": "ɾ", "s": "s", "t": "t", "u": "ʊ",
     "v": "v", "w": "w", "x": "ks", "y": "j", "z": "z",
@@ -600,14 +642,14 @@ def text_to_ipa(text: str, lang: str = "sa", normalized_dev_fallback: str | None
             continue
         if re.fullmatch(r"[,.;:!?—…\"()“”]+", tok):
             p = tok[0]
-            # Sentence-final vowel release guard: prevent punctuation token from clipping preceding short vowel
-            if out_chunks and out_chunks[-1] and out_chunks[-1][-1] in _VOWEL_CHARS and p in (".", ",", "!", "?", ";", ":"):
+            # Sentence-final vowel release guard: prevent punctuation token from clipping preceding vowel/nasal tail
+            if out_chunks and out_chunks[-1] and out_chunks[-1][-1] in _RELEASE_TAIL_CHARS and p in (".", ",", "!", "?", ";", ":"):
                 out_chunks.append(" " + p)
             else:
                 out_chunks.append(p)
             continue
         if tok.isdigit():
-            out_chunks.append(" ".join(_DIGIT_WORDS_HI.get(d, "ɕˈuːnjə") for d in tok))
+            out_chunks.append(" ".join(_DIGIT_WORDS_HI.get(d, "ʃˈuːnjə") for d in tok))
             continue
         if re.fullmatch(r"[A-Za-z']+", tok):
             lat_ipa = _latin_word_to_ipa(tok)
@@ -629,9 +671,11 @@ def text_to_ipa(text: str, lang: str = "sa", normalized_dev_fallback: str | None
     filtered = "".join(ch for ch in ipa if ch in IPA_VOCAB)
     if not filtered:
         return "ə"
-    # If clause ends on a bare vowel without punctuation, append soft period with vowel guard space
-    if filtered[-1] in _VOWEL_CHARS:
+    # If clause ends on a bare vowel/length/nasal without punctuation, append soft period with vowel guard space
+    if filtered[-1] in _RELEASE_TAIL_CHARS:
         filtered = filtered + " ."
+    # Pause-final bare 'e' (without 'ː' or 'ɪ') is unvoiced in StyleTTS2/espeak; lower to open-mid 'ɛ' before pause
+    filtered = re.sub(r"e (?=[.,!?;:])", "ɛ ", filtered)
     return filtered
 
 

@@ -62,7 +62,7 @@ const CONSONANT_IPA = {
   'त': 't', 'थ': 'tʰ', 'द': 'd', 'ध': 'dʰ', 'न': 'n', '\u0929': 'n',
   'प': 'p', 'फ': 'pʰ', 'ब': 'b', 'भ': 'bʰ', 'म': 'm',
   'य': 'j', 'र': 'ɾ', '\u0931': 'r', 'ल': 'l', 'ळ': 'ɭ', '\u0934': 'ɻ',
-  'व': 'ʋ', 'श': 'ɕ', 'ष': 'ʂ', 'स': 's', 'ह': 'h',
+  'व': 'ʋ', 'श': 'ʃ', 'ष': 'ʂ', 'स': 's', 'ह': 'h',
 };
 
 const STOP_HOMORGANIC_NASAL = {
@@ -119,17 +119,18 @@ const MATRAS_COMMON = {
   'ॉ': 'ɔː',
 };
 
-const LONG_VOWEL_IPA = new Set(['ɑː', 'iː', 'uː', 'ɾiː', 'eː', 'æː', 'oː', 'ɔː', 'aɪ', 'əɪ', 'aʊ']);
-const VOWEL_CHARS = new Set([...'əɑɪiuʊeɛæoɔaᵊ']);
+const LONG_VOWEL_IPA = new Set(['ɑː', 'iː', 'uː', 'ɾiː', 'eː', 'ɛː', 'æː', 'oː', 'ɔː', 'aɪ', 'əɪ', 'aʊ', 'əʊ']);
+const VOWEL_CHARS = new Set([...'əɐʌɑɪiuʊeɛæoɔaᵊ']);
+const RELEASE_TAIL_CHARS = new Set([...VOWEL_CHARS, 'ː', '\u0303']);
 
 function vowelIpa(ch, isMatra, lang) {
   if (isMatra) {
-    if (ch === 'ै') return lang === 'hi' ? 'æː' : 'aɪ';
-    if (ch === 'ौ') return lang === 'hi' ? 'ɔː' : 'aʊ';
+    if (ch === 'ै') return lang === 'hi' ? 'ɛː' : 'əɪ';
+    if (ch === 'ौ') return lang === 'hi' ? 'ɔː' : 'əʊ';
     return MATRAS_COMMON[ch] || '';
   }
-  if (ch === 'ऐ') return lang === 'hi' ? 'æː' : 'aɪ';
-  if (ch === 'औ') return lang === 'hi' ? 'ɔː' : 'aʊ';
+  if (ch === 'ऐ') return lang === 'hi' ? 'ɛː' : 'əɪ';
+  if (ch === 'औ') return lang === 'hi' ? 'ɔː' : 'əʊ';
   return INDEP_VOWELS_COMMON[ch] || '';
 }
 
@@ -327,6 +328,15 @@ const TA_LENITION = { 'क': 'ɡ', 'च': 's', 'ट': 'ɖ', 'त': 'ð', 'प': 
 function applyLanguageAllophony(units, lang) {
   if (!units || units.length === 0) return;
 
+  for (let idx = 0; idx < units.length - 1; idx++) {
+    const uCur = units[idx];
+    const uNxt = units[idx + 1];
+    if (uCur.rawC === 'ज' && uCur.vowel === '' && uNxt.rawC === 'ञ') {
+      uCur.cons = 'ɡ';
+      uNxt.cons = lang === 'hi' ? 'j' : 'ɲ';
+    }
+  }
+
   for (let idx = 0; idx < units.length; idx++) {
     const u = units[idx];
     if (u.nasal === 'M') {
@@ -436,11 +446,19 @@ function applyLanguageAllophony(units, lang) {
           u.cons = 'd';
         }
       } else if (TA_VOICELESS_STOPS.has(raw)) {
+        const isGeminate = Boolean(
+          (prevBare && prevRaw === raw) ||
+          (idx + 1 < units.length && u.vowel === '' && units[idx + 1].rawC === raw)
+        );
         const prevNasal = Boolean(
           (prevBare && ML_NASALS.has(prevRaw)) || (prevU && IPA_NASALS.has(prevU.nasal))
         );
         if (prevNasal && POST_NASAL_VOICING[raw]) {
           u.cons = POST_NASAL_VOICING[raw];
+        } else if (!isGeminate && idx > 0 && u.vowel !== '' && prevU && prevU.vowel !== '') {
+          if (raw === 'ट' || raw === 'त') {
+            u.cons = POST_NASAL_VOICING[raw];
+          }
         }
       }
     }
@@ -457,19 +475,50 @@ function applyLanguageAllophony(units, lang) {
     }
     if (vowelIndices.length > 0) {
       let chosen = vowelIndices[0];
+      let foundLong = false;
       for (const vIdx of vowelIndices) {
-        const u = units[vIdx];
-        const isHeavy =
-          LONG_VOWEL_IPA.has(u.vowel) ||
-          Boolean(u.nasal) ||
-          Boolean(u.visarga) ||
-          (vIdx + 1 < units.length && units[vIdx + 1].vowel === '');
-        if (isHeavy) {
+        if (LONG_VOWEL_IPA.has(units[vIdx].vowel)) {
           chosen = vIdx;
+          foundLong = true;
           break;
         }
       }
+      if (!foundLong) {
+        for (const vIdx of vowelIndices) {
+          const u = units[vIdx];
+          const isClosed =
+            Boolean(u.nasal) ||
+            Boolean(u.visarga) ||
+            (vIdx + 1 < units.length && units[vIdx + 1].vowel === '');
+          if (isClosed) {
+            chosen = vIdx;
+            break;
+          }
+        }
+      }
       units[chosen].stress = true;
+    }
+  }
+
+  for (let idx = 0; idx < units.length; idx++) {
+    const u = units[idx];
+    if (u.stress && u.vowel === 'ə') {
+      u.vowel = 'ʌ';
+    } else if (u.stress && u.vowel === 'əɪ') {
+      u.vowel = 'ʌɪ';
+    } else if (u.stress && u.vowel === 'əʊ') {
+      u.vowel = 'ʌʊ';
+    } else if (
+      lang !== 'hi' &&
+      idx > 0 &&
+      idx < units.length - 1 &&
+      u.inherent &&
+      u.vowel === 'ə' &&
+      !u.stress &&
+      !u.nasal &&
+      !u.visarga
+    ) {
+      u.vowel = 'ɐ';
     }
   }
 }
@@ -502,12 +551,12 @@ function renderUnitsToIpa(units, lang) {
 }
 
 const DIGIT_WORDS_HI = {
-  '0': 'ɕˈuːnjə', '1': 'ˈeːk', '2': 'dˈoː', '3': 'tˈiːn', '4': 'ʧˈɑːɾ',
+  '0': 'ʃˈuːnjə', '1': 'ˈeːk', '2': 'dˈoː', '3': 'tˈiːn', '4': 'ʧˈɑːɾ',
   '5': 'pˈɑ̃ːʧ', '6': 'ʧʰˈɛː', '7': 'sˈɑːt', '8': 'ˈɑːʈʰ', '9': 'nˈɔː',
 };
 const INDIC_ZERO_BASES = [0x0966, 0x0be6, 0x0c66, 0x0ce6, 0x0d66];
 const LATIN_CHAR_IPA = {
-  a: 'ə', b: 'b', c: 'k', d: 'd', e: 'e', f: 'f', g: 'ɡ',
+  a: 'ə', b: 'b', c: 'k', d: 'd', e: 'ɛ', f: 'f', g: 'ɡ',
   h: 'h', i: 'ɪ', j: 'ʤ', k: 'k', l: 'l', m: 'm', n: 'n',
   o: 'o', p: 'p', q: 'k', r: 'ɾ', s: 's', t: 't', u: 'ʊ',
   v: 'v', w: 'w', x: 'ks', y: 'j', z: 'z',
@@ -575,7 +624,7 @@ export function textToIpa(text, lang = 'sa', normalizedDevFallback = null) {
       const p = tok[0];
       const prev = outChunks.length > 0 ? outChunks[outChunks.length - 1] : '';
       const lastChar = prev ? [...prev].pop() : '';
-      if (lastChar && VOWEL_CHARS.has(lastChar) && GUARD_PUNCT.has(p)) {
+      if (lastChar && RELEASE_TAIL_CHARS.has(lastChar) && GUARD_PUNCT.has(p)) {
         outChunks.push(` ${p}`);
       } else {
         outChunks.push(p);
@@ -583,7 +632,7 @@ export function textToIpa(text, lang = 'sa', normalizedDevFallback = null) {
       continue;
     }
     if (/^\d+$/.test(tok)) {
-      outChunks.push([...tok].map((d) => DIGIT_WORDS_HI[d] || 'ɕˈuːnjə').join(' '));
+      outChunks.push([...tok].map((d) => DIGIT_WORDS_HI[d] || 'ʃˈuːnjə').join(' '));
       continue;
     }
     if (/^[A-Za-z']+$/.test(tok)) {
@@ -608,9 +657,10 @@ export function textToIpa(text, lang = 'sa', normalizedDevFallback = null) {
   let filtered = filteredChars.join('');
   if (!filtered) return 'ə';
   const lastFiltered = filteredChars[filteredChars.length - 1];
-  if (VOWEL_CHARS.has(lastFiltered)) {
+  if (RELEASE_TAIL_CHARS.has(lastFiltered)) {
     filtered = `${filtered} .`;
   }
+  filtered = filtered.replace(/e (?=[.,!?;:])/g, 'ɛ ');
   return filtered;
 }
 

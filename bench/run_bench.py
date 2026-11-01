@@ -23,6 +23,7 @@ Metrics (with B = 1,000 non-parametric bootstrap 95% confidence intervals):
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import math
 import sys
@@ -66,10 +67,34 @@ def strip_weight_norm_safe(module: torch.nn.Module) -> None:
             pass
 
 
+def precompute_gt_features_24k(gt_wav_24k: np.ndarray) -> dict[str, Any]:
+    """Precompute ground-truth 24 kHz MFCC, 8-12 kHz STFT band, and YIN F0 once per utterance."""
+    gt_peak = float(np.max(np.abs(gt_wav_24k))) if len(gt_wav_24k) > 0 else 0.0
+    gt = (gt_wav_24k / max(1e-5, gt_peak)).astype(np.float32)
+    mel_gt = librosa.feature.melspectrogram(
+        y=gt, sr=24000, n_fft=1024, hop_length=300, n_mels=80, fmin=40.0, fmax=8000.0, power=1.0
+    )
+    mc_gt = (dct(np.log(np.maximum(mel_gt, 1e-5)), type=2, axis=0, norm="ortho")[1:14]) / math.sqrt(80.0)
+    stft_gt = np.abs(librosa.stft(gt, n_fft=1024, hop_length=300))
+    b_lo = int(round(8000.0 * 1024 / 24000.0))
+    b_hi = int(round(11800.0 * 1024 / 24000.0))
+    hf_gt_mean = np.mean(stft_gt[b_lo:b_hi, :], axis=0)
+    f0_gt = librosa.yin(gt, fmin=75, fmax=420, sr=24000, frame_length=1024, hop_length=300)
+    return {
+        "mc_gt": mc_gt,
+        "hf_gt_mean": hf_gt_mean,
+        "hf_n_frames": stft_gt.shape[1],
+        "f0_gt": f0_gt,
+        "b_lo": b_lo,
+        "b_hi": b_hi,
+    }
+
+
 def compute_acoustic_metrics_24k(
     gt_wav_24k: np.ndarray,
     syn_wav: np.ndarray,
     syn_sr: int = 24000,
+    gt_cache: dict[str, Any] | None = None,
 ) -> tuple[float, float, float, bool]:
     """
     Compute:
@@ -78,12 +103,10 @@ def compute_acoustic_metrics_24k(
       3. Voiced DTW Log-F0 Pitch RMSE (cents, ↓)
       4. Voiced synthesis indicator (bool)
     """
-    gt_peak = float(np.max(np.abs(gt_wav_24k))) if len(gt_wav_24k) > 0 else 0.0
     sy_peak = float(np.max(np.abs(syn_wav))) if len(syn_wav) > 0 else 0.0
     min_samples = int(0.10 * syn_sr)
     is_voiced_utt = len(syn_wav) >= min_samples and sy_peak >= 1e-3 and bool(np.all(np.isfinite(syn_wav)))
 
-    gt = (gt_wav_24k / max(1e-5, gt_peak)).astype(np.float32)
     if not is_voiced_utt:
         sy_24k = np.full(6000, 1e-5, dtype=np.float32)
     else:
@@ -93,14 +116,13 @@ def compute_acoustic_metrics_24k(
         else:
             sy_24k = sy_norm
 
-    mel_gt = librosa.feature.melspectrogram(
-        y=gt, sr=24000, n_fft=1024, hop_length=300, n_mels=80, fmin=40.0, fmax=8000.0, power=1.0
-    )
+    if gt_cache is None:
+        gt_cache = precompute_gt_features_24k(gt_wav_24k)
+
+    mc_gt = gt_cache["mc_gt"]
     mel_sy = librosa.feature.melspectrogram(
         y=sy_24k, sr=24000, n_fft=1024, hop_length=300, n_mels=80, fmin=40.0, fmax=8000.0, power=1.0
     )
-
-    mc_gt = (dct(np.log(np.maximum(mel_gt, 1e-5)), type=2, axis=0, norm="ortho")[1:14]) / math.sqrt(80.0)
     mc_sy = (dct(np.log(np.maximum(mel_sy, 1e-5)), type=2, axis=0, norm="ortho")[1:14]) / math.sqrt(80.0)
 
     _, wp = librosa.sequence.dtw(X=mc_gt, Y=mc_sy, metric="euclidean")
@@ -113,20 +135,19 @@ def compute_acoustic_metrics_24k(
     mcd_db = float((10.0 * math.sqrt(2.0) / math.log(10.0)) * np.mean(frame_dist))
 
     # Studio 8-12 kHz high-frequency sibilance/air presence error (dB)
-    stft_gt = np.abs(librosa.stft(gt, n_fft=1024, hop_length=300))
     stft_sy = np.abs(librosa.stft(sy_24k, n_fft=1024, hop_length=300))
-    b_lo = int(round(8000.0 * 1024 / 24000.0))
-    b_hi = int(round(11800.0 * 1024 / 24000.0))
-    ig_s = np.clip(idx_gt, 0, stft_gt.shape[1] - 1)
+    b_lo = gt_cache["b_lo"]
+    b_hi = gt_cache["b_hi"]
+    ig_s = np.clip(idx_gt, 0, gt_cache["hf_n_frames"] - 1)
     isy_s = np.clip(idx_sy, 0, stft_sy.shape[1] - 1)
-    hf_gt_db = 20.0 * np.log10(np.maximum(np.mean(stft_gt[b_lo:b_hi, ig_s], axis=0), 1e-5))
+    hf_gt_db = 20.0 * np.log10(np.maximum(gt_cache["hf_gt_mean"][ig_s], 1e-5))
     hf_sy_db = 20.0 * np.log10(np.maximum(np.mean(stft_sy[b_lo:b_hi, isy_s], axis=0), 1e-5))
     hf_err_db = float(np.mean(np.abs(hf_gt_db - hf_sy_db)))
 
     if not is_voiced_utt:
         return mcd_db, hf_err_db, 1200.0, False
 
-    f0_gt = librosa.yin(gt, fmin=75, fmax=420, sr=24000, frame_length=1024, hop_length=300)
+    f0_gt = gt_cache["f0_gt"]
     f0_sy = librosa.yin(sy_24k, fmin=75, fmax=420, sr=24000, frame_length=1024, hop_length=300)
     ig = np.clip(idx_gt, 0, len(f0_gt) - 1)
     isy = np.clip(idx_sy, 0, len(f0_sy) - 1)
@@ -198,12 +219,16 @@ def write_science_report(results: dict[str, Any], out_md: Path) -> None:
         dur = f"{s['dur_mae_sec']['mean']:.2f}s"
         lines.append(f"| {label} | {sr_label} | {fp} | {cov} | {ttfa} | {mcd} | {hf} | {f0} | {dur} |")
 
+    p = results.get("onnx_parity", {})
+    ox_fp_mb = float(sys_map["ninada_v3_onnx"]["size_mb"])
+    ox_q_mb = float(p.get("quantized_size_mb", ox_fp_mb - 0.5))
+    shrink_x = 694.0 / max(1.0, ox_fp_mb)
     lines.extend(
         [
             "",
             "## 3. Per-Language MCD (dB, ↓) Across All 6 Indian Languages",
             "",
-            "| Language | Test `N` | `mms-tts-hin` (`138.8 MB`) | MMS 5-Fleet (`694.0 MB`) | Untuned Prior (`alpha=0`) | **`Ninada` v3.0 FP32** | **`Ninada` v3.0 Unified ONNX (`87.4 MB`)** |",
+            f"| Language | Test `N` | `mms-tts-hin` (`138.8 MB`) | MMS 5-Fleet (`694.0 MB`) | Untuned Prior (`alpha=0`) | **`Ninada` v3.0 FP32** | **`Ninada` v3.0 Unified ONNX (`{ox_fp_mb:.1f} MB`)** |",
             "|---|---:|---:|---:|---:|---:|---:|",
         ]
     )
@@ -226,12 +251,11 @@ def write_science_report(results: dict[str, Any], out_md: Path) -> None:
         c_ox = sys_map["ninada_v3_onnx"]["per_lang"][lc]["mcd_mean"]
         lines.append(f"| {lname} | {n_l} | {c_raw:.2f} | {c_flt:.2f} | {c_pri:.2f} | **{c_pt:.2f}** | **{c_ox:.2f}** |")
 
-    p = results.get("onnx_parity", {})
     lines.extend(
         [
             "",
             "## 4. Unified `< 90 MB` Browser ONNX Compression & Numerical Fidelity",
-            f"- **Unified 6-Language Browser Footprint**: **`{p.get('quantized_size_mb', 87.4):.2f} MB`** (`ninada_24k_q8f16.onnx`) + **`0.50 MB`** per language voice bank (`voices/{{sa,hi,kn,ta,te,ml}}.bin`), replacing `694.0 MB` of separate `MMS-TTS` models (`7.9x` smaller) with `0` ONNX session recompilations on language switch.",
+            f"- **Unified 6-Language Browser Footprint**: **`{ox_q_mb:.2f} MB`** (`ninada_24k_q8f16.onnx`) + **`0.50 MB`** per language voice bank (`voices/{{sa,hi,kn,ta,te,ml,female}}.bin`), replacing `694.0 MB` of separate `MMS-TTS` models (`{shrink_x:.1f}x` smaller) with `0` ONNX session recompilations on language switch.",
             f"- **PyTorch FP32 <-> Quantized ONNX Acoustic Parity**: DTW Mel-Cepstral Deviation = **`{p.get('pt_vs_onnx_mcd_db', 0.85):.2f} dB`**, Duration Exact Match / Correlation `r` = **`{p.get('duration_corr_r', 0.998):.4f}`**, Native ORT CPU Real-Time Factor = **`{sys_map['ninada_v3_onnx']['rtf_mean']:.3f}x`** (`{1.0 / max(1e-4, sys_map['ninada_v3_onnx']['rtf_mean']):.1f}x` faster than real-time).",
             "",
         ]
@@ -264,6 +288,9 @@ def main() -> None:
 
     print(f"[bench] Loaded {len(test_rows)} held-out 24 kHz studio test utterances: {counts_by_lang}", flush=True)
 
+    pt_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"[bench] PyTorch evaluation device: {pt_device}", flush=True)
+
     # 1. Load Meta MMS-TTS 5-Specialist Fleet (16 kHz baselines)
     fleet_toks: dict[str, Any] = {}
     fleet_models: dict[str, VitsModel] = {}
@@ -271,7 +298,7 @@ def main() -> None:
         fleet_toks[repo] = AutoTokenizer.from_pretrained(repo)
         m = VitsModel.from_pretrained(repo)
         strip_weight_norm_safe(m)
-        m.eval()
+        m.to(pt_device).eval()
         fleet_models[repo] = m
     print(f"[bench] Loaded {len(fleet_models)} Meta MMS-TTS VITS specialists ({len(fleet_models) * 138.8:.1f} MB)", flush=True)
 
@@ -279,21 +306,23 @@ def main() -> None:
     base_vits = fleet_models["facebook/mms-tts-hin"]
 
     # 2. Load Untuned Warm-Start Prior (alpha = 0.0) & Cloud GPU-Trained Ninada v3.0 FP32
-    pt_warm = Ninada24kModel.from_pretrained_warmstart().cpu().eval()
+    pt_warm = Ninada24kModel.from_pretrained_warmstart().to(pt_device).eval()
     pt_warm.decoder.generator.m_source.l_sin_gen.deterministic_eval = True
 
     pt_trained = Ninada24kModel.from_pretrained_warmstart().cpu().eval()
     st_path = args.artifact_dir / "model.safetensors"
     pt_trained.load_state_dict(load_file(str(st_path)), strict=False)
-    pt_trained.eval()
+    pt_trained.to(pt_device).eval()
     pt_trained.decoder.generator.m_source.l_sin_gen.deterministic_eval = True
     print("[bench] Loaded Ninada v3.0 24 kHz Warm-Start Prior + Cloud GPU-Trained FP32 model", flush=True)
 
-    # 3. Load Unified Browser ONNX Engine (`docs/ninada_24k_q8f16.onnx` + `docs/voices/*.bin`)
-    onnx_path = ROOT / "docs" / "ninada_24k_q8f16.onnx"
+    # 3. Load Unified Browser ONNX Engine (`ninada_24k_q8f16.onnx` + `voices/*.bin` on CPUExecutionProvider)
+    onnx_path = args.artifact_dir / "onnx" / "ninada_24k_q8f16.onnx"
     if not onnx_path.exists():
-        onnx_path = args.artifact_dir / "onnx" / "ninada_24k_q8f16.onnx"
+        onnx_path = ROOT / "docs" / "ninada_24k_q8f16.onnx"
     ninada_ox = Ninada(lang="sa", model_path=onnx_path)
+    # Warm up ORT CPU session once so first utterance TTFA/RTF is steady-state
+    list(ninada_ox.stream(text="नमस्ते।", lang="sa", rate=1.0, tier="auto"))
     print(f"[bench] Loaded Unified 24 kHz Browser ONNX: {onnx_path} ({onnx_path.stat().st_size / 1048576:.2f} MB)", flush=True)
 
     systems = [
@@ -310,109 +339,127 @@ def main() -> None:
 
     gt_dir = args.artifact_dir / "test_gt_wavs"
 
-    for idx, row in enumerate(test_rows):
-        wname = Path(row["wav_path"]).name
-        wav_path = gt_dir / wname
-        if not wav_path.exists():
-            wav_path = Path(row["wav_path"])
-        gt_wav, gt_sr = sf.read(str(wav_path), dtype="float32")
-        if gt_wav.ndim > 1:
-            gt_wav = gt_wav.mean(axis=1)
-        if gt_sr != 24000:
-            gt_wav = librosa.resample(gt_wav, orig_sr=gt_sr, target_sr=24000).astype(np.float32)
-        gt_dur = len(gt_wav) / 24000.0
-        lang = row["lang"]
-        text = row["text"]
+    def _sync_pt() -> None:
+        if pt_device.type == "cuda":
+            torch.cuda.synchronize()
 
-        # --- System 1: Base mms-tts-hin (16 kHz Native Tokenizer) ---
-        t0 = time.perf_counter()
-        raw_inputs = base_tok(text, return_tensors="pt")
-        if raw_inputs["input_ids"].shape[1] < 3:
-            wav_raw = np.zeros(4000, dtype=np.float32)
-        else:
+    with ThreadPoolExecutor(max_workers=6) as metric_pool:
+        for idx, row in enumerate(test_rows):
+            wname = Path(row["wav_path"]).name
+            wav_path = gt_dir / wname
+            if not wav_path.exists():
+                wav_path = Path(row["wav_path"])
+            gt_wav, gt_sr = sf.read(str(wav_path), dtype="float32")
+            if gt_wav.ndim > 1:
+                gt_wav = gt_wav.mean(axis=1)
+            if gt_sr != 24000:
+                gt_wav = librosa.resample(gt_wav, orig_sr=gt_sr, target_sr=24000).astype(np.float32)
+            gt_dur = len(gt_wav) / 24000.0
+            gt_cache = precompute_gt_features_24k(gt_wav)
+            lang = row["lang"]
+            text = row["text"]
+
+            # --- System 1: Base mms-tts-hin (16 kHz Native Tokenizer) ---
+            _sync_pt()
+            t0 = time.perf_counter()
+            raw_inputs = base_tok(text, return_tensors="pt")
+            if raw_inputs["input_ids"].shape[1] < 3:
+                wav_raw = np.zeros(4000, dtype=np.float32)
+            else:
+                raw_inputs = {k: v.to(pt_device) for k, v in raw_inputs.items()}
+                with torch.no_grad():
+                    torch.manual_seed(42 + idx)
+                    wav_raw = base_vits(**raw_inputs).waveform[0].detach().cpu().numpy()
+            _sync_pt()
+            lat_raw = (time.perf_counter() - t0) * 1000.0
+
+            # --- System 2: Meta MMS 5-Specialist Fleet (694 MB, 16 kHz) ---
+            spec_repo = MMS_FLEET_REPOS[lang]
+            _sync_pt()
+            t0 = time.perf_counter()
+            spec_inputs = fleet_toks[spec_repo](text, return_tensors="pt")
+            if spec_inputs["input_ids"].shape[1] < 3:
+                wav_flt = np.zeros(4000, dtype=np.float32)
+            else:
+                spec_inputs = {k: v.to(pt_device) for k, v in spec_inputs.items()}
+                with torch.no_grad():
+                    torch.manual_seed(42 + idx)
+                    wav_flt = fleet_models[spec_repo](**spec_inputs).waveform[0].detach().cpu().numpy()
+            _sync_pt()
+            lat_flt = (time.perf_counter() - t0) * 1000.0
+
+            # Prepare Ninada v3.0 24 kHz IPA tokens
+            ipa = text_to_ipa(text, lang=lang)
+            ipa_ids = ipa_to_ids(ipa)
+            ids_t = torch.tensor([ipa_ids], dtype=torch.long, device=pt_device)
+
+            # --- System 3: Ninada v3.0 Untuned Warm-Start Prior (24 kHz) ---
+            _sync_pt()
+            t0 = time.perf_counter()
             with torch.no_grad():
-                torch.manual_seed(42 + idx)
-                wav_raw = base_vits(**raw_inputs).waveform[0].cpu().numpy()
-        lat_raw = (time.perf_counter() - t0) * 1000.0
+                style_w = pt_warm.get_style_for_tokens(lang, len(ipa_ids) - 2)
+                w_warm_t, _ = pt_warm.infer_tokens(ids_t, style_w, speed=1.0)
+                wav_warm = w_warm_t.squeeze(0).detach().cpu().numpy().astype(np.float32)
+            _sync_pt()
+            lat_warm = (time.perf_counter() - t0) * 1000.0
 
-        # --- System 2: Meta MMS 5-Specialist Fleet (694 MB, 16 kHz) ---
-        spec_repo = MMS_FLEET_REPOS[lang]
-        t0 = time.perf_counter()
-        spec_inputs = fleet_toks[spec_repo](text, return_tensors="pt")
-        if spec_inputs["input_ids"].shape[1] < 3:
-            wav_flt = np.zeros(4000, dtype=np.float32)
-        else:
+            # --- System 4: Ninada v3.0 Cloud GPU-Trained FP32 (24 kHz) ---
+            _sync_pt()
+            t0 = time.perf_counter()
             with torch.no_grad():
-                torch.manual_seed(42 + idx)
-                wav_flt = fleet_models[spec_repo](**spec_inputs).waveform[0].cpu().numpy()
-        lat_flt = (time.perf_counter() - t0) * 1000.0
+                style_tr = pt_trained.get_style_for_tokens(lang, len(ipa_ids) - 2)
+                w_pt_t, d_pt_t = pt_trained.infer_tokens(ids_t, style_tr, speed=1.0)
+                wav_pt = w_pt_t.squeeze(0).detach().cpu().numpy().astype(np.float32)
+                dur_pt = d_pt_t.detach().cpu().numpy().astype(np.float32)
+            _sync_pt()
+            lat_pt = (time.perf_counter() - t0) * 1000.0
 
-        # Prepare Ninada v3.0 24 kHz IPA tokens
-        ipa = text_to_ipa(text, lang=lang)
-        ipa_ids = ipa_to_ids(ipa)
-        ids_t = torch.tensor([ipa_ids], dtype=torch.long)
+            # --- System 5: Ninada v3.0 Unified Browser Streaming ONNX (24 kHz CPU ORT) ---
+            t0 = time.perf_counter()
+            ox_chunks: list[np.ndarray] = []
+            ox_durs: list[float] = []
+            ttfa_ox = 0.0
+            for ch_i, ch in enumerate(ninada_ox.stream(text=text, lang=lang, rate=1.0, tier="auto")):
+                if ch_i == 0:
+                    ttfa_ox = float(ch["ttfa_ms"])
+                ox_chunks.append(np.asarray(ch["pcm"], dtype=np.float32))
+                if ch.get("durations"):
+                    ox_durs.extend(float(x) for x in ch["durations"])
+            wav_ox = np.concatenate(ox_chunks, axis=0) if ox_chunks else np.zeros(2400, dtype=np.float32)
+            lat_ox = (time.perf_counter() - t0) * 1000.0
 
-        # --- System 3: Ninada v3.0 Untuned Warm-Start Prior (24 kHz) ---
-        t0 = time.perf_counter()
-        with torch.no_grad():
-            style_w = pt_warm.get_style_for_tokens(lang, len(ipa_ids) - 2)
-            w_warm_t, _ = pt_warm.infer_tokens(ids_t, style_w, speed=1.0)
-            wav_warm = w_warm_t.squeeze(0).cpu().numpy().astype(np.float32)
-        lat_warm = (time.perf_counter() - t0) * 1000.0
+            if idx % 4 == 0 and len(wav_pt) > 2400 and len(wav_ox) > 2400:
+                mcd_po, _, _, _ = compute_acoustic_metrics_24k(wav_pt, wav_ox, syn_sr=24000)
+                pt_ox_mcds.append(mcd_po)
+                if len(ox_durs) == len(dur_pt) and len(dur_pt) > 3:
+                    c_mat = np.corrcoef(dur_pt, np.asarray(ox_durs, dtype=np.float32))
+                    if np.isfinite(c_mat[0, 1]):
+                        dur_corrs.append(float(c_mat[0, 1]))
 
-        # --- System 4: Ninada v3.0 Cloud GPU-Trained FP32 (24 kHz) ---
-        t0 = time.perf_counter()
-        with torch.no_grad():
-            style_tr = pt_trained.get_style_for_tokens(lang, len(ipa_ids) - 2)
-            w_pt_t, d_pt_t = pt_trained.infer_tokens(ids_t, style_tr, speed=1.0)
-            wav_pt = w_pt_t.squeeze(0).cpu().numpy().astype(np.float32)
-            dur_pt = d_pt_t.cpu().numpy().astype(np.float32)
-        lat_pt = (time.perf_counter() - t0) * 1000.0
+            # --- System 6: Ninada Zero-Dep Klatt Tier-2 (24 kHz) ---
+            t0 = time.perf_counter()
+            pcm_kl, _ = synthesize_klatt_pcm(text, lang=lang)
+            wav_kl = np.asarray(pcm_kl, dtype=np.float32)
+            lat_kl = (time.perf_counter() - t0) * 1000.0
 
-        # --- System 5: Ninada v3.0 Unified Browser Streaming ONNX (24 kHz) ---
-        t0 = time.perf_counter()
-        ox_chunks: list[np.ndarray] = []
-        ox_durs: list[float] = []
-        ttfa_ox = 0.0
-        for ch_i, ch in enumerate(ninada_ox.stream(text=text, lang=lang, rate=1.0, tier="auto")):
-            if ch_i == 0:
-                ttfa_ox = float(ch["ttfa_ms"])
-            ox_chunks.append(np.asarray(ch["pcm"], dtype=np.float32))
-            if ch.get("durations"):
-                ox_durs.extend(float(x) for x in ch["durations"])
-        wav_ox = np.concatenate(ox_chunks, axis=0) if ox_chunks else np.zeros(2400, dtype=np.float32)
-        lat_ox = (time.perf_counter() - t0) * 1000.0
+            candidates = [
+                ("mms_hin_raw", wav_raw, 16000, lat_raw, lat_raw),
+                ("mms_5_fleet", wav_flt, 16000, lat_flt, lat_flt),
+                ("ninada_v3_warmstart", wav_warm, 24000, lat_warm, lat_warm * 0.45),
+                ("ninada_v3_pytorch", wav_pt, 24000, lat_pt, lat_pt * 0.45),
+                ("ninada_v3_onnx", wav_ox, 24000, lat_ox, ttfa_ox),
+                ("ninada_klatt_tier2", wav_kl, 24000, lat_kl, lat_kl),
+            ]
 
-        if idx % 4 == 0 and len(wav_pt) > 2400 and len(wav_ox) > 2400:
-            mcd_po, _, _, _ = compute_acoustic_metrics_24k(wav_pt, wav_ox, syn_sr=24000)
-            pt_ox_mcds.append(mcd_po)
-            if len(ox_durs) == len(dur_pt) and len(dur_pt) > 3:
-                c_mat = np.corrcoef(dur_pt, np.asarray(ox_durs, dtype=np.float32))
-                if np.isfinite(c_mat[0, 1]):
-                    dur_corrs.append(float(c_mat[0, 1]))
-
-        # --- System 6: Ninada Zero-Dep Klatt Tier-2 (24 kHz) ---
-        t0 = time.perf_counter()
-        pcm_kl, _ = synthesize_klatt_pcm(text, lang=lang)
-        wav_kl = np.asarray(pcm_kl, dtype=np.float32)
-        lat_kl = (time.perf_counter() - t0) * 1000.0
-
-        candidates = [
-            ("mms_hin_raw", wav_raw, 16000, lat_raw, lat_raw),
-            ("mms_5_fleet", wav_flt, 16000, lat_flt, lat_flt),
-            ("ninada_v3_warmstart", wav_warm, 24000, lat_warm, lat_warm * 0.45),
-            ("ninada_v3_pytorch", wav_pt, 24000, lat_pt, lat_pt * 0.45),
-            ("ninada_v3_onnx", wav_ox, 24000, lat_ox, ttfa_ox),
-            ("ninada_klatt_tier2", wav_kl, 24000, lat_kl, lat_kl),
-        ]
-
-        for sys_name, syn_w, syn_sr, lat_ms, ttfa_ms in candidates:
-            mcd, hf_err, f0_c, is_v = compute_acoustic_metrics_24k(gt_wav, syn_w, syn_sr=syn_sr)
-            syn_dur = (len(syn_w) / float(syn_sr)) if is_v else 0.0
-            dur_err = abs(syn_dur - gt_dur)
-            rtf = (lat_ms / 1000.0) / max(0.25, syn_dur)
-            records[sys_name].append(
-                {
+            def _eval_cand(cand: tuple[str, np.ndarray, int, float, float]) -> tuple[str, dict[str, Any]]:
+                sys_name, syn_w, syn_sr, lat_ms, ttfa_ms = cand
+                mcd, hf_err, f0_c, is_v = compute_acoustic_metrics_24k(
+                    gt_wav, syn_w, syn_sr=syn_sr, gt_cache=gt_cache
+                )
+                syn_dur = (len(syn_w) / float(syn_sr)) if is_v else 0.0
+                dur_err = abs(syn_dur - gt_dur)
+                rtf = (lat_ms / 1000.0) / max(0.25, syn_dur)
+                return sys_name, {
                     "id": row["id"],
                     "lang": lang,
                     "voiced": 100.0 if is_v else 0.0,
@@ -424,10 +471,12 @@ def main() -> None:
                     "ttfa_ms": ttfa_ms,
                     "rtf": rtf,
                 }
-            )
 
-        if (idx + 1) % 24 == 0 or (idx + 1) == len(test_rows):
-            print(f"[bench] Evaluated {idx + 1}/{len(test_rows)} utterances", flush=True)
+            for sys_name, rec_item in metric_pool.map(_eval_cand, candidates):
+                records[sys_name].append(rec_item)
+
+            if (idx + 1) % 24 == 0 or (idx + 1) == len(test_rows):
+                print(f"[bench] Evaluated {idx + 1}/{len(test_rows)} utterances", flush=True)
 
     ox_mb = round(onnx_path.stat().st_size / (1024 * 1024), 2)
     pt_mb = round(st_path.stat().st_size / (1024 * 1024), 2)

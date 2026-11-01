@@ -116,12 +116,7 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
       this.chunks.shift();
       this.headOffset = 0;
     }
-    // 1-pole high-pass DC blocker at 16 kHz source rate
-    const val = rawVal - this.dcXPrev + this.dcR * this.dcYPrev;
-    this.dcXPrev = rawVal;
-    this.dcYPrev = val;
-    if (Math.abs(this.dcYPrev) < 1e-15) this.dcYPrev = 0.0;
-    return val;
+    return rawVal;
   }
 
   _primeHistory() {

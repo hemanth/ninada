@@ -673,6 +673,7 @@ class Ninada24kModel(nn.Module):
         self.voice_slope_delta = nn.ParameterDict({
             lang: nn.Parameter(torch.zeros(2, 1, 256)) for lang in SUPPORTED_LANGS
         })
+        self.register_buffer("studio_silence_trim", torch.tensor(0.0, dtype=torch.float32))
 
     @classmethod
     def from_pretrained_warmstart(
@@ -695,15 +696,15 @@ class Ninada24kModel(nn.Module):
             cleaned = {k[7:] if k.startswith("module.") else k: v for k, v in sd.items()}
             submod.load_state_dict(cleaned, strict=False)
 
-        # Initialize slot 79 ('ɭ' Vedic/Dravidian retroflex lateral) from 0.70 * 'l' + 0.30 * 'ɖ'
+        # Initialize slot 79 ('ɭ' Vedic/Dravidian retroflex lateral) from norm-matched 0.70 * 'l' + 0.30 * 'ɖ'
         with torch.no_grad():
             for emb_w in (
                 model.bert.embeddings.word_embeddings.weight,
                 model.text_encoder.embedding.weight,
             ):
-                emb_w[RETROFLEX_LATERAL_ID].copy_(
-                    0.70 * emb_w[ALVEOLAR_LATERAL_ID] + 0.30 * emb_w[RETROFLEX_STOP_ID]
-                )
+                raw_lat = 0.70 * emb_w[ALVEOLAR_LATERAL_ID] + 0.30 * emb_w[RETROFLEX_STOP_ID]
+                target_norm = emb_w[ALVEOLAR_LATERAL_ID].norm()
+                emb_w[RETROFLEX_LATERAL_ID].copy_(raw_lat * (target_norm / raw_lat.norm().clamp(min=1e-8)))
 
             # Initialize Indian Male studio voice prior from hm_omega & hm_psi
             omega_path = hf_hub_download(repo_id=voice_repo, filename="voices/hm_omega.bin")
@@ -798,6 +799,17 @@ class Ninada24kModel(nn.Module):
             "ref_s": ref_s,
         }
 
+    @staticmethod
+    def trim_excess_silence_frames(audio: torch.Tensor, trim_gate: torch.Tensor) -> torch.Tensor:
+        """Cap dead-zero pause frames while preserving +-125 ms studio breath margins around all speech/releases."""
+        frames = audio.reshape(-1, HOP_LENGTH)
+        f_abs = frames.abs().mean(dim=-1)
+        dil = F.max_pool1d(f_abs.view(1, 1, -1), kernel_size=11, stride=1, padding=5).view(-1)
+        thresh = 0.0018 * trim_gate - (1.0 - trim_gate)
+        keep = (dil > thresh) | (torch.arange(frames.shape[0], device=audio.device) < 2)
+        idx = torch.nonzero(keep, as_tuple=False).reshape(-1)
+        return frames.index_select(0, idx).reshape(1, -1)
+
     @torch.no_grad()
     def infer_tokens(
         self,
@@ -824,6 +836,7 @@ class Ninada24kModel(nn.Module):
         t_en = self.text_encoder.forward_unpacked(input_ids)
         asr = t_en @ aln
         audio = self.decoder(asr, f0_pred, n_pred, style[:, :128]).squeeze(1)
+        audio = self.trim_excess_silence_frames(audio, self.studio_silence_trim)
         return audio, pred_dur
 
 
@@ -856,4 +869,5 @@ class Ninada24kONNXWrapper(nn.Module):
         t_en = m.text_encoder.forward_unpacked(input_ids)
         asr = t_en @ aln
         audio = m.decoder(asr, f0_pred, n_pred, style[:, :128]).squeeze(1)
+        audio = m.trim_excess_silence_frames(audio, m.studio_silence_trim)
         return audio, pred_dur

@@ -6,12 +6,13 @@ const ort = ortNs?.default?.InferenceSession ? ortNs.default : ortNs;
 const HF_REPO = 'gnumanth/ninada';
 const SUPPORTED_LANGS = ['sa', 'kn', 'hi', 'ta', 'te', 'ml'];
 
-const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v3.0.0';
+const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v3.2.0';
 const MODEL_CACHE_PREFIX = 'ninada-onnx-';
-const IDB_NAME = 'ninada-onnx-idb-v3';
+const IDB_NAME = 'ninada-onnx-idb-v32';
+const LEGACY_IDB_NAMES = ['ninada-onnx-idb-v3', 'ninada-onnx-idb-v31'];
 const IDB_STORE = 'models';
 
-const DEFAULT_MODEL_BYTES = 96580000;
+const DEFAULT_MODEL_BYTES = 82746000;
 const VOICE_BANK_BYTES = 510 * 256 * 4; // 522,240 bytes
 
 let activeCacheName = DEFAULT_MODEL_CACHE_NAME;
@@ -35,7 +36,7 @@ function buildFallbackLangSpec(lc) {
   return {
     lang: lc,
     voiceBytes: VOICE_BANK_BYTES,
-    voiceCacheKey: `ninada_v3_voice_${lc}_${VOICE_BANK_BYTES}.bin`,
+    voiceCacheKey: `ninada_v32_voice_${lc}_${VOICE_BANK_BYTES}.bin`,
     voiceUrls: [
       `./voices/${lc}.bin`,
       `https://huggingface.co/${HF_REPO}/resolve/main/voices/${lc}.bin`,
@@ -43,11 +44,22 @@ function buildFallbackLangSpec(lc) {
   };
 }
 
+function buildFallbackFemaleSpec() {
+  return {
+    voiceBytes: VOICE_BANK_BYTES,
+    voiceCacheKey: `ninada_v32_voice_female_${VOICE_BANK_BYTES}.bin`,
+    voiceUrls: [
+      './voices/female.bin',
+      `https://huggingface.co/${HF_REPO}/resolve/main/voices/female.bin`,
+    ],
+  };
+}
+
 function buildFallbackUnifiedSpec() {
   return {
-    cacheKey: 'ninada_v3_24k_q8f16.onnx',
+    cacheKey: 'ninada_v32_24k_q8f16.onnx',
     expectedBytes: 0,
-    totalMB: 92.1,
+    totalMB: 78.91,
     urls: [
       './ninada_24k_q8f16.onnx',
       `https://huggingface.co/${HF_REPO}/resolve/main/onnx/ninada_24k_q8f16.onnx`,
@@ -63,6 +75,7 @@ async function getModelsManifest() {
       fallbackLanguages[lc] = buildFallbackLangSpec(lc);
     }
     const fallbackUnified = buildFallbackUnifiedSpec();
+    const fallbackFemale = buildFallbackFemaleSpec();
     try {
       const res = await fetch('./models_manifest.json', { cache: 'no-cache' });
       if (res.ok) {
@@ -81,10 +94,14 @@ async function getModelsManifest() {
         const unifiedModel = json?.unifiedModel
           ? { ...fallbackUnified, ...json.unifiedModel }
           : fallbackUnified;
+        const femaleVoice = json?.femaleVoice
+          ? { ...fallbackFemale, ...json.femaleVoice }
+          : fallbackFemale;
         return {
-          version: json?.version || '3.0.0',
+          version: json?.version || '3.1.0',
           cacheName: activeCacheName,
           unifiedModel,
+          femaleVoice,
           languages: mergedLangs,
         };
       }
@@ -92,9 +109,10 @@ async function getModelsManifest() {
       // Fallback to built-in URL map
     }
     return {
-      version: '3.0.0',
+      version: '3.1.0',
       cacheName: activeCacheName,
       unifiedModel: fallbackUnified,
+      femaleVoice: fallbackFemale,
       languages: fallbackLanguages,
     };
   })();
@@ -115,16 +133,24 @@ function isValidVoiceBuffer(arr, expectedBytes = VOICE_BANK_BYTES) {
 async function pruneStaleModelCaches() {
   if (cachesPruned) return;
   cachesPruned = true;
-  if (typeof caches === 'undefined' || !caches?.keys) return;
-  try {
-    const keys = await caches.keys();
-    for (const k of keys) {
-      if (k.startsWith(MODEL_CACHE_PREFIX) && k !== activeCacheName) {
-        await caches.delete(k).catch(() => {});
+  if (typeof caches !== 'undefined' && caches?.keys) {
+    try {
+      const keys = await caches.keys();
+      for (const k of keys) {
+        if (k.startsWith(MODEL_CACHE_PREFIX) && k !== activeCacheName) {
+          await caches.delete(k).catch(() => {});
+        }
       }
+    } catch {
+      // Ignore storage enumeration restrictions
     }
-  } catch {
-    // Ignore storage enumeration restrictions
+  }
+  if (typeof indexedDB !== 'undefined' && indexedDB?.deleteDatabase) {
+    for (const oldDb of LEGACY_IDB_NAMES) {
+      try {
+        indexedDB.deleteDatabase(oldDb);
+      } catch {}
+    }
   }
 }
 
@@ -564,8 +590,32 @@ self.addEventListener('message', (ev) => {
         const defaultChunkFrames = workerIsCoi ? 64 : 96;
         const defaultFirstFrames = workerIsCoi ? 40 : 56;
 
+        if (msg.voice === 'female' && engine && !loadedVoiceLangs.has('female')) {
+          try {
+            const manifest = await getModelsManifest();
+            const fSpec = manifest.femaleVoice || buildFallbackFemaleSpec();
+            const fBytes = Number(fSpec.voiceBytes) || VOICE_BANK_BYTES;
+            const fRes = await fetchOrLoadAsset(
+              fSpec.voiceCacheKey,
+              fSpec.voiceUrls,
+              fBytes,
+              (arr) => isValidVoiceBuffer(arr, fBytes)
+            );
+            if (fRes && fRes.bytes) {
+              const fFloats = new Float32Array(
+                fRes.bytes.buffer,
+                fRes.bytes.byteOffset,
+                VOICE_BANK_BYTES / 4
+              ).slice();
+              engine.setVoiceBank('female', fFloats);
+              loadedVoiceLangs.add('female');
+            }
+          } catch {}
+        }
+
         for await (const ch of engine.stream(msg.text || '', {
           lang: targetLang,
+          voice: msg.voice || 'male',
           rate: Number(msg.rate ?? 1.0),
           noise: Number(msg.noise ?? 0.667),
           noiseDuration: Number(msg.noiseDuration ?? msg.noise_duration ?? 0.8),

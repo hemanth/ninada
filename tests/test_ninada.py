@@ -143,3 +143,30 @@ def test_24k_studio_dc_offset_compliance() -> None:
         arr = np.asarray(wav, dtype=np.float32)
         dc = float(np.abs(np.mean(arr)))
         assert dc < 1.0e-4, f"Language [{lang}] DC offset {dc:.6e} exceeds 1.0e-4 limit"
+
+
+def test_pan_indic_ipa_phonetic_fidelity_and_female_voice() -> None:
+    """Regression guard for jna allophony, Dravidian short-e, zero ˈə stress, medial ɐ, and female studio voice."""
+    from ninada.ipa_g2p import text_to_ipa
+
+    sa_ipa = text_to_ipa("प्रज्ञा ज्ञानं", lang="sa")
+    hi_ipa = text_to_ipa("प्रज्ञा विज्ञान", lang="hi")
+    te_ipa = text_to_ipa("తెలుగు భాష", lang="te")
+    kn_ipa = text_to_ipa("ಕನ್ನಡ ಭಾಷೆಯ ನೈಸರ್ಗಿಕ ಧ್ವನಿ", lang="kn")
+    ml_ipa = text_to_ipa("മലയാള ഭാഷയുടെ സ്വാഗതം", lang="ml")
+
+    assert "ɡɲ" in sa_ipa
+    assert "ɡj" in hi_ipa
+    assert "tˈɛlʊɡʊ" in te_ipa
+    assert "ˈə" not in sa_ipa and "ˈə" not in kn_ipa and "ˈə" not in ml_ipa
+    assert "ɐ" in kn_ipa and "ɐ" in ml_ipa
+    assert "jʊɖɛ" in ml_ipa
+
+    docs_dir = Path(__file__).resolve().parent.parent / "docs"
+    studio_p = docs_dir / "ninada_24k_q8f16.onnx"
+    if studio_p.exists() and (docs_dir / "voices" / "female.bin").exists():
+        engine = Ninada(lang="sa", model_path=studio_p, voice_dir=docs_dir / "voices")
+        wav_f, meta_f = engine.synthesize("सत्यमेव जयते ।", lang="sa", voice="female")
+        assert meta_f["tier"] == "neural_onnx"
+        assert len(wav_f) > 18000
+
