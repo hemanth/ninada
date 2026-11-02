@@ -40,7 +40,8 @@
     "text-to-speech",
     "vits",
     "hifi-gan",
-    "onnxruntime-web",
+    "webml-kit",
+    "webgpu",
     "wasm",
     "kannada",
     "tamil",
@@ -48,6 +49,14 @@
     "malayalam",
     "hindi"
   ],
+  "peerDependencies": {
+    "webml-kit": ">=0.4.0"
+  },
+  "peerDependenciesMeta": {
+    "webml-kit": {
+      "optional": true
+    }
+  },
   "homepage": "https://hemanth.github.io/ninada/",
   "repository": {
     "type": "git",

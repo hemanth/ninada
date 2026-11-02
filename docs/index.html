@@ -178,12 +178,18 @@
 
     .panel-header {
       display: flex;
+      flex-wrap: wrap;
       justify-content: space-between;
       align-items: center;
-      gap: 12px;
+      gap: 8px 12px;
       margin-bottom: 14px;
       padding-bottom: 10px;
       border-bottom: 1px solid var(--line);
+    }
+
+    .panel-header .pill-stat {
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .panel-title {
@@ -540,6 +546,13 @@
       line-height: 1.3;
     }
 
+    .install-cmd-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
     .install-prompt {
       color: #8a877e;
       user-select: none;
@@ -689,24 +702,98 @@
       color: #f4f2ec;
       font-family: var(--mono);
       font-size: 12.5px;
-      line-height: 1.68;
+      line-height: 1.66;
       overflow-x: auto;
       tab-size: 2;
     }
 
     .code-line {
-      display: block;
-      white-space: pre;
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 12px;
+      align-items: baseline;
     }
 
     .ln {
-      display: inline-block;
-      width: 28px;
-      margin-right: 14px;
       text-align: right;
       color: #5c5a52;
       user-select: none;
       font-size: 11px;
+    }
+
+    .lc {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      min-width: 0;
+    }
+
+    @media (max-width: 620px) {
+      .shell {
+        padding: 20px 14px 52px;
+      }
+      .panel {
+        padding: 14px;
+      }
+      .panel-header .pill-stat {
+        font-size: 10.5px;
+        padding: 4px 8px;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .install-strip {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .install-pill {
+        width: 100%;
+        justify-content: space-between;
+        font-size: 11px;
+        padding: 7px 8px 7px 10px;
+      }
+      .code-toolbar {
+        margin-bottom: 10px;
+      }
+      #codeFileHint {
+        display: none;
+      }
+      .code-tabs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        width: 100%;
+      }
+      .code-tab-btn {
+        text-align: center;
+        padding: 6px 8px;
+        font-size: 11px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .code-window-bar {
+        padding: 8px 11px;
+        font-size: 10.5px;
+      }
+      .code-copy-btn {
+        padding: 4px 8px;
+        font-size: 10.5px;
+      }
+      pre.code-block {
+        padding: 12px 11px;
+        font-size: 10.8px;
+        line-height: 1.56;
+        overflow-x: hidden;
+      }
+      .code-line {
+        grid-template-columns: 18px minmax(0, 1fr);
+        gap: 8px;
+      }
+      .ln {
+        font-size: 9.8px;
+      }
     }
 
     /* High-contrast accessible studio syntax tokens on #131311 carbon */
@@ -744,13 +831,17 @@
         </p>
         <div class="install-strip" aria-label="Package install commands">
           <div class="install-pill">
-            <span class="install-prompt">$</span>
-            <span><span class="tok-fn">npm</span> install <span class="tok-str">ninada</span> <span class="tok-str">onnxruntime-web</span></span>
-            <button type="button" class="install-copy-btn" data-copy-cmd="npm install ninada onnxruntime-web">Copy</button>
+            <span class="install-cmd-wrap">
+              <span class="install-prompt">$</span>
+              <span><span class="tok-fn">npm</span> install <span class="tok-str">ninada</span> <span class="tok-str">webml-kit</span></span>
+            </span>
+            <button type="button" class="install-copy-btn" data-copy-cmd="npm install ninada webml-kit">Copy</button>
           </div>
           <div class="install-pill">
-            <span class="install-prompt">$</span>
-            <span><span class="tok-fn">pip</span> install <span class="tok-str">"ninada[neural]"</span></span>
+            <span class="install-cmd-wrap">
+              <span class="install-prompt">$</span>
+              <span><span class="tok-fn">pip</span> install <span class="tok-str">"ninada[neural]"</span></span>
+            </span>
             <button type="button" class="install-copy-btn" data-copy-cmd='pip install "ninada[neural]"'>Copy</button>
           </div>
         </div>
@@ -887,8 +978,8 @@
 
     <section class="panel akshara-section">
       <div class="panel-header">
-        <h2 class="panel-title">03 / Paninian Akshara Prosody (Guru / Laghu) &amp; Frame Durations</h2>
-        <span class="pill-stat">G = GURU (HEAVY) · L = LAGHU (LIGHT) · C = CODA</span>
+        <h2 id="aksharaTitle" class="panel-title">03 / Paninian Chandas Prosody (Guru / Laghu) &amp; Akshara Durations</h2>
+        <span id="aksharaLegend" class="pill-stat">CHANDAS · गुरु (G) · लघु (L) · CODA (C)</span>
       </div>
       <div id="aksharaRibbon" class="akshara-ribbon"></div>
       <div id="phonemicLine" class="phonemic-line"></div>
@@ -903,16 +994,16 @@
       <div class="code-toolbar">
         <div class="code-tabs" role="tablist" aria-label="SDK Runtime Examples">
           <button type="button" role="tab" aria-selected="true" class="code-tab-btn active" data-code-tab="js">
-            JavaScript (Browser &amp; Node.js)
+            JavaScript (ESM)
           </button>
           <button type="button" role="tab" aria-selected="false" class="code-tab-btn" data-code-tab="python">
             Python 3.10+
           </button>
           <button type="button" role="tab" aria-selected="false" class="code-tab-btn" data-code-tab="cli">
-            CLI (npx &amp; uvx)
+            CLI (npx / pip)
           </button>
           <button type="button" role="tab" aria-selected="false" class="code-tab-btn" data-code-tab="g2p">
-            Zero-Dep Native G2P
+            Native G2P
           </button>
         </div>
         <span id="codeFileHint" class="pill-stat">ESM · TypeScript Ready · MIT</span>
@@ -984,8 +1075,8 @@
         .replace(/>/g, '&gt;');
     }
 
-    const JS_TOKEN_RE = /(\/\/.*$)|('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`)|\b(import|from|export|const|let|await|async|for|of|return|true|false|new)\b|\b(\d+(?:_\d+)*(?:\.\d+)?)\b|\b(ninada|stream|speak|dispose|textToIds|playPcm24k|writeFile|console|log)\b|(\b[a-zA-Z_$][\w$]*(?=\s*:))/gm;
-    const PY_TOKEN_RE = /(#.*$)|('''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")|\b(from|import|as|for|in|def|await|async|return|with|True|False|None)\b|\b(\d+(?:_\d+)*(?:\.\d+)?)\b|\b(Ninada|stream|speak|text_to_ids|write|print|len)\b|\b(lang|voice|rate|noise_scale|model_path)(?=\s*=)/gm;
+    const JS_TOKEN_RE = /(\/\/.*$)|('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`)|\b(import|from|export|const|let|await|async|for|of|return|true|false|new)\b|\b(\d+(?:_\d+)*(?:\.\d+)?)\b|\b(ninada|detectDevice|createOnnxPipeline|isCached|stream|speak|dispose|textToIds|playPcm24k|writeFile|console|log)\b|(\b[a-zA-Z_$][\w$]*(?=\s*:))/gm;
+    const PY_TOKEN_RE = /(#.*$)|('''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")|\b(from|import|as|for|in|def|await|async|return|with|True|False|None)\b|\b(\d+(?:_\d+)*(?:\.\d+)?)\b|\b(Ninada|stream|speak|text_to_ids|write|open|play|print|len)\b|\b(lang|voice|rate|noise_scale|model_path)(?=\s*=)/gm;
     const SH_TOKEN_RE = /(#.*$)|('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")|(\s-[a-zA-Z]+|\s--[a-zA-Z0-9-]+)|\b(npx|npm|pip|uvx|ninada|install|play|afplay)\b|\b(\d+(?:\.\d+)?)\b/gm;
 
     function highlightLine(line, syntax) {
@@ -1027,7 +1118,7 @@
     function highlightCodeBlock(source, syntax) {
       const lines = source.split('\n');
       return lines
-        .map((ln, idx) => `<span class="code-line"><span class="ln">${idx + 1}</span>${highlightLine(ln, syntax)}</span>`)
+        .map((ln, idx) => `<span class="code-line"><span class="ln">${idx + 1}</span><span class="lc">${highlightLine(ln, syntax) || ' '}</span></span>`)
         .join('');
     }
 
@@ -1037,73 +1128,68 @@
     function buildSdkSource(tab, langCode, voiceMode, sampleText) {
       const meta = LANG_META[langCode] || LANG_META.sa;
       const singleLine = sampleText.replace(/\s+/g, ' ').trim();
-      const preview = singleLine.length > 58 ? `${singleLine.slice(0, 58)}...` : singleLine;
+      const preview = singleLine.length > 34 ? `${singleLine.slice(0, 34)}...` : singleLine;
       const escSingle = preview.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
       const escDouble = preview.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       const modelSuffix = voiceMode === 'female' ? `${langCode}_female` : langCode;
 
       if (tab === 'python') {
         return [
-          `# Ninada v4.0 — 24,000 Hz Native ${meta.label} Studio VITS Specialist`,
+          `# 24 kHz Native ${meta.label} Studio VITS`,
           `from ninada import Ninada`,
-          `import soundfile as sf`,
           ``,
           `tts = Ninada(lang="${langCode}", voice="${voiceMode}")`,
           `text = "${escDouble}"`,
           ``,
-          `# Stream 24 kHz Float32 PCM clauses with low time-to-first-audio`,
-          `for chunk in tts.stream(text, rate=1.0, noise_scale=0.60):`,
-          `    print(chunk["index"], len(chunk["pcm"]), chunk["sample_rate"])`,
+          `for chunk in tts.stream(text):`,
+          `    play(chunk["pcm"], 24_000)`,
           ``,
-          `# Or synthesize complete 24 kHz studio waveform in one call`,
-          `audio = tts.speak(text)`,
-          `sf.write("ninada_${modelSuffix}.wav", audio["pcm"], 24_000)`,
+          `wav = tts.speak(text)`,
+          `with open("out_${modelSuffix}.wav", "wb") as f:`,
+          `    f.write(wav)`,
         ].join('\n');
       }
 
       if (tab === 'cli') {
         return [
-          `# Zero-install Node.js CLI (downloads & caches ~28 MB ${langCode.toUpperCase()} specialist)`,
-          `npx ninada "${escDouble}" -l ${langCode} -v ${voiceMode} -o ninada_${modelSuffix}.wav`,
+          `# Node.js zero-install CLI`,
+          `npx ninada "${escDouble}" \\`,
+          `  -l ${langCode} -v ${voiceMode} -o out_${modelSuffix}.wav`,
           ``,
-          `# Python CLI (24,000 Hz RIFF WAV output)`,
+          `# Python CLI (24 kHz RIFF WAV)`,
           `pip install "ninada[neural]"`,
-          `ninada "${escDouble}" --lang ${langCode} --voice ${voiceMode} -o ninada_${modelSuffix}.wav`,
-          ``,
-          `# Audition rendered 24 kHz studio WAV on macOS / Linux`,
-          `afplay ninada_${modelSuffix}.wav`,
+          `ninada "${escDouble}" \\`,
+          `  --lang ${langCode} --voice ${voiceMode} -o out_${modelSuffix}.wav`,
         ].join('\n');
       }
 
       if (tab === 'g2p') {
         return [
-          `// Zero-dependency Pan-Indic & Paninian Sanskrit G2P + Akshara Prosody`,
+          `// Zero-dep Pan-Indic G2P & Prosody`,
           `import { textToIds } from 'ninada';`,
           ``,
-          `const info = textToIds('${escSingle}', { lang: '${langCode}' });`,
-          ``,
-          `console.log(info.script, info.lang); // -> '${langCode}' native script detection`,
-          `console.log(info.ipa);               // -> 24 kHz Pan-Indic IPA phoneme stream`,
-          `console.log(info.aksharas);          // -> Guru (G) / Laghu (L) syllable weights`,
+          `const g2p = textToIds('${escSingle}', {`,
+          `  lang: '${langCode}',`,
+          `});`,
+          `console.log(g2p.lang, g2p.ipa);`,
+          `console.log(g2p.aksharas); // G / L`,
         ].join('\n');
       }
 
       return [
-        `// Ninada v4.0 — 24,000 Hz Native ${meta.label} Studio Specialist (Browser & Node.js)`,
+        `// 24 kHz Native ${meta.label} via webml-kit`,
         `import ninada from 'ninada';`,
-        `import * as ort from 'onnxruntime-web';`,
+        `import { detectDevice } from 'webml-kit';`,
         ``,
-        `const voice = await ninada('${meta.name}', {`,
+        `const { backend } = await detectDevice();`,
+        `const voice = await ninada('gnumanth/ninada', {`,
+        `  lang: '${langCode}',`,
         `  voice: '${voiceMode}',`,
-        `  models: {`,
-        `    ${langCode}: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/${modelSuffix}.onnx',`,
-        `  },`,
-        `  cacheModels: true,`,
-        `  ort,`,
+        `  device: backend,`,
         `});`,
         ``,
-        `for await (const chunk of voice.stream('${escSingle}')) {`,
-        `  playPcm24k(chunk.pcm, chunk.sampleRate); // Float32Array @ 24_000 Hz`,
+        `for await (const c of voice.stream('${escSingle}')) {`,
+        `  playPcm24k(c.pcm, c.sampleRate);`,
         `}`,
       ].join('\n');
     }
@@ -1570,7 +1656,7 @@
       if (codeFilenameEl) codeFilenameEl.textContent = tabInfo.file;
       if (codeFileHintEl) codeFileHintEl.textContent = tabInfo.hint;
       if (sdkLangBadgeEl) {
-        sdkLangBadgeEl.textContent = `LIVE SYNC \u00b7 ${activeLang.toUpperCase()} \u00b7 STUDIO ${curVoice.toUpperCase()}`;
+        sdkLangBadgeEl.textContent = `LIVE SYNC \u00b7 ${activeLang.toUpperCase()} \u00b7 ${curVoice.toUpperCase()}`;
       }
     }
 
@@ -1664,15 +1750,227 @@
       refreshInspection();
     });
 
+    const aksharaTitleEl = document.getElementById('aksharaTitle');
+    const aksharaLegendEl = document.getElementById('aksharaLegend');
+
+    const PROSODY_META = {
+      sa: {
+        title: '03 / Paninian Chandas Prosody (Guru / Laghu) & Akshara Durations',
+        badge: 'CHANDAS \u00b7 \u0917\u0941\u0930\u0941 (G) \u00b7 \u0932\u0918\u0941 (L) \u00b7 CODA (C)',
+      },
+      kn: {
+        title: '03 / Kannada Chandassu Prosody (Guru / Laghu) & Akshara Durations',
+        badge: '\u0c9b\u0c82\u0ca6\u0cb8\u0ccd\u0cb8\u0cc1 \u00b7 \u0c97\u0cc1\u0cb0\u0cc1 (G) \u00b7 \u0cb2\u0c98\u0cc1 (L) \u00b7 \u0c92\u0ca4\u0ccd\u0ca4\u0cc1 (C)',
+      },
+      hi: {
+        title: '03 / Hindi Chhand Prosody (Guru / Laghu) & Akshara Durations',
+        badge: '\u091b\u0928\u094d\u0926 \u00b7 \u0917\u0941\u0930\u0941 (G) \u00b7 \u0932\u0918\u0941 (L) \u00b7 \u0939\u0932\u0928\u094d\u0924 (C)',
+      },
+      ta: {
+        title: '03 / Tamil Yappilakkanam Prosody (Nedil / Kuril) & Akshara Durations',
+        badge: '\u0baf\u0bbe\u0baa\u0bcd\u0baa\u0cc1 \u00b7 \u0ba8\u0bc6\u0b9f\u0bbf\u0bb2\u0bcd (G) \u00b7 \u0b95\u0bc1\u0bb1\u0bbf\u0bb2\u0bcd (L) \u00b7 \u0b92\u0bb1\u0bcd\u0bb1\u0bc1 (C)',
+      },
+      te: {
+        title: '03 / Telugu Chandassu Prosody (Guruvu / Laghuvu) & Akshara Durations',
+        badge: '\u0c1b\u0c02\u0c26\u0c38\u0c4d\u0c38\u0c41 \u00b7 \u0c17\u0c41\u0c30\u0c41\u0c35\u0c41 (G) \u00b7 \u0c32\u0c18\u0c41\u0c35\u0c41 (L) \u00b7 \u0c2a\u0c4a\u0c32\u0c4d\u0c32\u0c41 (C)',
+      },
+      ml: {
+        title: '03 / Malayalam Vrttam Prosody (Guru / Laghu) & Akshara Durations',
+        badge: '\u0d35\u0d43\u0d24\u0d4d\u0d24\u0d02 \u00b7 \u0d17\u0d41\u0d30\u0d41 (G) \u00b7 \u0d32\u0d18\u0d41 (L) \u00b7 \u0d1a\u0d3f\u0d32\u0d4d\u0d32\u0d4d (C)',
+      },
+    };
+
+    const BRAHMIC_BLOCK_BASES = [0x0900, 0x0b80, 0x0c00, 0x0c80, 0x0d00];
+    const LONG_VOWEL_OFFS = new Set([0x06, 0x08, 0x0a, 0x0f, 0x10, 0x13, 0x14, 0x60, 0x61]);
+    const LONG_MATRA_OFFS = new Set([0x3e, 0x40, 0x42, 0x44, 0x47, 0x48, 0x4b, 0x4c, 0x55, 0x56, 0x57, 0x63]);
+    const ML_ZWJ_CHILLUS = [
+      ['\u0d23\u0d4d\u200d', '\u0d7a'],
+      ['\u0d28\u0d4d\u200d', '\u0d7b'],
+      ['\u0d30\u0d4d\u200d', '\u0d7c'],
+      ['\u0d32\u0d4d\u200d', '\u0d7d'],
+      ['\u0d33\u0d4d\u200d', '\u0d7e'],
+      ['\u0d15\u0d4d\u200d', '\u0d7f'],
+    ];
+
+    function classifyBrahmicChar(ch) {
+      if (!ch) return null;
+      const cp = ch.codePointAt(0);
+      if (cp >= 0x0d7a && cp <= 0x0d7f) return { kind: 'chillu' };
+      if (cp === 0x0951 || cp === 0x0952) return { kind: 'svara' };
+      for (const base of BRAHMIC_BLOCK_BASES) {
+        if (cp >= base && cp <= base + 0x7f) {
+          const off = cp - base;
+          if (off === 0x4d) return { kind: 'virama', base, off };
+          if (off === 0x3c) return { kind: 'nukta', base, off };
+          if (off === 0x02 || off === 0x03) return { kind: 'modifier', heavy: true, base, off };
+          if (off === 0x00 || off === 0x01 || off === 0x04) return { kind: 'modifier', heavy: false, base, off };
+          if ((off >= 0x05 && off <= 0x14) || off === 0x60 || off === 0x61) {
+            return { kind: 'vowel', long: LONG_VOWEL_OFFS.has(off), base, off };
+          }
+          if ((off >= 0x15 && off <= 0x39) || (off >= 0x58 && off <= 0x5f)) {
+            return { kind: 'consonant', base, off };
+          }
+          if ((off >= 0x3e && off <= 0x4c) || off === 0x55 || off === 0x56 || off === 0x57 || off === 0x62 || off === 0x63) {
+            return { kind: 'matra', long: LONG_MATRA_OFFS.has(off), base, off };
+          }
+          return null;
+        }
+      }
+      return null;
+    }
+
+    function segmentNativeAksharas(rawText, info, lang) {
+      let src = String(rawText || '');
+      if (info.script === 'iast' || info.script === 'latin') {
+        src = lang === 'sa' ? (info.normalizedDevanagari || src) : (info.nativeText || info.normalizedDevanagari || src);
+      }
+      for (const [zwjSeq, atomic] of ML_ZWJ_CHILLUS) {
+        src = src.split(zwjSeq).join(atomic);
+      }
+      src = src.replace(/[\u200c\u200d]/g, '');
+
+      const chars = [...src];
+      const n = chars.length;
+      const out = [];
+      const crossWord = lang === 'sa';
+
+      function readConsonant(idx) {
+        if (idx >= n || classifyBrahmicChar(chars[idx])?.kind !== 'consonant') return null;
+        let unit = chars[idx];
+        let next = idx + 1;
+        if (next < n && classifyBrahmicChar(chars[next])?.kind === 'nukta') {
+          unit += chars[next];
+          next += 1;
+        }
+        return { unit, next };
+      }
+
+      function closesPreceding(startIdx) {
+        let j = startIdx;
+        if (crossWord) {
+          while (j < n && /\s/.test(chars[j])) j += 1;
+        }
+        if (j >= n) return false;
+        if (classifyBrahmicChar(chars[j])?.kind === 'chillu') return true;
+        const c1 = readConsonant(j);
+        if (c1 && c1.next < n && classifyBrahmicChar(chars[c1.next])?.kind === 'virama') {
+          return true;
+        }
+        return false;
+      }
+
+      let i = 0;
+      let prevAdjacentSyllable = false;
+      while (i < n) {
+        const ch = chars[i];
+        if (/\s/.test(ch)) {
+          if (!crossWord) prevAdjacentSyllable = false;
+          i += 1;
+          continue;
+        }
+        const meta = classifyBrahmicChar(ch);
+        if (meta?.kind === 'chillu') {
+          if (prevAdjacentSyllable && out.length > 0 && out[out.length - 1].weight !== 'C') {
+            out[out.length - 1].weight = 'G';
+          }
+          out.push({ akshara: ch, weight: 'C' });
+          prevAdjacentSyllable = false;
+          i += 1;
+          continue;
+        }
+        if (meta?.kind === 'vowel') {
+          let buf = ch;
+          let isLong = meta.long;
+          i += 1;
+          while (i < n && classifyBrahmicChar(chars[i])?.kind === 'matra') {
+            if (classifyBrahmicChar(chars[i]).long) isLong = true;
+            buf += chars[i];
+            i += 1;
+          }
+          while (i < n) {
+            const m2 = classifyBrahmicChar(chars[i]);
+            if (m2?.kind === 'modifier') {
+              if (m2.heavy) isLong = true;
+              buf += chars[i];
+              i += 1;
+            } else if (m2?.kind === 'svara') {
+              i += 1;
+            } else {
+              break;
+            }
+          }
+          if (closesPreceding(i)) isLong = true;
+          out.push({ akshara: buf, weight: isLong ? 'G' : 'L' });
+          prevAdjacentSyllable = true;
+          continue;
+        }
+        const c0 = readConsonant(i);
+        if (c0) {
+          let buf = c0.unit;
+          i = c0.next;
+          let pureCoda = false;
+          while (i < n && classifyBrahmicChar(chars[i])?.kind === 'virama') {
+            const cNext = readConsonant(i + 1);
+            if (cNext) {
+              buf += chars[i] + cNext.unit;
+              i = cNext.next;
+            } else {
+              buf += chars[i];
+              i += 1;
+              pureCoda = true;
+              break;
+            }
+          }
+          if (pureCoda) {
+            if (prevAdjacentSyllable && out.length > 0 && out[out.length - 1].weight !== 'C') {
+              out[out.length - 1].weight = 'G';
+            }
+            out.push({ akshara: buf, weight: 'C' });
+            prevAdjacentSyllable = false;
+            continue;
+          }
+          let isLong = false;
+          while (i < n && classifyBrahmicChar(chars[i])?.kind === 'matra') {
+            if (classifyBrahmicChar(chars[i]).long) isLong = true;
+            buf += chars[i];
+            i += 1;
+          }
+          while (i < n) {
+            const m2 = classifyBrahmicChar(chars[i]);
+            if (m2?.kind === 'modifier') {
+              if (m2.heavy) isLong = true;
+              buf += chars[i];
+              i += 1;
+            } else if (m2?.kind === 'svara') {
+              i += 1;
+            } else {
+              break;
+            }
+          }
+          if (closesPreceding(i)) isLong = true;
+          out.push({ akshara: buf, weight: isLong ? 'G' : 'L' });
+          prevAdjacentSyllable = true;
+          continue;
+        }
+        prevAdjacentSyllable = false;
+        i += 1;
+      }
+      return out.length > 0 ? out : (info.aksharas || []);
+    }
+
     function refreshInspection(durations = null) {
       const fallback = PRESETS_BY_LANG[activeLang]?.[0]?.text || PRESETS_BY_LANG.sa[0].text;
       const txt = textInput.value.trim() || fallback;
       const info = textToIds(txt, { lang: activeLang });
+      const prosodyMeta = PROSODY_META[activeLang] || PROSODY_META.sa;
+      if (aksharaTitleEl) aksharaTitleEl.textContent = prosodyMeta.title;
+      if (aksharaLegendEl) aksharaLegendEl.textContent = prosodyMeta.badge;
+
+      const aks = segmentNativeAksharas(txt, info, activeLang);
       detectedBadge.textContent = `SCRIPT: ${info.script.toUpperCase()} \u00b7 ${info.lang.toUpperCase()}`;
-      metricTokens.textContent = `${info.aksharas.length} ak / ${info.ipaIds.length} ph`;
+      metricTokens.textContent = `${aks.length} ak / ${info.ipaIds.length} ph`;
 
       aksharaRibbon.innerHTML = '';
-      const aks = info.aksharas || [];
       const maxCards = 96;
       const totalWeight = aks.reduce((acc, a) => acc + (a.weight === 'G' ? 1.55 : a.weight === 'C' ? 0.60 : 1.0), 0) || 1;
       const totalSpeechMs = durations && durations.length > 2
@@ -1698,7 +1996,10 @@
         aksharaRibbon.appendChild(card);
       });
 
-      phonemicLine.textContent = `24 kHz Studio IPA (${info.lang.toUpperCase()}, ${info.ipaIds.length} tokens): /${info.ipa}/  |  Paninian Devanagari: ${info.normalizedDevanagari}`;
+      const scriptBreakdown = activeLang === 'sa'
+        ? `Paninian Devanagari: ${info.normalizedDevanagari}`
+        : `Native Studio Script (${info.lang.toUpperCase()}): ${info.nativeText}`;
+      phonemicLine.textContent = `24 kHz Studio IPA (${info.lang.toUpperCase()}, ${info.ipaIds.length} tokens): /${info.ipa}/  |  ${scriptBreakdown}`;
       renderSdkCode();
       return info;
     }

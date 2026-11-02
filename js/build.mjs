@@ -38,6 +38,8 @@ const cjsBody = esmBundle
   .replace(/export \{[\s\S]*?\};/m, `module.exports = Object.assign(ninada, {
   default: ninada,
   ninada,
+  Ninada,
+  DEFAULT_HF_REPO,
   SAMPLE_RATE,
   HOP_LENGTH,
   STUDIO_HOP_LENGTH,

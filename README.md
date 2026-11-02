@@ -3,7 +3,7 @@
 Stream 24,000 Hz studio speech for Classical Sanskrit and five Indian languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser, Node.js, and Python using `27.9 MB` native per-language VITS ONNX specialists (Male & Female) with zero cross-language accent bleed.
 
 ```bash
-npm install ninada onnxruntime-web
+npm install ninada webml-kit
 ```
 
 ```bash
@@ -14,13 +14,13 @@ pip install ninada
 
 ```js
 import ninada from 'ninada';
+import { detectDevice } from 'webml-kit';
 
-const voice = await ninada('kannada', {
-  models: {
-    kn: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/kn.onnx',
-    sa: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/sa.onnx',
-  },
-  cache: true,
+const { backend } = await detectDevice();
+const voice = await ninada('gnumanth/ninada', {
+  lang: 'kn',
+  voice: 'male',
+  device: backend,
 });
 
 for await (const chunk of voice.stream('ನಮಸ್ಕಾರ, ಇಂದು ಬೆಂಗಳೂರಿನಲ್ಲಿ ಹವಾಮಾನ ತುಂಬಾ ಚೆನ್ನಾಗಿದೆ.')) {

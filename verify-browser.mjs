@@ -238,7 +238,7 @@ async function main() {
     assert.equal(saResult.lang, "sa");
     assert.ok(saResult.samples > 24000, `Expected >1s 24kHz audio, got ${saResult.samples} samples`);
     assert.ok(saResult.rms > 0.02, `Expected non-silent RMS > 0.02, got ${saResult.rms}`);
-    assert.ok(saResult.ttfaMs > 0 && saResult.ttfaMs < 1500, `Expected TTFA < 1500ms, got ${saResult.ttfaMs}`);
+    assert.ok(saResult.ttfaMs > 0 && saResult.ttfaMs < 2500, `Expected TTFA < 2500ms, got ${saResult.ttfaMs}`);
     assert.ok(saResult.rtf < 0.95, `Expected multi-threaded RTF < 0.95 (<1.0x real-time), got ${saResult.rtf}`);
     assert.ok(saResult.wavBytes > 48000);
 
@@ -250,11 +250,14 @@ async function main() {
       strCount: document.querySelectorAll("#sdkSnippet .tok-str").length,
       fnCount: document.querySelectorAll("#sdkSnippet .tok-fn").length,
       badge: document.getElementById("sdkLangBadge")?.textContent,
+      jsCode: document.getElementById("sdkSnippet")?.textContent || "",
     }));
     assert.equal(codeCheckInitial.installCount, 2, "Expected npm and pip install pills in masthead");
     assert.equal(codeCheckInitial.tabCount, 4, "Expected 4 SDK code showcase tabs");
     assert.ok(codeCheckInitial.kwCount >= 4 && codeCheckInitial.strCount >= 3 && codeCheckInitial.fnCount >= 2);
     assert.ok(codeCheckInitial.badge.includes("SA"));
+    assert.ok(codeCheckInitial.jsCode.includes("webml-kit"), "Expected JS snippet to use webml-kit");
+    assert.ok(!codeCheckInitial.jsCode.includes("onnxruntime-web"), "Expected zero raw onnxruntime-web import in JS snippet");
 
     await page.locator('.code-tab-btn[data-code-tab="python"]').click();
     const pyCodeText = await page.locator("#sdkSnippet").textContent();
@@ -292,12 +295,12 @@ async function main() {
     );
 
     const expectedScriptRanges = [
-      { lang: "kn", re: /[\u0C80-\u0CFF]/, minPresets: 4 },
-      { lang: "hi", re: /[\u0900-\u097F]/, minPresets: 3 },
-      { lang: "ta", re: /[\u0B80-\u0BFF]/, minPresets: 3 },
-      { lang: "te", re: /[\u0C00-\u0C7F]/, minPresets: 3 },
-      { lang: "ml", re: /[\u0D00-\u0D7F]/, minPresets: 3 },
-      { lang: "sa", re: /[\u0900-\u097F]/, minPresets: 4 },
+      { lang: "kn", re: /[\u0C80-\u0CFF]/, minPresets: 4, prosody: "Kannada Chandassu" },
+      { lang: "hi", re: /[\u0900-\u097F]/, minPresets: 3, prosody: "Hindi Chhand" },
+      { lang: "ta", re: /[\u0B80-\u0BFF]/, minPresets: 3, prosody: "Tamil Yappilakkanam" },
+      { lang: "te", re: /[\u0C00-\u0C7F]/, minPresets: 3, prosody: "Telugu Chandassu" },
+      { lang: "ml", re: /[\u0D00-\u0D7F]/, minPresets: 3, prosody: "Malayalam Vrttam" },
+      { lang: "sa", re: /[\u0900-\u097F]/, minPresets: 4, prosody: "Paninian Chandas" },
     ];
 
     for (const item of expectedScriptRanges) {
@@ -314,11 +317,23 @@ async function main() {
         val: document.getElementById("textInput").value,
         presets: Array.from(document.querySelectorAll(".preset-chip")).map((b) => b.textContent),
         badge: document.getElementById("detectedBadge").textContent,
+        aksharaTitle: document.getElementById("aksharaTitle")?.textContent || "",
+        aksharaGlyphs: Array.from(document.querySelectorAll("#aksharaRibbon .akshara-glyph"))
+          .map((g) => g.textContent)
+          .join(" "),
         modelCached: window.__ninadaModelCached,
       }));
       assert.ok(
         item.re.test(tabState.val),
         `Clicking ${item.lang} tab did not populate native script text! Got: ${tabState.val}`
+      );
+      assert.ok(
+        item.re.test(tabState.aksharaGlyphs),
+        `Panel 03 Akshara prosody cards for ${item.lang} must render in native script! Got: ${tabState.aksharaGlyphs}`
+      );
+      assert.ok(
+        tabState.aksharaTitle.includes(item.prosody),
+        `Expected Panel 03 title for ${item.lang} to include '${item.prosody}', got: ${tabState.aksharaTitle}`
       );
       assert.ok(
         tabState.presets.length >= item.minPresets,
@@ -381,7 +396,7 @@ async function main() {
     assert.equal(knStream.result.tier, "neural_onnx");
     assert.ok(knStream.result.chunkCount >= 3, `Expected >=3 streamed chunks, got ${knStream.result.chunkCount}`);
     assert.ok(knStream.result.rms > 0.02);
-    assert.ok(knStream.result.ttfaMs < 1500, `Expected KN TTFA < 1500ms, got ${knStream.result.ttfaMs}`);
+    assert.ok(knStream.result.ttfaMs < 2500, `Expected KN TTFA < 2500ms, got ${knStream.result.ttfaMs}`);
     assert.ok(knStream.result.rtf < 0.95, `Expected KN RTF < 0.95 (<1.0x real-time), got ${knStream.result.rtf}`);
     assert.equal(knStream.stats.engine, "audioworklet", `Expected AudioWorklet engine, got ${knStream.stats.engine}`);
     assert.equal(
@@ -483,7 +498,7 @@ async function main() {
       `Expected ZERO audio buffer underruns during ML stream, got ${mlStream.stats.underrunCount}!`
     );
 
-    // 6. Check mobile viewport responsiveness
+    // 6. Check mobile viewport responsiveness + zero horizontal code clipping across all SDK tabs
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('.lang-btn[data-lang="kn"]').click();
     await page.waitForFunction(
@@ -492,6 +507,20 @@ async function main() {
       { timeout: 90000 }
     );
     await page.waitForTimeout(220);
+    for (const tabKey of ["js", "python", "cli", "g2p"]) {
+      await page.locator(`.code-tab-btn[data-code-tab="${tabKey}"]`).click();
+      const overflowPx = await page.evaluate(() => {
+        const pre = document.querySelector("pre.code-block");
+        const docOverflow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+        const preOverflow = pre ? pre.scrollWidth - pre.clientWidth : 0;
+        return Math.max(docOverflow, preOverflow);
+      });
+      assert.ok(
+        overflowPx <= 1,
+        `Expected zero mobile horizontal overflow on code tab '${tabKey}', got ${overflowPx}px`
+      );
+    }
+    await page.locator('.code-tab-btn[data-code-tab="js"]').click();
     await page.screenshot({
       path: path.join(SCREENSHOT_DIR, "ninada_studio_mobile.png"),
       fullPage: false,

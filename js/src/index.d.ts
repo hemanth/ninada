@@ -47,13 +47,27 @@ export interface SynthesisMeta extends G2PResult {
 
 export type VoiceBankSource = string | ArrayBuffer | Uint8Array | Float32Array;
 
+export interface NinadaProgressEvent {
+  status: string;
+  file?: string;
+  loaded: number;
+  total: number;
+  percent: number;
+}
+
 export interface NinadaOptions {
   lang?: string;
+  hub?: boolean | string;
+  device?: 'webgpu' | 'wasm' | 'cpu';
+  onProgress?: (event: NinadaProgressEvent) => void;
+  pipeline?: unknown;
+  pipelines?: Record<string, unknown> | Map<string, unknown>;
+  webml?: unknown;
   model?: string | ArrayBuffer | Uint8Array;
   models?: Record<string, string | ArrayBuffer | Uint8Array>;
   sessions?: Record<string, unknown> | Map<string, unknown>;
   getSession?: (lang: string, voice?: string) => Promise<unknown> | unknown;
-  voice?: VoiceBankSource;
+  voice?: 'male' | 'female' | VoiceBankSource;
   voiceBank?: VoiceBankSource;
   voices?: Record<string, VoiceBankSource>;
   encoderModel?: string | ArrayBuffer | Uint8Array;
@@ -72,6 +86,7 @@ export interface NinadaOptions {
 
 export interface SpeakOptions {
   lang?: string;
+  voice?: 'male' | 'female';
   rate?: number;
   noise?: number;
   noiseDuration?: number;
@@ -99,6 +114,10 @@ export interface NinadaVoice {
 }
 
 export default function ninada(input?: string | ArrayBuffer | Uint8Array | NinadaOptions, opts?: NinadaOptions): Promise<NinadaVoice>;
+export declare const Ninada: {
+  create(input?: string | ArrayBuffer | Uint8Array | NinadaOptions, opts?: NinadaOptions): Promise<NinadaVoice>;
+};
+export declare const DEFAULT_HF_REPO: string;
 export { ninada };
 export const SAMPLE_RATE: number;
 export const HOP_LENGTH: number;

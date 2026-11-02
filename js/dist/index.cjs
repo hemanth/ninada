@@ -1973,6 +1973,11 @@ function encodeWavBuffer(pcm, sr = SAMPLE_RATE) {
 const HOP_LENGTH = 600;
 const VOICE_BANK_FLOATS = 510 * 256;
 const VOICE_BANK_BYTES = VOICE_BANK_FLOATS * 4;
+const DEFAULT_HF_REPO = 'gnumanth/ninada';
+const ALL_SPECIALIST_KEYS = [
+  'sa', 'kn', 'hi', 'ta', 'te', 'ml',
+  'sa_female', 'kn_female', 'hi_female', 'ta_female', 'te_female', 'ml_female',
+];
 
 const LANG_ALIASES = {
   sa: 'sa', sanskrit: 'sa',
@@ -2132,10 +2137,57 @@ function isNodeEnv() {
   );
 }
 
-async function resolveOrt(explicitOrt) {
-  if (explicitOrt && explicitOrt.InferenceSession) return explicitOrt;
-  if (typeof globalThis !== 'undefined' && globalThis.ort && globalThis.ort.InferenceSession) {
+function unwrapSessionOrPipeline(candidate) {
+  if (!candidate) return null;
+  if (Array.isArray(candidate.sessions) && candidate.sessions[0]) {
+    return candidate.sessions[0];
+  }
+  if (typeof candidate.run === 'function') {
+    return candidate;
+  }
+  return null;
+}
+
+class DuckOrtTensor {
+  constructor(type, data, dims) {
+    this.type = type;
+    this.data = data;
+    this.dims = dims;
+    this.size = data.length;
+  }
+  dispose() {}
+}
+
+async function resolveWebmlKit(explicitWebml, skipAutoImport = false) {
+  if (explicitWebml && typeof explicitWebml.createOnnxPipeline === 'function') {
+    return explicitWebml;
+  }
+  if (
+    typeof globalThis !== 'undefined' &&
+    globalThis.webml &&
+    typeof globalThis.webml.createOnnxPipeline === 'function'
+  ) {
+    return globalThis.webml;
+  }
+  if (skipAutoImport) return null;
+  try {
+    const pkg = 'webml-kit';
+    const mod = await import(pkg);
+    const candidate = mod?.createOnnxPipeline ? mod : mod?.default;
+    if (candidate && typeof candidate.createOnnxPipeline === 'function') {
+      return candidate;
+    }
+  } catch {}
+  return null;
+}
+
+async function resolveOrt(explicitOrt, webmlKit = null) {
+  if (explicitOrt && (explicitOrt.InferenceSession || explicitOrt.Tensor)) return explicitOrt;
+  if (typeof globalThis !== 'undefined' && globalThis.ort && (globalThis.ort.InferenceSession || globalThis.ort.Tensor)) {
     return globalThis.ort;
+  }
+  if (webmlKit?.ort && (webmlKit.ort.InferenceSession || webmlKit.ort.Tensor)) {
+    return webmlKit.ort;
   }
   for (const pkg of ['onnxruntime-node', 'onnxruntime-web']) {
     try {
@@ -2243,16 +2295,54 @@ async function loadVoiceBankSource(source, useCache = true) {
   return null;
 }
 
-async function createOrtSession(ort, source, providers, useCache = true) {
-  if (!source || !ort || !ort.InferenceSession) return null;
+async function createOrtSession(ort, source, providers, useCache = true, webmlOpts = null) {
+  const unwrapped = unwrapSessionOrPipeline(source);
+  if (unwrapped) return unwrapped;
+  if (!source) return null;
+
   const isNode = isNodeEnv();
+  const webmlKit = webmlOpts?.webmlKit || null;
+  const preferWebml = Boolean(
+    webmlKit &&
+    typeof source === 'string' &&
+    (!isNode || webmlOpts?.explicitWebml || typeof webmlOpts?.onProgress === 'function' || !ort?.InferenceSession)
+  );
+
+  if (preferWebml) {
+    try {
+      const pipe = await webmlKit.createOnnxPipeline(
+        {
+          modelId: webmlOpts?.hubRepo || DEFAULT_HF_REPO,
+          modelFile: source,
+          task: 'raw-onnx',
+          device: webmlOpts?.device || 'wasm',
+          cache: useCache,
+          cacheName: BROWSER_MODEL_CACHE,
+        },
+        webmlOpts?.onProgress
+      );
+      const sess = unwrapSessionOrPipeline(pipe);
+      if (sess) return sess;
+    } catch {
+      // Fall back to direct ort.InferenceSession.create below
+    }
+  }
+
+  if (!ort || !ort.InferenceSession) return null;
   let resolved = source;
-  if (isNode && typeof source === 'string' && !/^https?:\/\//i.test(source) && ort.env?.wasm) {
+  if (typeof source === 'string' && hubRepoPathNeedsExpand(source, webmlOpts?.hubRepo)) {
+    resolved = `https://huggingface.co/${webmlOpts?.hubRepo || DEFAULT_HF_REPO}/resolve/main/${source}`;
+  }
+  if (isNode && typeof resolved === 'string' && !/^https?:\/\//i.test(resolved) && ort.env?.wasm) {
     const fsMod = await import('node:fs/promises');
-    const buf = await fsMod.readFile(source);
+    const buf = await fsMod.readFile(resolved);
     resolved = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-  } else if (!isNode && typeof source === 'string' && typeof fetch === 'function') {
-    resolved = await fetchBrowserCachedBytes(source, useCache);
+  } else if (isNode && typeof resolved === 'string' && /^https?:\/\//i.test(resolved) && typeof fetch === 'function') {
+    const res = await fetch(resolved);
+    if (!res.ok) throw new Error(`Failed to fetch ONNX model (${res.status}): ${resolved}`);
+    resolved = new Uint8Array(await res.arrayBuffer());
+  } else if (!isNode && typeof resolved === 'string' && typeof fetch === 'function') {
+    resolved = await fetchBrowserCachedBytes(resolved, useCache);
   }
   const useProviders = providers || (ort.env?.wasm ? ['wasm'] : ['cpu']);
   const canUseArena = isNode || Boolean(typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated);
@@ -2262,6 +2352,22 @@ async function createOrtSession(ort, source, providers, useCache = true) {
     enableCpuMemArena: canUseArena,
     enableMemPattern: canUseArena,
   });
+}
+
+function hubRepoPathNeedsExpand(src, hubRepo) {
+  if (!hubRepo || typeof src !== 'string') return false;
+  if (/^https?:\/\//i.test(src) || src.startsWith('/') || src.startsWith('./') || src.startsWith('../')) {
+    return false;
+  }
+  return src.startsWith('onnx/');
+}
+
+function isHubRepoId(val) {
+  return (
+    typeof val === 'string' &&
+    /^[a-z0-9_-]+\/[a-z0-9_.-]+$/i.test(val.trim()) &&
+    !/\.onnx$/i.test(val.trim())
+  );
 }
 
 function isV4StudioSession(sess) {
@@ -2279,11 +2385,15 @@ async function ninada(input = 'sa', opts = {}) {
   let modelSource = opts.model || null;
   let encSource = opts.encoderModel || null;
   let vocSource = opts.vocoderModel || null;
+  let hubRepo = typeof opts.hub === 'string' ? opts.hub.trim() : opts.hub === true ? DEFAULT_HF_REPO : null;
 
   if (typeof input === 'string') {
     const k = input.trim().toLowerCase();
     if (LANG_ALIASES[k]) {
       defaultLang = LANG_ALIASES[k];
+    } else if (isHubRepoId(input)) {
+      hubRepo = input.trim();
+      defaultLang = resolveLang(opts.lang);
     } else {
       modelSource = input;
     }
@@ -2295,24 +2405,45 @@ async function ninada(input = 'sa', opts = {}) {
     modelSource = opts.model || null;
     encSource = opts.encoderModel || null;
     vocSource = opts.vocoderModel || null;
+    if (!hubRepo) {
+      hubRepo = typeof opts.hub === 'string' ? opts.hub.trim() : opts.hub === true ? DEFAULT_HF_REPO : null;
+    }
   }
+
+  const defaultVoiceMode =
+    typeof opts.voice === 'string' && !/\.bin$/i.test(opts.voice)
+      ? opts.voice.trim().toLowerCase()
+      : null;
 
   const modelBasePath = typeof modelSource === 'string' && !/^https?:\/\//i.test(modelSource) ? modelSource : null;
 
-  let session = opts.session || null;
-  let encSession = opts.encoderSession || null;
-  let vocSession = opts.vocoderSession || null;
+  let session = unwrapSessionOrPipeline(opts.pipeline || opts.session) || null;
+  let encSession = unwrapSessionOrPipeline(opts.encoderSession) || null;
+  let vocSession = unwrapSessionOrPipeline(opts.vocoderSession) || null;
   const getSessionHook = typeof opts.getSession === 'function' ? opts.getSession : null;
 
   const sessionsMap = new Map();
   if (opts.sessions) {
     const entries = opts.sessions instanceof Map ? opts.sessions.entries() : Object.entries(opts.sessions);
     for (const [k, s] of entries) {
-      if (s) sessionsMap.set(String(k).trim().toLowerCase(), s);
+      const unwrapped = unwrapSessionOrPipeline(s);
+      if (unwrapped) sessionsMap.set(String(k).trim().toLowerCase(), unwrapped);
+    }
+  }
+  if (opts.pipelines && typeof opts.pipelines === 'object') {
+    const entries = opts.pipelines instanceof Map ? opts.pipelines.entries() : Object.entries(opts.pipelines);
+    for (const [k, p] of entries) {
+      const unwrapped = unwrapSessionOrPipeline(p);
+      if (unwrapped) sessionsMap.set(String(k).trim().toLowerCase(), unwrapped);
     }
   }
 
   const modelSourcesMap = new Map();
+  if (hubRepo) {
+    for (const specKey of ALL_SPECIALIST_KEYS) {
+      modelSourcesMap.set(specKey, `onnx/${specKey}.onnx`);
+    }
+  }
   if (opts.models && typeof opts.models === 'object') {
     for (const [k, v] of Object.entries(opts.models)) {
       if (v) modelSourcesMap.set(String(k).trim().toLowerCase(), v);
@@ -2328,19 +2459,34 @@ async function ninada(input = 'sa', opts = {}) {
     modelSource ||
     (encSource && vocSource)
   );
-  const ort = hasNeuralConfig ? await resolveOrt(opts.ort) : null;
+  const skipAutoWebmlImport = Boolean(opts.ort && (getSessionHook || session || sessionsMap.size > 0));
+  const webmlKit = hasNeuralConfig ? await resolveWebmlKit(opts.webml, skipAutoWebmlImport) : null;
+  const ort = hasNeuralConfig ? await resolveOrt(opts.ort, webmlKit) : null;
+  const TensorCtor = ort?.Tensor || DuckOrtTensor;
+  const webmlSessionOpts = {
+    webmlKit,
+    explicitWebml: Boolean(opts.webml),
+    hubRepo,
+    device: opts.device || 'wasm',
+    onProgress: typeof opts.onProgress === 'function' ? opts.onProgress : undefined,
+  };
 
   const useCache = opts.cache !== false;
-  if (!encSession && !vocSession && encSource && vocSource && ort) {
-    encSession = await createOrtSession(ort, encSource, opts.providers, useCache);
+  const canCreateSessions = Boolean(ort?.InferenceSession || webmlKit?.createOnnxPipeline);
+  const initialTargetKey = defaultVoiceMode === 'female' ? `${defaultLang}_female` : defaultLang;
+  if (!encSession && !vocSession && encSource && vocSource && canCreateSessions) {
+    encSession = await createOrtSession(ort, encSource, opts.providers, useCache, webmlSessionOpts);
     encSource = null;
-    vocSession = await createOrtSession(ort, vocSource, opts.providers, useCache);
+    vocSession = await createOrtSession(ort, vocSource, opts.providers, useCache, webmlSessionOpts);
     vocSource = null;
-  } else if (!session && modelSource && ort) {
-    session = await createOrtSession(ort, modelSource, opts.providers, useCache);
+  } else if (!session && modelSource && canCreateSessions) {
+    session = await createOrtSession(ort, modelSource, opts.providers, useCache, webmlSessionOpts);
     modelSource = null;
-  } else if (!session && !getSessionHook && modelSourcesMap.has(defaultLang) && ort) {
-    session = await createOrtSession(ort, modelSourcesMap.get(defaultLang), opts.providers, useCache);
+  } else if (!session && !getSessionHook && modelSourcesMap.has(initialTargetKey) && canCreateSessions) {
+    session = await createOrtSession(ort, modelSourcesMap.get(initialTargetKey), opts.providers, useCache, webmlSessionOpts);
+    if (session) sessionsMap.set(initialTargetKey, session);
+  } else if (!session && !getSessionHook && modelSourcesMap.has(defaultLang) && canCreateSessions) {
+    session = await createOrtSession(ort, modelSourcesMap.get(defaultLang), opts.providers, useCache, webmlSessionOpts);
     if (session) sessionsMap.set(defaultLang, session);
   }
 
@@ -2350,21 +2496,22 @@ async function ninada(input = 'sa', opts = {}) {
 
   async function resolveV4Session(lang, voiceOverride = null) {
     const lc = resolveLang(lang);
-    const vNorm = typeof voiceOverride === 'string' ? voiceOverride.trim().toLowerCase() : '';
+    const effVoice = voiceOverride || defaultVoiceMode;
+    const vNorm = typeof effVoice === 'string' ? effVoice.trim().toLowerCase() : '';
     const femKey = `${lc}_female`;
     const targetKey = vNorm === 'female' ? femKey : lc;
 
     if (getSessionHook) {
-      const hooked = await getSessionHook(lc, vNorm || 'male');
+      const hooked = unwrapSessionOrPipeline(await getSessionHook(lc, vNorm || 'male'));
       if (isV4StudioSession(hooked)) return hooked;
     }
     if (sessionsMap.has(targetKey)) {
       const hit = sessionsMap.get(targetKey);
       if (isV4StudioSession(hit)) return hit;
     }
-    if (modelSourcesMap.has(targetKey) && ort) {
+    if (modelSourcesMap.has(targetKey) && canCreateSessions) {
       try {
-        const loaded = await createOrtSession(ort, modelSourcesMap.get(targetKey), opts.providers, useCache);
+        const loaded = await createOrtSession(ort, modelSourcesMap.get(targetKey), opts.providers, useCache, webmlSessionOpts);
         if (isV4StudioSession(loaded)) {
           sessionsMap.set(targetKey, loaded);
           return loaded;
@@ -2373,9 +2520,9 @@ async function ninada(input = 'sa', opts = {}) {
     }
     if (vNorm === 'female') {
       if (sessionsMap.has(lc) && isV4StudioSession(sessionsMap.get(lc))) return sessionsMap.get(lc);
-      if (modelSourcesMap.has(lc) && ort) {
+      if (modelSourcesMap.has(lc) && canCreateSessions) {
         try {
-          const loaded = await createOrtSession(ort, modelSourcesMap.get(lc), opts.providers, useCache);
+          const loaded = await createOrtSession(ort, modelSourcesMap.get(lc), opts.providers, useCache, webmlSessionOpts);
           if (isV4StudioSession(loaded)) {
             sessionsMap.set(lc, loaded);
             return loaded;
@@ -2528,8 +2675,8 @@ async function ninada(input = 'sa', opts = {}) {
         return obj;
       };
 
-      const v4InitialSess = tier !== 'klatt' && ort ? await resolveV4Session(lang, callOpts.voice || null) : null;
-      const isV4 = Boolean(v4InitialSess && ort);
+      const v4InitialSess = tier !== 'klatt' ? await resolveV4Session(lang, callOpts.voice || null) : null;
+      const isV4 = Boolean(v4InitialSess && TensorCtor);
       const is24k = !isV4 && tier !== 'klatt' && isUnified24kSession() && Boolean(ort);
       const fastFirst = is24k && callOpts.fastFirstClause !== false;
       const clauses = buildStreamingClauses(text, callOpts.maxClauseChars || (isV4 || is24k ? 140 : 180), fastFirst);
@@ -2616,14 +2763,44 @@ async function ninada(input = 'sa', opts = {}) {
           }
 
           const { studioIds, lang: resolvedLc } = studioTextToIds(clauseItem.text, parsed.lang);
-          const activeSess = (await resolveV4Session(resolvedLc, callOpts.voice || null)) || v4InitialSess;
-          const idTensor = new ort.Tensor('int64', BigInt64Array.from(studioIds.map(BigInt)), [1, studioIds.length]);
-          const scalesTensor = new ort.Tensor('float32', Float32Array.from([1.0 / effRate, effNoise, effNoiseDp]), [3]);
+          let activeSess = (await resolveV4Session(resolvedLc, callOpts.voice || null)) || v4InitialSess;
+          const idTensor = new TensorCtor('int64', BigInt64Array.from(studioIds.map(BigInt)), [1, studioIds.length]);
+          const scalesTensor = new TensorCtor('float32', Float32Array.from([1.0 / effRate, effNoise, effNoiseDp]), [3]);
 
-          const out = await activeSess.run({
-            input_ids: idTensor,
-            scales: scalesTensor,
-          });
+          let out;
+          try {
+            out = await activeSess.run({
+              input_ids: idTensor,
+              scales: scalesTensor,
+            });
+          } catch (runErr) {
+            const vNorm = typeof (callOpts.voice || defaultVoiceMode) === 'string'
+              ? (callOpts.voice || defaultVoiceMode).trim().toLowerCase()
+              : '';
+            const targetKey = vNorm === 'female' ? `${resolvedLc}_female` : resolvedLc;
+            if (webmlSessionOpts.device === 'webgpu' && modelSourcesMap.has(targetKey)) {
+              webmlSessionOpts.device = 'wasm';
+              const wasmSess = await createOrtSession(
+                ort,
+                modelSourcesMap.get(targetKey),
+                ['wasm'],
+                useCache,
+                webmlSessionOpts
+              );
+              if (isV4StudioSession(wasmSess)) {
+                sessionsMap.set(targetKey, wasmSess);
+                activeSess = wasmSess;
+                out = await activeSess.run({
+                  input_ids: idTensor,
+                  scales: scalesTensor,
+                });
+              } else {
+                throw runErr;
+              }
+            } else {
+              throw runErr;
+            }
+          }
           const clauseElapsedMs = nowMs() - tClause;
           idTensor.dispose?.();
           scalesTensor.dispose?.();
@@ -3222,9 +3399,14 @@ async function ninada(input = 'sa', opts = {}) {
   };
 }
 
+const Ninada = { create: ninada };
+ninada.create = ninada;
+
 module.exports = Object.assign(ninada, {
   default: ninada,
   ninada,
+  Ninada,
+  DEFAULT_HF_REPO,
   SAMPLE_RATE,
   HOP_LENGTH,
   STUDIO_HOP_LENGTH,

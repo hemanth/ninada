@@ -157,3 +157,53 @@ test('Pan-Indic IPA G2P enforces jna allophony, Dravidian close-mid short-e, med
   assert.ok(mlIpa.includes('jʊɖɛ'));
 });
 
+test('webml-kit createOnnxPipeline and Hub repo auto-loader work without importing onnxruntime-web', async () => {
+  const calls = [];
+  const fakeSession = {
+    inputNames: ['input_ids', 'scales'],
+    async run(feeds) {
+      assert.ok(feeds.input_ids && feeds.scales);
+      const wav = new Float32Array(4800);
+      for (let i = 0; i < wav.length; i++) wav[i] = Math.sin((2 * Math.PI * 220 * i) / 24000) * 0.25;
+      return {
+        waveform: { data: wav, dispose() {} },
+        durations: { data: new Float32Array([2, 3, 2, 3]), dispose() {} },
+      };
+    },
+    async release() {},
+  };
+  const fakeWebml = {
+    async createOnnxPipeline(config, onProgress) {
+      calls.push(config);
+      onProgress?.({ status: 'ready', file: config.modelFile, loaded: 100, total: 100, percent: 100 });
+      return {
+        sessions: [fakeSession],
+        backend: 'wasm',
+        dispose() {},
+      };
+    },
+  };
+
+  let progressEvents = 0;
+  const voice = await ninada('gnumanth/ninada', {
+    lang: 'kn',
+    voice: 'female',
+    webml: fakeWebml,
+    onProgress: () => { progressEvents += 1; },
+  });
+  assert.equal(voice.isStreamingNeural, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].modelId, 'gnumanth/ninada');
+  assert.equal(calls[0].modelFile, 'onnx/kn_female.onnx');
+  assert.equal(progressEvents, 1);
+
+  const chunks = [];
+  for await (const ch of voice.stream('ಮನುಜಮತ ವಿಶ್ವಪಥ')) {
+    chunks.push(ch);
+  }
+  assert.ok(chunks.length >= 1);
+  assert.equal(chunks[0].tier, 'neural_onnx');
+  assert.equal(chunks[0].sampleRate, 24000);
+  await voice.dispose();
+});
+

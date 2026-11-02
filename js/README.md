@@ -3,22 +3,21 @@
 Stream 24,000 Hz studio speech for Classical Sanskrit and 5 Indian languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser and Node.js.
 
 ```bash
-npm install ninada onnxruntime-web
+npm install ninada webml-kit
 ```
 
 ## Quick start
 
 ```js
 import ninada from 'ninada';
-import * as ort from 'onnxruntime-web';
+import { detectDevice } from 'webml-kit';
 
-const voice = await ninada('kannada', {
-  models: {
-    kn: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/kn.onnx',
-    sa: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/sa.onnx',
-  },
-  cacheModels: true,
-  ort,
+const { backend } = await detectDevice();
+const voice = await ninada('gnumanth/ninada', {
+  lang: 'kn',
+  voice: 'male',
+  device: backend,
+  onProgress: ({ percent }) => console.log(`Loading specialist: ${percent}%`),
 });
 
 for await (const chunk of voice.stream('ಕನ್ನಡ ಭಾಷೆಯ ನೈಸರ್ಗಿಕ ಧ್ವನಿ ಸಂಶ್ಲೇಷಣೆಗೆ ಸ್ವಾಗತ.')) {
@@ -29,7 +28,7 @@ const wav = await voice.speak('ಕನ್ನಡವೇ ಸತ್ಯ ಕನ್ನ�
 await voice.dispose();
 ```
 
-`voice.stream()` yields 24 kHz `Float32Array` clauses as they synthesize. `voice.speak()` returns a complete 24 kHz RIFF WAV `Uint8Array` with automatic zero-dep Klatt fallback.
+`ninada` pairs directly with [`webml-kit`](https://github.com/hemanth/webml-kit) (`detectDevice`, `createOnnxPipeline`, persistent `Cache` API, and automatic WebGPU-to-WASM SIMD fallback) with zero `onnxruntime-web` boilerplate. You can also pass an explicit `createOnnxPipeline(...)` instance via `{ pipeline }` or local `.onnx` paths via `{ models }`. `voice.stream()` yields 24 kHz `Float32Array` clauses as they synthesize; `voice.speak()` returns a complete 24 kHz RIFF WAV `ArrayBuffer` with automatic zero-dep Klatt fallback.
 
 ## CLI
 
