@@ -1,6 +1,6 @@
 {
   "name": "ninada",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "description": "Stream Classical Sanskrit and 5 Indian languages at 24 kHz studio quality in the browser and Node.js via dedicated ~28 MB Native Studio VITS ONNX specialists or zero-dep Klatt synthesis.",
   "type": "module",
   "main": "dist/index.cjs",
