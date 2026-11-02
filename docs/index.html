@@ -513,13 +513,166 @@
     }
 
     .lower-grid {
-      margin-top: 26px;
+      margin-top: 24px;
       display: grid;
-      grid-template-columns: 1.3fr 0.7fr;
+      grid-template-columns: 1fr;
       gap: 22px;
     }
-    @media (max-width: 900px) {
-      .lower-grid { grid-template-columns: 1fr; }
+
+    .install-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .install-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: #141412;
+      color: #f4f2ec;
+      border: 1.2px solid #141412;
+      border-radius: 6px;
+      padding: 7px 8px 7px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .install-prompt {
+      color: #8a877e;
+      user-select: none;
+    }
+
+    .install-copy-btn {
+      appearance: none;
+      background: #252521;
+      color: #f4f2ec;
+      border: 1px solid #3a3933;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.14s ease, border-color 0.14s ease;
+    }
+    .install-copy-btn:hover {
+      background: #33322c;
+      border-color: #6b685e;
+    }
+    .install-copy-btn.copied {
+      background: var(--ok);
+      border-color: var(--ok);
+      color: #ffffff;
+    }
+
+    .code-showcase {
+      margin-top: 24px;
+    }
+
+    .code-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .code-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .code-tab-btn {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      color: var(--ink-muted);
+      font-family: var(--mono);
+      font-size: 11.5px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.14s ease;
+    }
+    .code-tab-btn:hover:not(.active) {
+      border-color: var(--ink);
+      color: var(--ink);
+    }
+    .code-tab-btn.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: var(--paper);
+      font-weight: 600;
+    }
+
+    .code-window {
+      background: #131311;
+      border: 1.2px solid #191917;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .code-window-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 14px;
+      background: #1c1c19;
+      border-bottom: 1px solid #2c2b26;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: #b4b1a6;
+    }
+
+    .code-window-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .code-dots {
+      display: inline-flex;
+      gap: 5px;
+    }
+    .code-dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3a3933;
+      display: inline-block;
+    }
+
+    .code-copy-btn {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #272722;
+      color: #f4f2ec;
+      border: 1px solid #414038;
+      border-radius: 5px;
+      padding: 5px 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.14s ease;
+    }
+    .code-copy-btn:hover {
+      background: #35342e;
+      border-color: #706d62;
+    }
+    .code-copy-btn.copied {
+      background: var(--ok);
+      border-color: var(--ok);
+      color: #ffffff;
     }
 
     .blueprint-img {
@@ -531,15 +684,39 @@
 
     pre.code-block {
       margin: 0;
-      padding: 14px;
-      background: #141412;
+      padding: 16px 18px;
+      background: #131311;
       color: #f4f2ec;
-      border-radius: 6px;
       font-family: var(--mono);
-      font-size: 12px;
-      line-height: 1.6;
+      font-size: 12.5px;
+      line-height: 1.68;
       overflow-x: auto;
+      tab-size: 2;
     }
+
+    .code-line {
+      display: block;
+      white-space: pre;
+    }
+
+    .ln {
+      display: inline-block;
+      width: 28px;
+      margin-right: 14px;
+      text-align: right;
+      color: #5c5a52;
+      user-select: none;
+      font-size: 11px;
+    }
+
+    /* High-contrast accessible studio syntax tokens on #131311 carbon */
+    .tok-kw { color: #ff8f6b; font-weight: 600; }
+    .tok-fn { color: #7dc4ff; }
+    .tok-str { color: #a8e38a; }
+    .tok-cmt { color: #8c897e; font-style: italic; }
+    .tok-num { color: #f6c96b; }
+    .tok-prop { color: #d6b8ff; }
+    .tok-flag { color: #7de2d1; }
 
     svg.icon {
       width: 15px;
@@ -563,8 +740,20 @@
         </div>
         <h1>Ninada<span class="title-dev" id="devTitle"></span></h1>
         <p class="subtitle">
-          Natural, studio-clarity speech for Classical Sanskrit and five Indian languages — streaming live right in your browser with instant playback and offline caching.
+          Natural, studio-clarity speech for Classical Sanskrit and five Indian languages — streaming live right in your browser, Node.js, and Python with offline caching.
         </p>
+        <div class="install-strip" aria-label="Package install commands">
+          <div class="install-pill">
+            <span class="install-prompt">$</span>
+            <span><span class="tok-fn">npm</span> install <span class="tok-str">ninada</span> <span class="tok-str">onnxruntime-web</span></span>
+            <button type="button" class="install-copy-btn" data-copy-cmd="npm install ninada onnxruntime-web">Copy</button>
+          </div>
+          <div class="install-pill">
+            <span class="install-prompt">$</span>
+            <span><span class="tok-fn">pip</span> install <span class="tok-str">"ninada[neural]"</span></span>
+            <button type="button" class="install-copy-btn" data-copy-cmd='pip install "ninada[neural]"'>Copy</button>
+          </div>
+        </div>
       </div>
       <div class="masthead-badges">
         <span class="pill-stat">24 KHZ STUDIO VOICE</span>
@@ -705,21 +894,52 @@
       <div id="phonemicLine" class="phonemic-line"></div>
     </section>
 
+    <section class="panel code-showcase" aria-label="Ninada Streaming SDK and CLI Code">
+      <div class="panel-header">
+        <h2 class="panel-title">04 / Developer SDK &amp; CLI — Live Syntax-Highlighted Recipes</h2>
+        <span id="sdkLangBadge" class="pill-stat">LIVE SYNC · SA · STUDIO MALE</span>
+      </div>
+
+      <div class="code-toolbar">
+        <div class="code-tabs" role="tablist" aria-label="SDK Runtime Examples">
+          <button type="button" role="tab" aria-selected="true" class="code-tab-btn active" data-code-tab="js">
+            JavaScript (Browser &amp; Node.js)
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="code-tab-btn" data-code-tab="python">
+            Python 3.10+
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="code-tab-btn" data-code-tab="cli">
+            CLI (npx &amp; uvx)
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="code-tab-btn" data-code-tab="g2p">
+            Zero-Dep Native G2P
+          </button>
+        </div>
+        <span id="codeFileHint" class="pill-stat">ESM · TypeScript Ready · MIT</span>
+      </div>
+
+      <div class="code-window">
+        <div class="code-window-bar">
+          <div class="code-window-meta">
+            <span class="code-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span id="codeFilename">stream-speech.mjs</span>
+          </div>
+          <button type="button" id="copySdkBtn" class="code-copy-btn">
+            <svg class="icon" viewBox="0 0 24 24" style="width:13px;height:13px;"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+            <span id="copySdkLabel">Copy Code</span>
+          </button>
+        </div>
+        <pre class="code-block"><code id="sdkSnippet"></code></pre>
+      </div>
+    </section>
+
     <section class="lower-grid">
       <div class="panel">
         <div class="panel-header">
-          <h2 class="panel-title">04 / Streaming Architecture Blueprint</h2>
+          <h2 class="panel-title">05 / Streaming Architecture Blueprint</h2>
           <span class="pill-stat">24 KHZ NATIVE STUDIO VITS · 6 SPECIALISTS</span>
         </div>
         <img src="./flow-diagram.svg" alt="Ninada Streaming Pan-Indic Neural TTS Architecture Diagram" class="blueprint-img" />
-      </div>
-
-      <div class="panel">
-        <div class="panel-header">
-          <h2 class="panel-title">05 / Streaming SDK (JS &amp; Python)</h2>
-          <span class="pill-stat">MIT LICENSE</span>
-        </div>
-        <pre class="code-block"><code id="sdkSnippet"></code></pre>
       </div>
     </section>
   </div>
@@ -741,21 +961,152 @@
       el.textContent = NATIVE_NAMES[el.dataset.native] || '';
     }
 
-    document.getElementById('sdkSnippet').textContent = [
-      "// JavaScript / Browser / Node.js (24 kHz Native Studio Specialists)",
-      "import ninada from 'ninada';",
-      "const voice = await ninada('kannada', {",
-      "  models: { kn: './models/kn.onnx', sa: './models/sa.onnx' },",
-      "});",
-      "for await (const chunk of voice.stream(text)) {",
-      "  playPcm24k(chunk.pcm); // 24 kHz native Kannada studio voice!",
-      "}",
-      "",
-      "# Python 3.10+ (24 kHz Native Studio Specialists)",
-      "from ninada import Ninada",
-      'for chunk in Ninada(lang="sa").stream(shloka):',
-      '    play(chunk["pcm"], chunk["sample_rate"])',
-    ].join('\n');
+    const LANG_META = {
+      sa: { name: 'sanskrit', label: 'Sanskrit' },
+      kn: { name: 'kannada', label: 'Kannada' },
+      hi: { name: 'hindi', label: 'Hindi' },
+      ta: { name: 'tamil', label: 'Tamil' },
+      te: { name: 'telugu', label: 'Telugu' },
+      ml: { name: 'malayalam', label: 'Malayalam' },
+    };
+
+    const CODE_TAB_META = {
+      js: { file: 'stream-speech.mjs', hint: 'ESM · TypeScript Ready · Browser & Node.js', syntax: 'js' },
+      python: { file: 'stream_speech.py', hint: 'Python >= 3.10 · ONNX Runtime + SoundFile', syntax: 'py' },
+      cli: { file: 'terminal.sh', hint: 'POSIX Shell · npx & uvx Zero-Config CLI', syntax: 'sh' },
+      g2p: { file: 'native-g2p.mjs', hint: 'Zero-Dep Phonemizer · 0 MB Bundle', syntax: 'js' },
+    };
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    const JS_TOKEN_RE = /(\/\/.*$)|('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`)|\b(import|from|export|const|let|await|async|for|of|return|true|false|new)\b|\b(\d+(?:_\d+)*(?:\.\d+)?)\b|\b(ninada|stream|speak|dispose|textToIds|playPcm24k|writeFile|console|log)\b|(\b[a-zA-Z_$][\w$]*(?=\s*:))/gm;
+    const PY_TOKEN_RE = /(#.*$)|('''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")|\b(from|import|as|for|in|def|await|async|return|with|True|False|None)\b|\b(\d+(?:_\d+)*(?:\.\d+)?)\b|\b(Ninada|stream|speak|text_to_ids|write|print|len)\b|\b(lang|voice|rate|noise_scale|model_path)(?=\s*=)/gm;
+    const SH_TOKEN_RE = /(#.*$)|('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")|(\s-[a-zA-Z]+|\s--[a-zA-Z0-9-]+)|\b(npx|npm|pip|uvx|ninada|install|play|afplay)\b|\b(\d+(?:\.\d+)?)\b/gm;
+
+    function highlightLine(line, syntax) {
+      if (!line) return '';
+      const re = syntax === 'py' ? PY_TOKEN_RE : syntax === 'sh' ? SH_TOKEN_RE : JS_TOKEN_RE;
+      re.lastIndex = 0;
+      let out = '';
+      let lastIdx = 0;
+      let m;
+      while ((m = re.exec(line)) !== null) {
+        if (m.index > lastIdx) {
+          out += escapeHtml(line.slice(lastIdx, m.index));
+        }
+        const full = m[0];
+        let cls = '';
+        if (syntax === 'sh') {
+          if (m[1]) cls = 'tok-cmt';
+          else if (m[2]) cls = 'tok-str';
+          else if (m[3]) cls = 'tok-flag';
+          else if (m[4]) cls = 'tok-fn';
+          else if (m[5]) cls = 'tok-num';
+        } else {
+          if (m[1]) cls = 'tok-cmt';
+          else if (m[2]) cls = 'tok-str';
+          else if (m[3]) cls = 'tok-kw';
+          else if (m[4]) cls = 'tok-num';
+          else if (m[5]) cls = 'tok-fn';
+          else if (m[6]) cls = 'tok-prop';
+        }
+        out += cls ? `<span class="${cls}">${escapeHtml(full)}</span>` : escapeHtml(full);
+        lastIdx = m.index + full.length;
+      }
+      if (lastIdx < line.length) {
+        out += escapeHtml(line.slice(lastIdx));
+      }
+      return out;
+    }
+
+    function highlightCodeBlock(source, syntax) {
+      const lines = source.split('\n');
+      return lines
+        .map((ln, idx) => `<span class="code-line"><span class="ln">${idx + 1}</span>${highlightLine(ln, syntax)}</span>`)
+        .join('');
+    }
+
+    let activeCodeTab = 'js';
+    let currentRawSdkCode = '';
+
+    function buildSdkSource(tab, langCode, voiceMode, sampleText) {
+      const meta = LANG_META[langCode] || LANG_META.sa;
+      const singleLine = sampleText.replace(/\s+/g, ' ').trim();
+      const preview = singleLine.length > 58 ? `${singleLine.slice(0, 58)}...` : singleLine;
+      const escSingle = preview.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const escDouble = preview.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const modelSuffix = voiceMode === 'female' ? `${langCode}_female` : langCode;
+
+      if (tab === 'python') {
+        return [
+          `# Ninada v4.0 — 24,000 Hz Native ${meta.label} Studio VITS Specialist`,
+          `from ninada import Ninada`,
+          `import soundfile as sf`,
+          ``,
+          `tts = Ninada(lang="${langCode}", voice="${voiceMode}")`,
+          `text = "${escDouble}"`,
+          ``,
+          `# Stream 24 kHz Float32 PCM clauses with low time-to-first-audio`,
+          `for chunk in tts.stream(text, rate=1.0, noise_scale=0.60):`,
+          `    print(chunk["index"], len(chunk["pcm"]), chunk["sample_rate"])`,
+          ``,
+          `# Or synthesize complete 24 kHz studio waveform in one call`,
+          `audio = tts.speak(text)`,
+          `sf.write("ninada_${modelSuffix}.wav", audio["pcm"], 24_000)`,
+        ].join('\n');
+      }
+
+      if (tab === 'cli') {
+        return [
+          `# Zero-install Node.js CLI (downloads & caches ~28 MB ${langCode.toUpperCase()} specialist)`,
+          `npx ninada "${escDouble}" -l ${langCode} -v ${voiceMode} -o ninada_${modelSuffix}.wav`,
+          ``,
+          `# Python CLI (24,000 Hz RIFF WAV output)`,
+          `pip install "ninada[neural]"`,
+          `ninada "${escDouble}" --lang ${langCode} --voice ${voiceMode} -o ninada_${modelSuffix}.wav`,
+          ``,
+          `# Audition rendered 24 kHz studio WAV on macOS / Linux`,
+          `afplay ninada_${modelSuffix}.wav`,
+        ].join('\n');
+      }
+
+      if (tab === 'g2p') {
+        return [
+          `// Zero-dependency Pan-Indic & Paninian Sanskrit G2P + Akshara Prosody`,
+          `import { textToIds } from 'ninada';`,
+          ``,
+          `const info = textToIds('${escSingle}', { lang: '${langCode}' });`,
+          ``,
+          `console.log(info.script, info.lang); // -> '${langCode}' native script detection`,
+          `console.log(info.ipa);               // -> 24 kHz Pan-Indic IPA phoneme stream`,
+          `console.log(info.aksharas);          // -> Guru (G) / Laghu (L) syllable weights`,
+        ].join('\n');
+      }
+
+      return [
+        `// Ninada v4.0 — 24,000 Hz Native ${meta.label} Studio Specialist (Browser & Node.js)`,
+        `import ninada from 'ninada';`,
+        `import * as ort from 'onnxruntime-web';`,
+        ``,
+        `const voice = await ninada('${meta.name}', {`,
+        `  voice: '${voiceMode}',`,
+        `  models: {`,
+        `    ${langCode}: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/${modelSuffix}.onnx',`,
+        `  },`,
+        `  cacheModels: true,`,
+        `  ort,`,
+        `});`,
+        ``,
+        `for await (const chunk of voice.stream('${escSingle}')) {`,
+        `  playPcm24k(chunk.pcm, chunk.sampleRate); // Float32Array @ 24_000 Hz`,
+        `}`,
+      ].join('\n');
+    }
 
     const PRESETS_BY_LANG = {
       sa: [
@@ -1200,8 +1551,88 @@
       });
     });
 
+    const sdkSnippetEl = document.getElementById('sdkSnippet');
+    const sdkLangBadgeEl = document.getElementById('sdkLangBadge');
+    const codeFilenameEl = document.getElementById('codeFilename');
+    const codeFileHintEl = document.getElementById('codeFileHint');
+    const copySdkBtn = document.getElementById('copySdkBtn');
+    const copySdkLabel = document.getElementById('copySdkLabel');
+    const codeTabBtns = Array.from(document.querySelectorAll('.code-tab-btn'));
+
+    function renderSdkCode() {
+      if (!sdkSnippetEl) return;
+      const fallback = PRESETS_BY_LANG[activeLang]?.[0]?.text || PRESETS_BY_LANG.sa[0].text;
+      const txt = textInput.value.trim() || fallback;
+      const curVoice = voiceSelect ? voiceSelect.value || 'male' : 'male';
+      const tabInfo = CODE_TAB_META[activeCodeTab] || CODE_TAB_META.js;
+      currentRawSdkCode = buildSdkSource(activeCodeTab, activeLang, curVoice, txt);
+      sdkSnippetEl.innerHTML = highlightCodeBlock(currentRawSdkCode, tabInfo.syntax);
+      if (codeFilenameEl) codeFilenameEl.textContent = tabInfo.file;
+      if (codeFileHintEl) codeFileHintEl.textContent = tabInfo.hint;
+      if (sdkLangBadgeEl) {
+        sdkLangBadgeEl.textContent = `LIVE SYNC \u00b7 ${activeLang.toUpperCase()} \u00b7 STUDIO ${curVoice.toUpperCase()}`;
+      }
+    }
+
+    async function copyToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch {}
+      }
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', 'true');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch {}
+      document.body.removeChild(ta);
+      return true;
+    }
+
+    codeTabBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activeCodeTab = btn.dataset.codeTab || 'js';
+        for (const b of codeTabBtns) {
+          const isMatch = b === btn;
+          b.classList.toggle('active', isMatch);
+          b.setAttribute('aria-selected', isMatch ? 'true' : 'false');
+        }
+        renderSdkCode();
+      });
+    });
+
+    if (copySdkBtn) {
+      copySdkBtn.addEventListener('click', async () => {
+        await copyToClipboard(currentRawSdkCode);
+        copySdkBtn.classList.add('copied');
+        if (copySdkLabel) copySdkLabel.textContent = 'Copied!';
+        setTimeout(() => {
+          copySdkBtn.classList.remove('copied');
+          if (copySdkLabel) copySdkLabel.textContent = 'Copy Code';
+        }, 1400);
+      });
+    }
+
+    document.querySelectorAll('.install-copy-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const cmd = btn.getAttribute('data-copy-cmd') || '';
+        await copyToClipboard(cmd);
+        btn.classList.add('copied');
+        btn.textContent = 'Copied';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.textContent = 'Copy';
+        }, 1400);
+      });
+    });
+
     if (voiceSelect) {
       voiceSelect.addEventListener('change', () => {
+        renderSdkCode();
         if (!isModelReady) return;
         const curVoice = voiceSelect.value || 'male';
         if (!workerFailed && tierSelect.value !== 'klatt' && (loadedWorkerLang !== activeLang || loadedWorkerVoice !== curVoice)) {
@@ -1268,6 +1699,7 @@
       });
 
       phonemicLine.textContent = `24 kHz Studio IPA (${info.lang.toUpperCase()}, ${info.ipaIds.length} tokens): /${info.ipa}/  |  Paninian Devanagari: ${info.normalizedDevanagari}`;
+      renderSdkCode();
       return info;
     }
 

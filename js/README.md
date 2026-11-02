@@ -1,18 +1,12 @@
 # ninada
 
-> Stream 24,000 Hz studio speech for Classical Sanskrit and 5 Indian languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser and Node.js using dedicated `~28 MB` W8A32+FP16 Native Studio VITS ONNX specialists (`onnx/{sa,kn,hi,ta,te,ml}.onnx` + `onnx/{sa,kn,hi,ta,te,ml}_female.onnx`), with persistent `CacheStorage` caching (`0` reload network refetches) and zero-dependency Klatt Tier-2 fallback.
+Stream 24,000 Hz studio speech for Classical Sanskrit and 5 Indian languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser and Node.js.
 
-- **Live Web Worker WASM SIMD Studio:** <https://hemanth.github.io/ninada/>
-- **Hugging Face Model:** <https://huggingface.co/gnumanth/ninada>
-- **Source & Benchmarks:** <https://github.com/hemanth/ninada>
-
-## Install
-
-```sh
+```bash
 npm install ninada onnxruntime-web
 ```
 
-## Streaming Usage
+## Quick start
 
 ```js
 import ninada from 'ninada';
@@ -31,17 +25,26 @@ for await (const chunk of voice.stream('ಕನ್ನಡ ಭಾಷೆಯ ನೈ�
   playPcm24k(chunk.pcm, chunk.sampleRate); // Float32Array @ 24,000 Hz
 }
 
-// Synthesize full 24 kHz RIFF WAV bytes (native Studio Male or Studio Female specialist)
 const wav = await voice.speak('ಕನ್ನಡವೇ ಸತ್ಯ ಕನ್ನಡವೇ ನಿತ್ಯ', { lang: 'kn', voice: 'female' });
 await voice.dispose();
 ```
 
+`voice.stream()` yields 24 kHz `Float32Array` clauses as they synthesize. `voice.speak()` returns a complete 24 kHz RIFF WAV `Uint8Array` with automatic zero-dep Klatt fallback.
+
 ## CLI
 
-```sh
+```bash
 npx ninada "ऋतं च सत्यं च" -l sa -o out.wav
 ```
 
+Synthesizes any supported Brahmic script or IAST string directly to a 24 kHz WAV file.
+
+## Related
+
+- [Live Browser Studio](https://hemanth.github.io/ninada/) — Web Worker WASM SIMD playground
+- [Hugging Face Weights](https://huggingface.co/gnumanth/ninada) — 12 native `~28 MB` W8A32+FP16 ONNX specialists
+- [Source & Benchmarks](https://github.com/hemanth/ninada)
+
 ## License
 
-MIT © [Hemanth HM](https://h3manth.com)
+MIT © [Hemanth.HM](https://h3manth.com)

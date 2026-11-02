@@ -242,6 +242,25 @@ async function main() {
     assert.ok(saResult.rtf < 0.95, `Expected multi-threaded RTF < 0.95 (<1.0x real-time), got ${saResult.rtf}`);
     assert.ok(saResult.wavBytes > 48000);
 
+    // Verify highlighted SDK code showcase, install pills, and interactive code tabs
+    const codeCheckInitial = await page.evaluate(() => ({
+      installCount: document.querySelectorAll(".install-pill").length,
+      tabCount: document.querySelectorAll(".code-tab-btn").length,
+      kwCount: document.querySelectorAll("#sdkSnippet .tok-kw").length,
+      strCount: document.querySelectorAll("#sdkSnippet .tok-str").length,
+      fnCount: document.querySelectorAll("#sdkSnippet .tok-fn").length,
+      badge: document.getElementById("sdkLangBadge")?.textContent,
+    }));
+    assert.equal(codeCheckInitial.installCount, 2, "Expected npm and pip install pills in masthead");
+    assert.equal(codeCheckInitial.tabCount, 4, "Expected 4 SDK code showcase tabs");
+    assert.ok(codeCheckInitial.kwCount >= 4 && codeCheckInitial.strCount >= 3 && codeCheckInitial.fnCount >= 2);
+    assert.ok(codeCheckInitial.badge.includes("SA"));
+
+    await page.locator('.code-tab-btn[data-code-tab="python"]').click();
+    const pyCodeText = await page.locator("#sdkSnippet").textContent();
+    assert.ok(pyCodeText.includes("from ninada import Ninada"), "Expected Python tab snippet");
+    await page.locator('.code-tab-btn[data-code-tab="js"]').click();
+
     await page.screenshot({
       path: path.join(SCREENSHOT_DIR, "ninada_studio_desktop.png"),
       fullPage: true,
