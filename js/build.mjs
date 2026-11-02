@@ -65,6 +65,8 @@ const cjsBody = esmBundle
   textToIds,
   cleanStudioText,
   studioTextToIds,
+  splitStudioVitsOnnxBuffer,
+  createSplitStudioVitsSession,
   synthesizeKlattPcm,
   encodeWavBuffer,
   generateRoomTone,

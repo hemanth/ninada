@@ -238,7 +238,7 @@ async function main() {
     assert.equal(saResult.lang, "sa");
     assert.ok(saResult.samples > 24000, `Expected >1s 24kHz audio, got ${saResult.samples} samples`);
     assert.ok(saResult.rms > 0.02, `Expected non-silent RMS > 0.02, got ${saResult.rms}`);
-    assert.ok(saResult.ttfaMs > 0 && saResult.ttfaMs < 2500, `Expected TTFA < 2500ms, got ${saResult.ttfaMs}`);
+    assert.ok(saResult.ttfaMs > 0 && saResult.ttfaMs < 1000, `Expected sub-second streaming TTFA < 1000ms, got ${saResult.ttfaMs}`);
     assert.ok(saResult.rtf < 0.95, `Expected multi-threaded RTF < 0.95 (<1.0x real-time), got ${saResult.rtf}`);
     assert.ok(saResult.wavBytes > 48000);
 
@@ -396,7 +396,7 @@ async function main() {
     assert.equal(knStream.result.tier, "neural_onnx");
     assert.ok(knStream.result.chunkCount >= 3, `Expected >=3 streamed chunks, got ${knStream.result.chunkCount}`);
     assert.ok(knStream.result.rms > 0.02);
-    assert.ok(knStream.result.ttfaMs < 2500, `Expected KN TTFA < 2500ms, got ${knStream.result.ttfaMs}`);
+    assert.ok(knStream.result.ttfaMs < 1000, `Expected KN sub-second streaming TTFA < 1000ms, got ${knStream.result.ttfaMs}`);
     assert.ok(knStream.result.rtf < 0.95, `Expected KN RTF < 0.95 (<1.0x real-time), got ${knStream.result.rtf}`);
     assert.equal(knStream.stats.engine, "audioworklet", `Expected AudioWorklet engine, got ${knStream.stats.engine}`);
     assert.equal(

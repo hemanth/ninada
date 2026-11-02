@@ -1,5 +1,5 @@
 import * as ortNs from './ort/ort.wasm.min.mjs';
-import ninada, { SAMPLE_RATE } from './ninada.mjs?v=4.0.2';
+import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=4.0.3';
 
 const ort = ortNs?.default?.InferenceSession ? ortNs.default : ortNs;
 
@@ -13,7 +13,11 @@ const LEGACY_IDB_NAMES = ['ninada-onnx-idb-v3', 'ninada-onnx-idb-v31', 'ninada-o
 const IDB_STORE = 'models';
 
 const DEFAULT_SPECIALIST_BYTES = 29300000;
-const MAX_WARM_SESSIONS = 3;
+const IS_MOBILE_OR_LOW_MEM = Boolean(
+  (self.navigator?.deviceMemory && self.navigator.deviceMemory <= 4) ||
+    /Android|iPhone|iPad|iPod|Mobile/i.test(self.navigator?.userAgent || '')
+);
+const MAX_WARM_SESSIONS = IS_MOBILE_OR_LOW_MEM ? 1 : 2;
 
 let activeCacheName = DEFAULT_MODEL_CACHE_NAME;
 let manifestPromise = null;
@@ -395,9 +399,10 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
   }
 
   const sessionOpts = buildSessionOpts();
-  const session = await ort.InferenceSession.create(modelRes.bytes, sessionOpts);
+  const rawBytes = modelRes.bytes;
   modelRes.bytes = null;
   modelRes = null;
+  const session = await createSplitStudioVitsSession(ort, rawBytes, sessionOpts);
   await warmupSpecialistSession(session);
 
   const entry = {
@@ -557,6 +562,7 @@ self.addEventListener('message', (ev) => {
         let finalLang = targetLang;
 
         const workerIsCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
+        const workerThreads = ort.env.wasm.numThreads || 1;
         const defaultChunkFrames = workerIsCoi ? 64 : 96;
         const defaultFirstFrames = workerIsCoi ? 40 : 56;
 
@@ -569,6 +575,8 @@ self.addEventListener('message', (ev) => {
           tier,
           firstChunkFrames: Number(msg.firstChunkFrames || defaultFirstFrames),
           chunkFrames: Number(msg.chunkFrames || defaultChunkFrames),
+          firstLatentFrames: Number(msg.firstLatentFrames || (workerIsCoi ? 32 : 28)),
+          singleThread: !workerIsCoi || workerThreads <= 1,
           signal: controller.signal,
         })) {
           if (controller.signal.aborted) return;
@@ -595,6 +603,11 @@ self.addEventListener('message', (ev) => {
               isFinal: ch.isFinal,
               durationSec: ch.durationSec,
               clauseDurationSec: ch.clauseDurationSec ?? ch.durationSec,
+              estimatedTotalSec: ch.estimatedTotalSec ?? ch.clauseDurationSec ?? ch.durationSec,
+              remainingClauseSec: ch.remainingClauseSec ?? 0,
+              nextWindowSec: ch.nextWindowSec ?? 0,
+              vocoderWindowAudioSec: ch.vocoderWindowAudioSec ?? ch.durationSec,
+              encFlowMs: ch.encFlowMs ?? 0,
               latencyMs: ch.latencyMs,
               vocoderMs: ch.vocoderMs ?? ch.latencyMs,
               ttfaMs,

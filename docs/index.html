@@ -8,7 +8,11 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23121210'/%3E%3Cpath d='M7 16h3l2.5-7 4 14 3.5-10 2.5 3H25' fill='none' stroke='%23fbfaf7' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" />
+  <link rel="modulepreload" href="./ninada.mjs?v=4.0.3" />
+  <link rel="modulepreload" href="./synth-worker.mjs?v=4.0.3" />
+  <link rel="modulepreload" href="./ort/ort.wasm.min.mjs" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" crossorigin="anonymous" />
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" /></noscript>
   <style>
     :root {
       --paper: #fbfaf7;
@@ -1036,7 +1040,7 @@
   </div>
 
   <script type="module">
-    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=4.0.2';
+    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=4.0.3';
 
     const NATIVE_NAMES = {
       sa: '\u0938\u0902\u0938\u094d\u0915\u0943\u0924\u092e\u094d',
@@ -1441,60 +1445,75 @@
       rafPlayhead = requestAnimationFrame(tick);
     }
 
-    async function ensureAudioContext() {
+    let audioWorkletModulePromise = null;
+
+    async function ensureAudioContext({ resumeNow = true } = {}) {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return null;
       if (!audioCtx) {
         try {
-          audioCtx = new Ctx({ latencyHint: 'playback' });
+          audioCtx = new Ctx({ latencyHint: 'interactive' });
         } catch {
           audioCtx = new Ctx();
         }
       }
-      if (audioCtx.state === 'suspended') {
-        try { await audioCtx.resume(); } catch {}
-      }
+      const resumePromise =
+        resumeNow && audioCtx.state === 'suspended'
+          ? audioCtx.resume().catch(() => {})
+          : Promise.resolve();
+
       if (!workletReady && !workletFailed && audioCtx.audioWorklet) {
-        try {
-          await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js');
-          workletNode = new AudioWorkletNode(audioCtx, 'ninada-stream-processor', {
-            numberOfInputs: 0,
-            numberOfOutputs: 1,
-            outputChannelCount: [1],
-          });
-          workletNode.port.onmessage = (ev) => {
-            const m = ev.data || {};
-            if (m.sessionId && m.sessionId !== activePlaySessionId) return;
-            if (m.type === 'progress') {
-              streamStats.playedSamples = m.playedSourceSamples;
-              streamStats.bufferedSamples = m.bufferedSourceSamples;
-              streamStats.underrunCount = m.underrunCount;
-            } else if (m.type === 'underrun') {
-              streamStats.underrunCount = m.underrunCount;
-              streamStats.playedSamples = m.playedSourceSamples;
-            } else if (m.type === 'ended') {
-              streamStats.playedSamples = m.playedSourceSamples;
-              streamStats.underrunCount = m.underrunCount;
-              streamStats.endedCount += 1;
-              finishLiveStreamPlayback();
+        if (!audioWorkletModulePromise) {
+          audioWorkletModulePromise = (async () => {
+            try {
+              await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js?v=4.0.3');
+              workletNode = new AudioWorkletNode(audioCtx, 'ninada-stream-processor', {
+                numberOfInputs: 0,
+                numberOfOutputs: 1,
+                outputChannelCount: [1],
+              });
+              workletNode.port.onmessage = (ev) => {
+                const m = ev.data || {};
+                if (m.sessionId && m.sessionId !== activePlaySessionId) return;
+                if (m.type === 'progress') {
+                  streamStats.playedSamples = m.playedSourceSamples;
+                  streamStats.bufferedSamples = m.bufferedSourceSamples;
+                  streamStats.underrunCount = m.underrunCount;
+                } else if (m.type === 'underrun') {
+                  streamStats.underrunCount = m.underrunCount;
+                  streamStats.playedSamples = m.playedSourceSamples;
+                } else if (m.type === 'ended') {
+                  streamStats.playedSamples = m.playedSourceSamples;
+                  streamStats.underrunCount = m.underrunCount;
+                  streamStats.endedCount += 1;
+                  finishLiveStreamPlayback();
+                }
+              };
+              workletNode.connect(audioCtx.destination);
+              workletReady = true;
+              streamStats.engine = 'audioworklet';
+            } catch {
+              workletFailed = true;
+              streamStats.engine = 'buffersource-fallback';
             }
-          };
-          workletNode.connect(audioCtx.destination);
-          workletReady = true;
-          streamStats.engine = 'audioworklet';
-        } catch {
-          workletFailed = true;
-          streamStats.engine = 'buffersource-fallback';
+          })();
         }
+        await Promise.all([resumePromise, audioWorkletModulePromise]);
+      } else {
+        await resumePromise;
       }
       return audioCtx;
     }
 
-    function beginLiveAudioSession() {
-      activePlaySessionId += 1;
+    function beginLiveAudioSession(explicitSessionId = 0) {
+      if (explicitSessionId > 0) {
+        activePlaySessionId = explicitSessionId;
+      } else {
+        activePlaySessionId += 1;
+      }
       const initialWatermark = window.crossOriginIsolated
-        ? Math.round(0.28 * SAMPLE_RATE)
-        : Math.round(0.65 * SAMPLE_RATE);
+        ? Math.round(0.035 * SAMPLE_RATE)
+        : Math.round(0.16 * SAMPLE_RATE);
       streamStats.underrunCount = 0;
       streamStats.playedSamples = 0;
       streamStats.bufferedSamples = 0;
@@ -1517,21 +1536,60 @@
     function pushLivePcmChunk(pcm, sampleRate = SAMPLE_RATE, chunkMeta = null) {
       if (!audioCtx || audioCtx.state !== 'running') return;
       if (workletReady && workletNode) {
-        // Adapt pre-roll watermark from measured Clause 0 synthesis speed when CPU RTF > 0.78x (e.g. 1-thread fallback)
-        if (chunkMeta && chunkMeta.index === 0 && (chunkMeta.clauseCount || 1) > 1) {
-          const clauseDurSec = Math.max(0.25, Number(chunkMeta.clauseDurationSec || chunkMeta.durationSec || 0.8));
-          const estRtf = (chunkMeta.vocoderMs || chunkMeta.latencyMs || 0) / (clauseDurSec * 1000);
-          if (estRtf > 0.78) {
-            const remClauses = Math.max(1, (chunkMeta.clauseCount || 2) - 1);
-            const estRemSec = remClauses * Math.max(1.4, clauseDurSec * 1.45);
-            const extraCushionSec = Math.min(5.0, Math.max(0.75, (estRtf - 0.70) * estRemSec));
-            const adaptedWatermark = Math.round((clauseDurSec + extraCushionSec) * sampleRate);
-            streamStats.watermarkSamples = adaptedWatermark;
-            workletNode.port.postMessage({
-              type: 'watermark',
-              watermarkSamples: adaptedWatermark,
-            });
+        // Closed-form discrete streaming watermark: start immediately when synthesis keeps ahead of real-time,
+        // or compute exact minimum pre-roll cushion on slow/single-thread mobile CPUs for zero underruns.
+        if (chunkMeta && chunkMeta.index === 0) {
+          const c0Sec = Math.max(0.05, pcm.length / sampleRate);
+          let adaptedWatermark;
+          if (chunkMeta.isFinal) {
+            adaptedWatermark = Math.min(pcm.length, Math.round(0.02 * sampleRate));
+          } else {
+            const vocWinSec = Math.max(0.18, Number(chunkMeta.vocoderWindowAudioSec || c0Sec));
+            const vocRtf = Math.max(
+              0.05,
+              (Number(chunkMeta.vocoderMs || chunkMeta.latencyMs || 0) / 1000) / vocWinSec
+            );
+            const nextWinSec = Math.max(0.35, Number(chunkMeta.nextWindowSec || 0.62));
+            const clauseCount = Math.max(1, Number(chunkMeta.clauseCount || 1));
+            const estTotalSec = Math.max(
+              c0Sec + 0.3,
+              Number(chunkMeta.estimatedTotalSec || chunkMeta.clauseDurationSec || 2.2)
+            );
+            const effRtf = vocRtf * (clauseCount > 1 ? 1.14 : 1.0);
+
+            if (vocRtf * nextWinSec + 0.035 <= c0Sec && effRtf <= 0.88) {
+              adaptedWatermark = Math.min(pcm.length, Math.round(0.03 * sampleRate));
+            } else {
+              const trailingPauseSec = 0.48;
+              const interPauseSec = (clauseCount - 1) * 0.16;
+              const neuralTotalSec = Math.max(
+                c0Sec + 0.25,
+                estTotalSec - trailingPauseSec - interPauseSec
+              );
+              const lastChunkSec = 0.54;
+              const marginSec = clauseCount > 1 ? 0.52 : 0.18;
+              const wNextSec =
+                effRtf <= 0.97 ? Math.min(1.25, vocRtf * nextWinSec + 0.06) : c0Sec;
+              const wTotalSec =
+                effRtf > 0.97
+                  ? Math.max(
+                      c0Sec,
+                      ((effRtf - 0.98) * neuralTotalSec +
+                        lastChunkSec +
+                        marginSec -
+                        interPauseSec) /
+                        effRtf
+                    )
+                  : c0Sec;
+              const targetWatermarkSec = Math.min(4.0, Math.max(c0Sec, wNextSec, wTotalSec));
+              adaptedWatermark = Math.round(targetWatermarkSec * sampleRate);
+            }
           }
+          streamStats.watermarkSamples = adaptedWatermark;
+          workletNode.port.postMessage({
+            type: 'watermark',
+            watermarkSamples: adaptedWatermark,
+          });
         }
         const copy = pcm.slice();
         streamStats.totalPushedSamples += copy.length;
@@ -2194,7 +2252,7 @@
     await ensureCrossOriginIsolation();
 
     // Dedicated off-main-thread Web Worker for ONNX Runtime WASM SIMD
-    const synthWorker = new Worker('./synth-worker.mjs?v=4.0.2', { type: 'module' });
+    const synthWorker = new Worker('./synth-worker.mjs?v=4.0.3', { type: 'module' });
     let nextReqSeq = 1;
     let currentPendingReq = null;
 
@@ -2281,29 +2339,53 @@
       }
 
       if (msg.type === 'chunk') {
-        currentPendingReq.chunks.push(msg.pcm);
-        currentPendingReq.totalSamples += msg.pcm.length;
+        const req = currentPendingReq;
+        req.chunks.push(msg.pcm);
+        req.totalSamples += msg.pcm.length;
         if (msg.durations && msg.durations.length > 0) {
-          currentPendingReq.durations.push(...msg.durations);
+          req.durations.push(...msg.durations);
         }
-        if (currentPendingReq.ttfaMs === null) {
-          currentPendingReq.ttfaMs = msg.ttfaMs;
+        if (req.ttfaMs === null) {
+          req.ttfaMs = msg.ttfaMs;
           metricTtfa.textContent = `${msg.ttfaMs.toFixed(1)} ms`;
         }
-        const curSec = currentPendingReq.totalSamples / SAMPLE_RATE;
-        metricDuration.textContent = `${curSec.toFixed(2)} s (${currentPendingReq.chunks.length} ch)`;
+
+        // Priority 1: Push PCM to AudioWorklet IMMEDIATELY before any DOM/Canvas/G2P work!
+        if (req.autoPlay) {
+          if (req.audioInitPromise) {
+            req.audioInitPromise.then(() => {
+              if (!req.cancelled && activePlaySessionId === req.playSessionId) {
+                pushLivePcmChunk(msg.pcm, msg.sampleRate || SAMPLE_RATE, msg);
+              }
+            });
+          } else {
+            pushLivePcmChunk(msg.pcm, msg.sampleRate || SAMPLE_RATE, msg);
+          }
+        }
+
+        const curSec = req.totalSamples / SAMPLE_RATE;
+        metricDuration.textContent = `${curSec.toFixed(2)} s (${req.chunks.length} ch)`;
         activeTierBadge.textContent =
           msg.tier === 'neural_onnx' ? 'STREAMING \u00b7 NEURAL ONNX' : 'STREAMING \u00b7 KLATT';
 
-        updateWaveBarsFromChunks(currentPendingReq.chunks, currentPendingReq.totalSamples);
-        if (!rafPlayhead) {
-          renderWaveBars(0);
+        if (!req.waveUpdateScheduled) {
+          req.waveUpdateScheduled = true;
+          requestAnimationFrame(() => {
+            req.waveUpdateScheduled = false;
+            if (currentPendingReq === req) {
+              updateWaveBarsFromChunks(req.chunks, req.totalSamples);
+              if (!rafPlayhead) renderWaveBars(0);
+            }
+          });
         }
-        if (currentPendingReq.durations.length > 0 && msg.index === 0) {
-          refreshInspection(currentPendingReq.durations);
-        }
-        if (currentPendingReq.autoPlay) {
-          pushLivePcmChunk(msg.pcm, msg.sampleRate || SAMPLE_RATE, msg);
+        if (msg.durations && msg.durations.length > 0 && msg.clauseIndex === 0 && !req.inspectedFirstClause) {
+          req.inspectedFirstClause = true;
+          const dursSnap = req.durations.slice();
+          setTimeout(() => {
+            if (currentPendingReq === req) {
+              refreshInspection(dursSnap);
+            }
+          }, 0);
         }
         return;
       }
@@ -2312,68 +2394,76 @@
         const req = currentPendingReq;
         currentPendingReq = null;
 
-        const pcm = concatFloat32(req.chunks);
-        lastPcm = pcm;
-        updateWaveBarsFromChunks([pcm], pcm.length);
+        const finalizeDone = () => {
+          const pcm = concatFloat32(req.chunks);
+          lastPcm = pcm;
+          updateWaveBarsFromChunks([pcm], pcm.length);
 
-        let rmsSq = 0;
-        for (let i = 0; i < pcm.length; i++) rmsSq += pcm[i] * pcm[i];
-        const rms = Math.sqrt(rmsSq / Math.max(1, pcm.length));
+          let rmsSq = 0;
+          for (let i = 0; i < pcm.length; i++) rmsSq += pcm[i] * pcm[i];
+          const rms = Math.sqrt(rmsSq / Math.max(1, pcm.length));
 
-        const wavBytesArr = encodeWavBuffer(pcm, SAMPLE_RATE);
-        if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-        const blob = new Blob([wavBytesArr], { type: 'audio/wav' });
-        currentBlobUrl = URL.createObjectURL(blob);
-        downloadLink.href = currentBlobUrl;
-        downloadLink.download = `ninada_${msg.lang}_${Date.now()}.wav`;
-        setDownloadEnabled(true);
+          const wavBytesArr = encodeWavBuffer(pcm, SAMPLE_RATE);
+          if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+          const blob = new Blob([wavBytesArr], { type: 'audio/wav' });
+          currentBlobUrl = URL.createObjectURL(blob);
+          downloadLink.href = currentBlobUrl;
+          downloadLink.download = `ninada_${msg.lang}_${Date.now()}.wav`;
+          setDownloadEnabled(true);
 
-        if (req.autoPlay && isStreamAudioActive && workletReady && workletNode) {
-          pendingAudioSrcUrl = currentBlobUrl;
-          workletNode.port.postMessage({ type: 'eos', sessionId: req.playSessionId });
-          synthBtnLabel.textContent = 'Playing Stream...';
-        } else if (req.autoPlay && activeSources.length > 0) {
-          pendingAudioSrcUrl = currentBlobUrl;
-          synthBtnLabel.textContent = 'Playing Stream...';
-        } else {
-          pendingAudioSrcUrl = null;
-          audioPlayer.src = currentBlobUrl;
-          synthBtn.classList.remove('streaming');
-          synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
-          stopBtn.disabled = true;
-        }
+          if (req.autoPlay && isStreamAudioActive && workletReady && workletNode) {
+            pendingAudioSrcUrl = currentBlobUrl;
+            workletNode.port.postMessage({ type: 'eos', sessionId: req.playSessionId });
+            synthBtnLabel.textContent = 'Playing Stream...';
+          } else if (req.autoPlay && activeSources.length > 0) {
+            pendingAudioSrcUrl = currentBlobUrl;
+            synthBtnLabel.textContent = 'Playing Stream...';
+          } else {
+            pendingAudioSrcUrl = null;
+            audioPlayer.src = currentBlobUrl;
+            synthBtn.classList.remove('streaming');
+            synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
+            stopBtn.disabled = true;
+          }
 
-        const durationSec = pcm.length / SAMPLE_RATE;
-        const rtf = (msg.totalMs / 1000) / Math.max(0.01, durationSec);
-        metricTtfa.textContent = `${msg.ttfaMs.toFixed(1)} ms`;
-        metricRtf.textContent = `${rtf.toFixed(3)}x (${(msg.totalMs / 1000).toFixed(2)}s)`;
-        metricDuration.textContent = `${durationSec.toFixed(2)} s (${msg.chunkCount} ch)`;
-        activeTierBadge.textContent =
-          msg.tier === 'neural_onnx' ? 'TIER 1 \u00b7 STREAMING ONNX' : 'TIER 2 \u00b7 KLATT ZERO-DEP';
+          const durationSec = pcm.length / SAMPLE_RATE;
+          const rtf = (msg.totalMs / 1000) / Math.max(0.01, durationSec);
+          metricTtfa.textContent = `${msg.ttfaMs.toFixed(1)} ms`;
+          metricRtf.textContent = `${rtf.toFixed(3)}x (${(msg.totalMs / 1000).toFixed(2)}s)`;
+          metricDuration.textContent = `${durationSec.toFixed(2)} s (${msg.chunkCount} ch)`;
+          activeTierBadge.textContent =
+            msg.tier === 'neural_onnx' ? 'TIER 1 \u00b7 STREAMING ONNX' : 'TIER 2 \u00b7 KLATT ZERO-DEP';
 
-        refreshInspection(req.durations.length > 0 ? req.durations : null);
-        if (!rafPlayhead) {
-          renderWaveBars(0);
-        }
+          refreshInspection(req.durations.length > 0 ? req.durations : null);
+          if (!rafPlayhead) {
+            renderWaveBars(0);
+          }
 
-        const summary = {
-          tier: msg.tier,
-          isNeural: msg.isNeural,
-          isStreamingNeural: msg.isStreamingNeural,
-          lang: msg.lang,
-          samples: pcm.length,
-          durationSec,
-          ttfaMs: msg.ttfaMs,
-          latencyMs: msg.totalMs,
-          chunkCount: msg.chunkCount,
-          rtf,
-          rms,
-          wavBytes: wavBytesArr.byteLength,
-          threads: streamStats.threads,
-          crossOriginIsolated: streamStats.crossOriginIsolated,
+          const summary = {
+            tier: msg.tier,
+            isNeural: msg.isNeural,
+            isStreamingNeural: msg.isStreamingNeural,
+            lang: msg.lang,
+            samples: pcm.length,
+            durationSec,
+            ttfaMs: msg.ttfaMs,
+            latencyMs: msg.totalMs,
+            chunkCount: msg.chunkCount,
+            rtf,
+            rms,
+            wavBytes: wavBytesArr.byteLength,
+            threads: streamStats.threads,
+            crossOriginIsolated: streamStats.crossOriginIsolated,
+          };
+          window.__ninadaLastResult = summary;
+          req.resolve(summary);
         };
-        window.__ninadaLastResult = summary;
-        req.resolve(summary);
+
+        if (req.audioInitPromise) {
+          req.audioInitPromise.then(finalizeDone);
+        } else {
+          finalizeDone();
+        }
         return;
       }
 
@@ -2390,6 +2480,7 @@
 
     function cancelActiveSynthesis() {
       if (currentPendingReq) {
+        currentPendingReq.cancelled = true;
         synthWorker.postMessage({ type: 'cancel', reqId: currentPendingReq.reqId });
         currentPendingReq.resolve(null);
         currentPendingReq = null;
@@ -2406,35 +2497,58 @@
       if (!txt) return null;
 
       if (currentPendingReq) {
+        currentPendingReq.cancelled = true;
         synthWorker.postMessage({ type: 'cancel', reqId: currentPendingReq.reqId });
         currentPendingReq.resolve(null);
         currentPendingReq = null;
       }
       stopLiveAudio();
 
+      const reqId = nextReqSeq++;
       let playSessionId = 0;
+      let audioInitPromise = null;
+
+      const reqRecord = {
+        reqId,
+        autoPlay,
+        playSessionId: 0,
+        cancelled: false,
+        audioInitPromise: null,
+        waveUpdateScheduled: false,
+        inspectedFirstClause: false,
+        chunks: [],
+        totalSamples: 0,
+        durations: [],
+        ttfaMs: null,
+        resolve: null,
+        reject: null,
+      };
+
       if (autoPlay) {
-        await ensureAudioContext();
-        playSessionId = beginLiveAudioSession();
+        playSessionId = activePlaySessionId + 1;
+        activePlaySessionId = playSessionId;
+        reqRecord.playSessionId = playSessionId;
         synthBtn.classList.add('streaming');
         synthBtnLabel.textContent = 'Streaming...';
         stopBtn.disabled = false;
+        if (workletReady && audioCtx && audioCtx.state === 'running') {
+          beginLiveAudioSession(playSessionId);
+        } else {
+          audioInitPromise = ensureAudioContext({ resumeNow: true }).then(() => {
+            if (!reqRecord.cancelled && activePlaySessionId === playSessionId) {
+              beginLiveAudioSession(playSessionId);
+              reqRecord.audioInitPromise = null;
+            }
+          });
+          reqRecord.audioInitPromise = audioInitPromise;
+        }
       }
 
-      const reqId = nextReqSeq++;
-
       return new Promise((resolve, reject) => {
-        currentPendingReq = {
-          reqId,
-          autoPlay,
-          playSessionId,
-          chunks: [],
-          totalSamples: 0,
-          durations: [],
-          ttfaMs: null,
-          resolve,
-          reject,
-        };
+        reqRecord.resolve = resolve;
+        reqRecord.reject = reject;
+        currentPendingReq = reqRecord;
+        // Dispatch to Web Worker IMMEDIATELY at t=0ms in parallel with any AudioContext resume/module init!
         synthWorker.postMessage({
           type: 'stream',
           reqId,
@@ -2447,6 +2561,14 @@
         });
       });
     }
+
+    // Eagerly warm AudioContext + AudioWorklet on first touch/pointer gesture so tap-to-audio has 0ms setup delay
+    const warmAudioOnGesture = () => {
+      ensureAudioContext({ resumeNow: true }).catch(() => {});
+    };
+    window.addEventListener('pointerdown', warmAudioOnGesture, { capture: true, passive: true, once: true });
+    window.addEventListener('touchstart', warmAudioOnGesture, { capture: true, passive: true, once: true });
+    window.addEventListener('keydown', warmAudioOnGesture, { capture: true, passive: true, once: true });
 
     audioPlayer.addEventListener('timeupdate', () => {
       if (!isStreamAudioActive && hasWaveBars && audioPlayer.duration > 0) {
@@ -2485,8 +2607,14 @@
     window.__ninadaCancel = cancelActiveSynthesis;
 
     synthWorker.postMessage({ type: 'init' });
+    // Pre-compile AudioWorklet module in parallel while ONNX session initializes in Web Worker
+    ensureAudioContext({ resumeNow: false }).catch(() => {});
     await workerReadyPromise;
-    await runSynthesis(false);
+    // Short idle grace window so an immediate mobile user tap after unlock starts at 0ms queue delay
+    await new Promise((r) => setTimeout(r, 180));
+    if (!currentPendingReq && !isStreamAudioActive) {
+      await runSynthesis(false);
+    }
   </script>
 </body>
 </html>

@@ -137,5 +137,14 @@ export function segmentAksharas(devText: string): AksharaUnit[];
 export function textToIpa(text: string, lang?: string, normalizedDevFallback?: string): string;
 export function ipaToIds(ipa: string, maxTokens?: number): number[];
 export function textToIds(text: string, opts?: { lang?: string; addBlank?: boolean; minLen?: number }): G2PResult;
+export interface SplitStudioVitsGraph {
+  encFlowBytes: Uint8Array;
+  vocoderBytes: Uint8Array;
+  latentName: string;
+  wav3dName: string;
+}
+
+export function splitStudioVitsOnnxBuffer(rawBuffer: ArrayBuffer | ArrayBufferView): SplitStudioVitsGraph | null;
+export function createSplitStudioVitsSession(ort: unknown, rawBytes: ArrayBuffer | ArrayBufferView, sessionOpts?: Record<string, unknown>): Promise<unknown>;
 export function synthesizeKlattPcm(text: string, opts?: { lang?: string; rate?: number; f0Base?: number }): { pcm: Float32Array; meta: G2PResult & { tier: string } };
 export function encodeWavBuffer(pcm: Float32Array, sr?: number): ArrayBuffer;

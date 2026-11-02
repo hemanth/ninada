@@ -151,10 +151,12 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
       return true;
     }
 
+    let justStarted = false;
     if (this.state === 'buffering') {
       if (this.queuedSamples >= this.watermarkSamples || (this.eos && this.queuedSamples > 0)) {
         this._primeHistory();
         this.state = 'playing';
+        justStarted = true;
       } else {
         ch0.fill(0);
         for (let c = 1; c < out.length; c++) out[c].fill(0);
@@ -232,7 +234,7 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
     }
 
     this.quantaCounter += 1;
-    if (this.quantaCounter >= 12) {
+    if (justStarted || this.quantaCounter >= 12) {
       this.quantaCounter = 0;
       this.port.postMessage({
         type: 'progress',

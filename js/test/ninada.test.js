@@ -13,6 +13,7 @@ import ninada, {
   textToIds,
   iastToDevanagari,
   brahmicToDevanagari,
+  splitStudioVitsOnnxBuffer,
 } from '../src/index.js';
 
 test('87-token Brahmic vocabulary and 24 kHz IPA vocabulary with retroflex lateral slot 79', () => {
@@ -206,4 +207,62 @@ test('webml-kit createOnnxPipeline and Hub repo auto-loader work without importi
   assert.equal(chunks[0].sampleRate, 24000);
   await voice.dispose();
 });
+
+test('In-memory Studio VITS ONNX splitter enables sub-clause latent-window streaming with >38 dB SNR parity', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const saPath = path.resolve(import.meta.dirname, '../../docs/models/sa.onnx');
+  if (!fs.existsSync(saPath)) return;
+
+  const rawBuf = fs.readFileSync(saPath);
+  const tSplit0 = performance.now();
+  const split = splitStudioVitsOnnxBuffer(rawBuf);
+  const splitMs = performance.now() - tSplit0;
+  assert.ok(split, 'Expected splitStudioVitsOnnxBuffer to succeed on docs/models/sa.onnx');
+  assert.ok(splitMs < 60, `Expected in-memory ONNX split < 60ms, got ${splitMs.toFixed(1)}ms`);
+  assert.ok(split.encFlowBytes.byteLength > 5_000_000);
+  assert.ok(split.vocoderBytes.byteLength > 5_000_000);
+
+  const voice = await ninada('sanskrit', { models: { sa: saPath } });
+  const singleClauseText = 'प्रज्ञापूर्वकव्यापारवत्त्वं जीवत्वम् यथार्थज्ञानं प्रमाणम् धर्मक्षेत्रे कुरुक्षेत्रे समवेता युयुत्सवः';
+
+  // Warmup JIT
+  await voice.synthesize('सत्यम्', { noise: 0, noiseDuration: 0 });
+
+  const streamChunks = [];
+  for await (const ch of voice.stream(singleClauseText, { noise: 0, noiseDuration: 0 })) {
+    streamChunks.push(ch);
+  }
+  const mono = await voice.synthesize(singleClauseText, { noise: 0, noiseDuration: 0 });
+
+  assert.ok(
+    streamChunks.length >= 3,
+    `Expected >=3 sub-clause latent-window chunks for single unpunctuated clause, got ${streamChunks.length}`
+  );
+  assert.ok(
+    streamChunks[0].ttfaMs * 2.2 < mono.meta.latencyMs,
+    `Expected streamed Chunk 0 TTFA (${streamChunks[0].ttfaMs.toFixed(1)}ms) to be >2.2x faster than monolithic (${mono.meta.latencyMs.toFixed(1)}ms)`
+  );
+
+  // Verify SNR parity across speech samples (excluding trailing pause)
+  const totalStreamLen = streamChunks.reduce((acc, c) => acc + c.pcm.length, 0);
+  assert.equal(totalStreamLen, mono.pcm.length, 'Expected identical sample count between latent-streamed and monolithic');
+  const cat = new Float32Array(totalStreamLen);
+  let off = 0;
+  for (const c of streamChunks) {
+    cat.set(c.pcm, off);
+    off += c.pcm.length;
+  }
+  let sigEnergy = 0;
+  let errEnergy = 0;
+  for (let i = 0; i < cat.length; i++) {
+    sigEnergy += mono.pcm[i] * mono.pcm[i];
+    const d = mono.pcm[i] - cat[i];
+    errEnergy += d * d;
+  }
+  const snrDb = 10 * Math.log10(sigEnergy / Math.max(1e-12, errEnergy));
+  assert.ok(snrDb > 35, `Expected latent-windowed HiFi-GAN SNR > 35 dB vs monolithic, got ${snrDb.toFixed(2)} dB`);
+  await voice.dispose();
+});
+
 
