@@ -976,7 +976,7 @@
           </div>
         </div>
 
-        <audio id="audioPlayer" controls preload="auto"></audio>
+        <audio id="audioPlayer" controls preload="auto" disableRemotePlayback></audio>
       </section>
     </main>
 
@@ -1268,7 +1268,18 @@
     let activePresetIdx = 0;
     let lastPcm = null;
     let currentBlobUrl = null;
+    let activeAudioBlobUrl = null;
     let workerReadyInfo = null;
+
+    function assignAudioPlayerBlob(nextBlobUrl) {
+      if (!nextBlobUrl) return;
+      const prevAudioBlob = activeAudioBlobUrl;
+      audioPlayer.src = nextBlobUrl;
+      activeAudioBlobUrl = nextBlobUrl;
+      if (prevAudioBlob && prevAudioBlob !== nextBlobUrl && prevAudioBlob !== currentBlobUrl) {
+        URL.revokeObjectURL(prevAudioBlob);
+      }
+    }
     let isModelReady = false;
     window.__ninadaReady = false;
     window.__ninadaLoadedLang = null;
@@ -1378,7 +1389,7 @@
         stopBtn.disabled = true;
       }
       if (pendingAudioSrcUrl) {
-        audioPlayer.src = pendingAudioSrcUrl;
+        assignAudioPlayerBlob(pendingAudioSrcUrl);
         pendingAudioSrcUrl = null;
       }
       renderWaveBars(0);
@@ -1406,7 +1417,7 @@
       nextPlayTime = 0;
       totalScheduledSec = 0;
       if (pendingAudioSrcUrl) {
-        audioPlayer.src = pendingAudioSrcUrl;
+        assignAudioPlayerBlob(pendingAudioSrcUrl);
         pendingAudioSrcUrl = null;
       }
       audioPlayer.pause();
@@ -2404,9 +2415,12 @@
           const rms = Math.sqrt(rmsSq / Math.max(1, pcm.length));
 
           const wavBytesArr = encodeWavBuffer(pcm, SAMPLE_RATE);
-          if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+          const prevBlobUrl = currentBlobUrl;
           const blob = new Blob([wavBytesArr], { type: 'audio/wav' });
           currentBlobUrl = URL.createObjectURL(blob);
+          if (prevBlobUrl && prevBlobUrl !== activeAudioBlobUrl) {
+            URL.revokeObjectURL(prevBlobUrl);
+          }
           downloadLink.href = currentBlobUrl;
           downloadLink.download = `ninada_${msg.lang}_${Date.now()}.wav`;
           setDownloadEnabled(true);
@@ -2420,7 +2434,7 @@
             synthBtnLabel.textContent = 'Playing Stream...';
           } else {
             pendingAudioSrcUrl = null;
-            audioPlayer.src = currentBlobUrl;
+            assignAudioPlayerBlob(currentBlobUrl);
             synthBtn.classList.remove('streaming');
             synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
             stopBtn.disabled = true;
