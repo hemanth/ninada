@@ -48,7 +48,7 @@ def test_phoneme_inventory_preservation() -> None:
     assert len(VOCAB_TOKENS) == 87
     assert VOCAB_TOKENS[85] == "\u090b"  # ऋ
     assert VOCAB_TOKENS[86] == "\u0919"  # ङ
-    assert set(LANGUAGE_IDS.keys()) == {"sa", "hi", "kn", "ta", "te", "ml"}
+    assert set(LANGUAGE_IDS.keys()) == {"sa", "hi", "kn", "ta", "te", "ml", "en", "mr", "bn", "gu", "pa", "or"}
 
     # Sanskrit inventory must contain extended symbols (ಙ, ೠ, ೄ)
     sa_vocab = NATIVE_VOCABS["sa"]
@@ -325,7 +325,7 @@ def test_blank_duration_relaxation_masks() -> None:
 # Suite 10: Multi-Script Cross-Platform Parity
 # ==============================================================================
 def test_multiscript_roundtrip_coverage() -> None:
-    """Verify all 6 supported languages map correctly through text_to_ids."""
+    """Verify all 12 supported languages map correctly through text_to_ids and Tier-2 Klatt."""
     corpus = {
         "sa": "प्रज्ञापूर्वकव्यापारवत्त्वं जीवत्वम् ।",
         "kn": "ಕನ್ನಡ ಸಾಹಿತ್ಯ ಪರಿಷತ್ತು",
@@ -333,6 +333,12 @@ def test_multiscript_roundtrip_coverage() -> None:
         "ta": "தமிழ்நாடு வாழ்க",
         "te": "తెలుగు భాష అమృతం",
         "ml": "മലയാളം സുന്ദരമാണ്",
+        "en": "Welcome to Bengaluru, science and technology!",
+        "mr": "नमस्कार महाराष्ट्र संस्कृती आणि साहित्य",
+        "bn": "নমস্কার বাংলা সাহিত্য ও সংস্কৃতি",
+        "gu": "નમસ્તે ગુજરાત સંસ્કૃતિ અને સાહિત્ય",
+        "pa": "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਪੰਜਾਬੀ ਸੱਭਿਆਚਾਰ",
+        "or": "ନମସ୍କାର ଓଡ଼ିଆ ସାହିତ୍ୟ ଓ ସଂସ୍କୃତି",
     }
     for lc, text in corpus.items():
         res = text_to_ids(text, lang=lc)
@@ -340,3 +346,6 @@ def test_multiscript_roundtrip_coverage() -> None:
         assert len(res["input_ids"]) >= 8
         assert len(res["native_text"]) > 0
         assert res["attention_mask"] == [1] * len(res["input_ids"])
+        pcm, meta = synthesize_klatt_pcm(text, lang=lc)
+        assert len(pcm) > 4000
+        assert meta["tier"] == "klatt_zero_dep"

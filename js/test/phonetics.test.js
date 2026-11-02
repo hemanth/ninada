@@ -36,7 +36,9 @@ test('Phoneme Inventory: 87-symbol Devanagari and specialist native inventories 
   assert.equal(VOCAB_TOKENS.length, 87);
   assert.equal(VOCAB_TOKENS[85], '\u090b'); // ऋ
   assert.equal(VOCAB_TOKENS[86], '\u0919'); // ङ
-  assert.deepEqual(Object.keys(LANGUAGE_IDS).sort(), ['hi', 'kn', 'ml', 'sa', 'ta', 'te']);
+  assert.deepEqual(Object.keys(LANGUAGE_IDS).sort(), [
+    'bn', 'en', 'gu', 'hi', 'kn', 'ml', 'mr', 'or', 'pa', 'sa', 'ta', 'te',
+  ]);
 
   // Sanskrit inventory must contain extended symbols (ಙ, ೠ, ೄ)
   assert.ok(NATIVE_VOCABS.sa.includes('\u0c99'), 'ಙ must be in sa vocab');

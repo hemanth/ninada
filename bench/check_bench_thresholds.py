@@ -1,4 +1,4 @@
-"""Independent verification of benchmark metrics and deployment thresholds for Ninada v4.0 (24,000 Hz Native Per-Language Studio VITS Specialists)."""
+"""Independent verification of benchmark metrics and deployment thresholds for Ninada v5.0 (24,000 Hz Native Per-Language Studio VITS Specialists)."""
 from __future__ import annotations
 
 import json
@@ -10,9 +10,9 @@ def main() -> None:
     assert results_path.exists(), "bench/results.json not found"
     res = json.loads(results_path.read_text(encoding="utf-8"))
 
-    assert res.get("version") == "4.0.0", f"Expected version 4.0.0, got {res.get('version')}"
+    assert res.get("version") == "5.0.0", f"Expected version 5.0.0, got {res.get('version')}"
     assert res.get("sample_rate_hz") == 24000, f"Expected 24000 Hz, got {res.get('sample_rate_hz')}"
-    assert res.get("num_test_utterances") == 240, f"Expected 240 test utterances, got {res.get('num_test_utterances')}"
+    assert res.get("num_test_utterances") == 480, f"Expected 480 test utterances, got {res.get('num_test_utterances')}"
 
     sys_pt = res["systems"]["ninada_v3_pytorch"]
     sys_ox = res["systems"]["ninada_v3_onnx"]
@@ -82,7 +82,7 @@ def main() -> None:
 
     listening_path = Path("bench/LISTENING_EVALUATION.md")
     assert listening_path.exists(), "bench/LISTENING_EVALUATION.md not found"
-    print("ALL NINADA v4.0 24KHZ NATIVE STUDIO SPECIALIST BENCHMARK THRESHOLDS SATISFIED!")
+    print("ALL NINADA v5.0 24KHZ NATIVE STUDIO SPECIALIST BENCHMARK THRESHOLDS SATISFIED!")
 
 
 if __name__ == "__main__":

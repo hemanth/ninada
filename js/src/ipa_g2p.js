@@ -136,13 +136,44 @@ function vowelIpa(ch, isMatra, lang) {
 
 function normalizeScriptWordToDev(word) {
   const out = [];
-  for (const ch of String(word).normalize('NFC')) {
+  const norm = [...String(word).normalize('NFC')];
+  const n = norm.length;
+  for (let i = 0; i < n; i++) {
+    const ch = norm[i];
     if (ML_CHILLU_IPA[ch] !== undefined) {
       out.push(ch);
       continue;
     }
     const cp = ch.codePointAt(0);
-    if (cp >= 0x0b80 && cp <= 0x0bff) {
+    if (cp >= 0x0980 && cp <= 0x09ff) {
+      if (cp === 0x09ce) out.push('त्');
+      else if (cp === 0x09f0) out.push('र');
+      else if (cp === 0x09f1) out.push('ब');
+      else if (cp === 0x09d7) out.push('ौ');
+      else if (cp === 0x09b0) out.push('र');
+      else out.push(String.fromCodePoint(cp - 0x0980 + 0x0900));
+    } else if (cp >= 0x0a00 && cp <= 0x0a7f) {
+      if (cp === 0x0a70) out.push('ं');
+      else if (cp === 0x0a71) {
+        if (i + 1 < n) {
+          const ncp = norm[i + 1].codePointAt(0);
+          if (ncp >= 0x0a15 && ncp <= 0x0a39) {
+            out.push(`${String.fromCodePoint(ncp - 0x0a00 + 0x0900)}्`);
+          }
+        }
+      } else if (cp === 0x0a5c) out.push('ड़');
+      else if (cp === 0x0a72) out.push('इ');
+      else if (cp === 0x0a73) out.push('उ');
+      else out.push(String.fromCodePoint(cp - 0x0a00 + 0x0900));
+    } else if (cp >= 0x0a80 && cp <= 0x0aff) {
+      out.push(String.fromCodePoint(cp - 0x0a80 + 0x0900));
+    } else if (cp >= 0x0b00 && cp <= 0x0b7f) {
+      if (cp === 0x0b5f) out.push('य');
+      else if (cp === 0x0b71) out.push('व');
+      else if (cp === 0x0b56) out.push('ै');
+      else if (cp === 0x0b57) out.push('ौ');
+      else out.push(String.fromCodePoint(cp - 0x0b00 + 0x0900));
+    } else if (cp >= 0x0b80 && cp <= 0x0bff) {
       if (ch === '\u0b83') out.push('ख़');
       else out.push(String.fromCodePoint(cp - 0x0b80 + 0x0900));
     } else if (cp >= 0x0c00 && cp <= 0x0c7f) {
@@ -353,7 +384,15 @@ function applyLanguageAllophony(units, lang) {
     }
   }
 
-  if (lang === 'hi') {
+  if (lang === 'bn' || lang === 'or') {
+    for (const u of units) {
+      if (u.inherent && u.vowel === 'ə') u.vowel = 'ɔ';
+      if (lang === 'bn' && (u.rawC === 'श' || u.rawC === 'ष' || u.rawC === 'स') && (u.cons === 'ʂ' || u.cons === 's')) {
+        u.cons = 'ʃ';
+      }
+    }
+  }
+  if (lang === 'hi' || lang === 'mr' || lang === 'gu' || lang === 'pa') {
     const nuclei = [];
     for (let idx = 0; idx < units.length; idx++) {
       if (units[idx].vowel) nuclei.push(idx);
@@ -554,17 +593,28 @@ const DIGIT_WORDS_HI = {
   '0': 'ʃˈuːnjə', '1': 'ˈeːk', '2': 'dˈoː', '3': 'tˈiːn', '4': 'ʧˈɑːɾ',
   '5': 'pˈɑ̃ːʧ', '6': 'ʧʰˈɛː', '7': 'sˈɑːt', '8': 'ˈɑːʈʰ', '9': 'nˈɔː',
 };
-const INDIC_ZERO_BASES = [0x0966, 0x0be6, 0x0c66, 0x0ce6, 0x0d66];
+const DIGIT_WORDS_EN = {
+  '0': 'zˈɪːɾoː', '1': 'wˈʌn', '2': 'tˈuː', '3': 'tʰɾˈiː', '4': 'fˈɔːɾ',
+  '5': 'fˈaɪv', '6': 'sˈɪks', '7': 'sˈɛvən', '8': 'ˈeːt', '9': 'nˈaɪn',
+};
+const INDIC_ZERO_BASES = [0x0966, 0x09e6, 0x0a66, 0x0ae6, 0x0b66, 0x0be6, 0x0c66, 0x0ce6, 0x0d66];
 const LATIN_CHAR_IPA = {
   a: 'ə', b: 'b', c: 'k', d: 'd', e: 'ɛ', f: 'f', g: 'ɡ',
   h: 'h', i: 'ɪ', j: 'ʤ', k: 'k', l: 'l', m: 'm', n: 'n',
-  o: 'o', p: 'p', q: 'k', r: 'ɾ', s: 's', t: 't', u: 'ʊ',
-  v: 'v', w: 'w', x: 'ks', y: 'j', z: 'z',
+  o: 'o', p: 'p', q: 'k', r: 'ɾ', s: 's', t: 'ʈ', u: 'ʊ',
+  v: 'ʋ', w: 'ʋ', x: 'ks', y: 'j', z: 'z',
 };
 
 function latinWordToIpa(word) {
-  let w = String(word || '').toLowerCase();
-  for (const [dg, rep] of [['tion', 'ʃən'], ['sh', 'ʃ'], ['ch', 'ʧ'], ['th', 'tʰ'], ['ph', 'f'], ['ng', 'ŋ'], ['ee', 'iː'], ['oo', 'uː']]) {
+  let w = String(word || '').toLowerCase().replace(/^'+|'+$/g, '');
+  if (!w) return '';
+  for (const [dg, rep] of [
+    ['tion', 'ʃən'], ['sion', 'ʒən'], ['igh', 'aɪ'], ['tch', 'ʧ'],
+    ['sh', 'ʃ'], ['ch', 'ʧ'], ['th', 'tʰ'], ['ph', 'f'], ['wh', 'ʋ'],
+    ['ng', 'ŋ'], ['ee', 'iː'], ['ea', 'iː'], ['oo', 'uː'], ['ou', 'aʊ'],
+    ['ai', 'eː'], ['ay', 'eː'], ['oa', 'oː'], ['ow', 'oː'], ['ar', 'ɑːɾ'],
+    ['er', 'əɾ'], ['ir', 'əɾ'], ['ur', 'əɾ'], ['or', 'ɔːɾ'], ['ck', 'k'],
+  ]) {
     w = w.split(dg).join(rep);
   }
   let out = '';
@@ -608,12 +658,13 @@ export function textToIpa(text, lang = 'sa', normalizedDevFallback = null) {
   raw = raw.replace(/\.\.\./g, '…').replace(/–/g, '—');
 
   let work = raw;
-  if (normalizedDevFallback && /[A-Za-z\u0100-\u024F]/.test(raw)) {
+  if (lang !== 'en' && normalizedDevFallback && /[A-Za-z\u0100-\u024F]/.test(raw)) {
     work = String(normalizedDevFallback).replace(/\u0965/g, '.').replace(/\u0964/g, ',');
   }
 
   const tokens = work.match(/[^\s,.;:!?—…"()“”]+|[,.;:!?—…"()“”]+|\s+/g) || [];
   const outChunks = [];
+  const digitMap = lang === 'en' ? DIGIT_WORDS_EN : DIGIT_WORDS_HI;
 
   for (const tok of tokens) {
     if (/^\s+$/.test(tok)) {
@@ -632,7 +683,7 @@ export function textToIpa(text, lang = 'sa', normalizedDevFallback = null) {
       continue;
     }
     if (/^\d+$/.test(tok)) {
-      outChunks.push([...tok].map((d) => DIGIT_WORDS_HI[d] || 'ʃˈuːnjə').join(' '));
+      outChunks.push([...tok].map((d) => digitMap[d] || 'ʃˈuːnjə').join(' '));
       continue;
     }
     if (/^[A-Za-z']+$/.test(tok)) {

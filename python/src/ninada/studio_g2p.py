@@ -1,10 +1,11 @@
 """
-Ninada v4.0 — Native Per-Language 24,000 Hz Studio VITS Character Tokenizer.
+Ninada v5.0 — Native Per-Language 24,000 Hz Studio VITS Character Tokenizer.
 
 Maps native Unicode orthography directly to each specialist's exact character vocabulary
-(`sa`: 144, `hi`: 120, `kn`: 85, `ta`: 61, `te`: 110, `ml`: 101 tokens) with zero Hindi pivot,
-zero lossy transliteration when input is in native script, and automatic IAST / cross-script
-fallback when Roman or cross-script text is supplied.
+(`sa`: 144, `hi`: 120, `kn`: 85, `ta`: 61, `te`: 110, `ml`: 101, `en`: 102, `mr`: 144,
+`bn`: 100, `gu`: 124, `pa`: 85, `or`: 94 tokens) with zero Hindi pivot, zero lossy
+transliteration when input is in native script, and automatic IAST / cross-script fallback
+when Roman or cross-script text is supplied.
 """
 from __future__ import annotations
 
@@ -54,6 +55,42 @@ STUDIO_SPECS: dict[str, dict[str, Any]] = {
         "characters": "ംഃഅആഇഈഉഊഋഌഎഏഐഒഓഔകഖഗഘങചഛജഝഞടഠഡഢണതഥദധനഩപഫബഭമയരറലളഴവശഷസഹഽാിീുൂൃെേൈൊോൌ്ൗൠൡ൦൧൨൩൪൫൬൭൮൯ൺൻർൽൾൿ",
         "blank": "<BLNK>",
     },
+    "en": {
+        "pad": "<PAD>",
+        "punctuations": "!¡'(),-.:;¿? ",
+        "characters": 'â,pGYI&“US7(9…Z–v1yadHND`@lw”80ti?42mOgCE_XRMz\ufe0fk3‘VeP5jè"rK#F’)scQ\'Jôfq xA»bTouhnBWL6àé',
+        "blank": "<BLNK>",
+    },
+    "mr": {
+        "pad": "<PAD>",
+        "punctuations": "!¡'(),-.:;¿? ",
+        "characters": ')ऊभॐब८•औॲ?z५ी/ऩठअवइ\',डळत3° ञोnआफ़ॊच:․छऍई;ओuगझल0२ॆऑऱ!ॕ"(मर|9…न-ॄु5ृहेॅःएघ७शऎ1ङॠं।१ष४cॉधाऽ\u200aकि2.ऋउ–ूa्स६जखदथ०68णऐैफ़ँs९३4ौ7—टपढयऌॡॢॣ॥',
+        "blank": "<BLNK>",
+    },
+    "bn": {
+        "pad": "<PAD>",
+        "punctuations": "!¡'(),-.:;¿? ",
+        "characters": 'এাসৎঢঊচঢ়রখৰঘড়ঋ"ঔহনবভঅঠ্ঃৌছৃিড়কতীেওলং, জউ?থঞ\'ফুআঐয়ইূৈযগঁঙঝ।ঈৗণষধশটপদোমঌঽৄৠৡ০১২৩৪৫৬৭৮৯',
+        "blank": "<BLNK>",
+    },
+    "gu": {
+        "pad": "<PAD>",
+        "punctuations": "!¡'(),-.:;¿? ",
+        "characters": 'ધઋલ૭ઉઊઝઈછઍત6ગेફ“78ખથरયજન૧ળણ,ૉ}ઞ૪ઔશચ3ા૦"(ૅ્મષૠ૩સ‘अઇઠુक૫દોર\'ીપૈ૬઼मઆ”ૌ4)ૂિહ{ઑઓ કઢઃ2ૃેવભि?અએ5૯ઘટંડઐ1૮ઁબ’09૨ઌઙઽૄૐૡ',
+        "blank": "<BLNK>",
+    },
+    "pa": {
+        "pad": "<PAD>",
+        "punctuations": "!¡'(),-.:;¿? ",
+        "characters": "ਁਂਃਅਆਇਈਉਊਏਐਓਔਕਖਗਘਙਚਛਜਝਞਟਠਡਢਣਤਥਦਧਨਪਫਬਭਮਯਰਲਵਸਹ਼ਾਿੀੁੂੇੈੋੌ੍ੜੰੱੲੳ੦੧੨੩੪੫੬੭੮੯",
+        "blank": "<BLNK>",
+    },
+    "or": {
+        "pad": "<PAD>",
+        "punctuations": "!¡'(),-.:;¿? ",
+        "characters": "ଁଂଃଅଆଇଈଉଊଋଌଏଐଓଔକଖଗଘଙଚଛଜଝଞଟଠଡଢଣତଥଦଧନପଫବଭମଯରଲଳଵଶଷସହ଼ଽାିୀୁୂୃୄେୈୋୌ୍ୖୗୟୠୡୱ୦୧୨୩୪୫୬୭୮୯",
+        "blank": "<BLNK>",
+    },
 }
 
 
@@ -80,11 +117,89 @@ _AUX_SYMBOLS_RE = re.compile(r"[\<\>\(\)\[\]\"]+")
 _SCRIPT_RANGES: dict[str, tuple[int, int]] = {
     "sa": (0x0900, 0x097F),
     "hi": (0x0900, 0x097F),
-    "kn": (0x0C80, 0x0CFF),
+    "mr": (0x0900, 0x097F),
+    "bn": (0x0980, 0x09FF),
+    "pa": (0x0A00, 0x0A7F),
+    "gu": (0x0A80, 0x0AFF),
+    "or": (0x0B00, 0x0B7F),
     "ta": (0x0B80, 0x0BFF),
     "te": (0x0C00, 0x0C7F),
+    "kn": (0x0C80, 0x0CFF),
     "ml": (0x0D00, 0x0D7F),
+    "en": (0x0041, 0x007A),
 }
+_EN_ONES = (
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+    "seventeen", "eighteen", "nineteen",
+)
+_EN_TENS = ("", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
+_EN_ORD_MAP = {
+    "one": "first", "two": "second", "three": "third", "five": "fifth",
+    "eight": "eighth", "nine": "ninth", "twelve": "twelfth",
+}
+_EN_ABBREVS = (
+    (re.compile(r"\bmrs\.", re.IGNORECASE), "missus"),
+    (re.compile(r"\bmr\.", re.IGNORECASE), "mister"),
+    (re.compile(r"\bms\.", re.IGNORECASE), "miss"),
+    (re.compile(r"\bdr\.", re.IGNORECASE), "doctor"),
+    (re.compile(r"\bprof\.", re.IGNORECASE), "professor"),
+    (re.compile(r"\bvs\.", re.IGNORECASE), "versus"),
+    (re.compile(r"\betc\.", re.IGNORECASE), "et cetera"),
+    (re.compile(r"\be\.g\.", re.IGNORECASE), "for example"),
+    (re.compile(r"\bi\.e\.", re.IGNORECASE), "that is"),
+    (re.compile(r"\brs\.", re.IGNORECASE), "rupees"),
+)
+
+
+def _en_int_to_words(n: int) -> str:
+    if n < 0:
+        return "minus " + _en_int_to_words(-n)
+    if n < 20:
+        return _EN_ONES[n]
+    if n < 100:
+        t, r = divmod(n, 10)
+        return _EN_TENS[t] if r == 0 else f"{_EN_TENS[t]} {_EN_ONES[r]}"
+    if n < 1000:
+        h, r = divmod(n, 100)
+        return f"{_EN_ONES[h]} hundred" if r == 0 else f"{_EN_ONES[h]} hundred {_en_int_to_words(r)}"
+    if 1900 <= n <= 2099 and n % 100 != 0 and not (2001 <= n <= 2009):
+        hi, lo = divmod(n, 100)
+        lo_str = f"oh {_EN_ONES[lo]}" if lo < 10 else _en_int_to_words(lo)
+        return f"{_en_int_to_words(hi)} {lo_str}"
+    if n < 1_000_000:
+        k, r = divmod(n, 1000)
+        return f"{_en_int_to_words(k)} thousand" if r == 0 else f"{_en_int_to_words(k)} thousand {_en_int_to_words(r)}"
+    return " ".join(_EN_ONES[int(d)] for d in str(n))
+
+
+def _en_ordinal_to_words(n: int) -> str:
+    words = _en_int_to_words(n).split()
+    last = words[-1]
+    if last in _EN_ORD_MAP:
+        words[-1] = _EN_ORD_MAP[last]
+    elif last.endswith("y"):
+        words[-1] = last[:-1] + "ieth"
+    else:
+        words[-1] = last + "th"
+    return " ".join(words)
+
+
+def _normalize_english_text(t: str) -> str:
+    for pat, rep in _EN_ABBREVS:
+        t = pat.sub(rep, t)
+    t = t.replace("&", " and ").replace("%", " percent ").replace("₹", " rupees ").replace("$", " dollars ")
+    t = re.sub(r"(?<=\d),(?=\d{3}\b)", "", t)
+    t = re.sub(
+        r"\b(\d{1,6})(st|nd|rd|th)\b",
+        lambda m: _en_ordinal_to_words(int(m.group(1))),
+        t,
+        flags=re.IGNORECASE,
+    )
+    t = re.sub(r"\b(\d{1,6})\b", lambda m: _en_int_to_words(int(m.group(1))), t)
+    return t
+
+
 _MALAYALAM_CHILLU_SEQ = {
     "\u0d23\u0d4d\u200d": "\u0d7a",
     "\u0d28\u0d4d\u200d": "\u0d7b",
@@ -102,23 +217,43 @@ _MALAYALAM_CHILLU_SEQ = {
 
 
 def clean_studio_text(text: str, lang: str) -> str:
-    """Normalize native Indic/Sanskrit text identically to `StudioCharTokenizer`."""
+    """Normalize native Indic/Sanskrit/English text identically to `StudioCharTokenizer`."""
     lc = lang if lang in STUDIO_VOCABS else detect_script_and_lang(text, default_lang="sa")[1]
     t = unicodedata.normalize("NFC", str(text or "")).strip()
     if not t:
         return ""
 
-    lo, hi = _SCRIPT_RANGES[lc]
-    has_target_script = any(lo <= ord(ch) <= hi for ch in t)
-    if not has_target_script:
-        if lc == "sa":
-            t = iast_to_devanagari(t)
-        else:
-            t = to_native_model_text(t, lang=lc)
+    if lc == "en":
+        t = _normalize_english_text(t)
+    else:
+        lo, hi = _SCRIPT_RANGES[lc]
+        has_target_script = any(lo <= ord(ch) <= hi for ch in t)
+        if not has_target_script:
+            if lc == "sa":
+                t = iast_to_devanagari(t)
+            else:
+                t = to_native_model_text(t, lang=lc)
 
     if lc == "sa":
         t = re.sub(r"[\u0951-\u0954\u1cd0-\u1cff]", "", t)
         t = t.replace("॥", ".").replace("।", ",")
+
+    if lc == "mr":
+        t = re.sub(r"[\u0951-\u0954\u1cd0-\u1cff]", "", t)
+        t = t.replace("॥", "।")
+
+    if lc == "bn":
+        t = t.replace("\u09f1", "ব").replace("॥", "।")
+
+    if lc == "gu":
+        t = t.replace("॥", ".").replace("।", ".")
+
+    if lc == "pa":
+        t = t.replace("\u0a74", "ਇੱਕ ਓਅੰਕਾਰ")
+        t = t.replace("॥", ".").replace("।", ".")
+
+    if lc == "or":
+        t = t.replace("॥", ".").replace("।", ".")
 
     if lc == "kn":
         t = re.sub(r"\u0cbf\u0c83(?=[\s,.;:!?।॥]|$)", "ಿಹಿ", t)
@@ -164,9 +299,9 @@ def clean_studio_text(text: str, lang: str) -> str:
         .replace(":", ",")
         .replace("-", " ")
     )
-    if lc in ("kn", "ta", "te", "ml"):
+    if lc in ("kn", "ta", "te", "ml", "en", "gu", "pa", "or"):
         t = t.replace("॥", ".").replace("।", ".")
-    elif lc == "hi":
+    elif lc in ("hi", "mr", "bn"):
         t = t.replace("॥", "।")
 
     t = t.lower()

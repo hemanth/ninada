@@ -29,7 +29,7 @@ const indexSrc = fs.readFileSync(path.join(srcDir, 'index.js'), 'utf8')
   .replace(/import \{[\s\S]*?\} from '\.\/studio_g2p\.js';/m, '')
   .replace(/import \{[\s\S]*?\} from '\.\/klatt\.js';/m, '');
 
-const esmBundle = `// Auto-generated ESM bundle for ninada v4.0\n${ipaG2pSrc}\n${g2pSrc}\n${studioG2pSrc}\n${klattSrc}\n${indexSrc}`;
+const esmBundle = `// Auto-generated ESM bundle for ninada v5.0\n${ipaG2pSrc}\n${g2pSrc}\n${studioG2pSrc}\n${klattSrc}\n${indexSrc}`;
 fs.writeFileSync(path.join(distDir, 'index.mjs'), esmBundle, 'utf8');
 fs.writeFileSync(path.join(docsDir, 'ninada.mjs'), esmBundle, 'utf8');
 

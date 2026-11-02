@@ -14,8 +14,24 @@ def main() -> None:
         prog="ninada",
         description="Ninada — Pan-Indic & Classical Sanskrit Neural TTS (24 kHz Studio WAV)",
     )
-    parser.add_argument("text", nargs="?", help="Input text in Devanagari, Kannada, Tamil, Telugu, Malayalam, or IAST")
-    parser.add_argument("-l", "--lang", default=None, help="Language code: sa | hi | kn | ta | te | ml")
+    parser.add_argument(
+        "text",
+        nargs="?",
+        help="Input text in Devanagari, Marathi, Bengali, Gujarati, Gurmukhi, Odia, Kannada, Tamil, Telugu, Malayalam, English, or IAST",
+    )
+    parser.add_argument(
+        "-l",
+        "--lang",
+        default=None,
+        help="Language code: sa | hi | kn | ta | te | ml | en | mr | bn | gu | pa | or",
+    )
+    parser.add_argument(
+        "-v",
+        "--voice",
+        default="male",
+        choices=["male", "female"],
+        help="Studio voice gender: male | female (default: male)",
+    )
     parser.add_argument("-o", "--output", type=Path, default=Path("ninada_out.wav"), help="Output WAV file path")
     parser.add_argument("-r", "--rate", type=float, default=1.0, help="Speaking rate multiplier (default: 1.0)")
     parser.add_argument("--tier", choices=["auto", "neural", "klatt"], default="auto", help="Synthesis engine tier")
@@ -26,8 +42,8 @@ def main() -> None:
     if not txt:
         parser.error("Provide input text as an argument or via stdin.")
 
-    engine = Ninada(lang=args.lang or "sa")
-    pcm, meta = engine.synthesize(txt, lang=args.lang, rate=args.rate, tier=args.tier)
+    engine = Ninada(lang=args.lang or "sa", voice=args.voice)
+    pcm, meta = engine.synthesize(txt, lang=args.lang, rate=args.rate, tier=args.tier, voice=args.voice)
     if args.inspect:
         print(json.dumps({k: v for k, v in meta.items() if k != "durations"}, ensure_ascii=False, indent=2))
         return

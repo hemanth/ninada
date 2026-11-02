@@ -304,7 +304,7 @@ def _make_ort_cpu_session(onnx_path: Path) -> Any:
 
 
 class Ninada:
-    """Ninada (निनाद) v4.0: Streaming 24 kHz Native Per-Language Studio VITS Specialists (ONNX) + Zero-Dep Klatt."""
+    """Ninada (निनाद) v5.0: Streaming 24 kHz Native Per-Language Studio VITS Specialists (ONNX) + Zero-Dep Klatt."""
 
     def __init__(
         self,
@@ -313,8 +313,10 @@ class Ninada:
         vocoder_path: str | Path | None = None,
         voice_dir: str | Path | None = None,
         lang: str = "sa",
+        voice: str = "male",
     ) -> None:
         self.default_lang = lang if lang in LANGUAGE_IDS else "sa"
+        self.default_voice = "female" if (voice or "").strip().lower() == "female" else "male"
         self.session: Any = None
         self.enc_session: Any = None
         self.voc_session: Any = None
@@ -375,7 +377,7 @@ class Ninada:
                 self.enc_session = None
                 self.voc_session = None
         else:
-            sess_v4 = self._get_v4_studio_session(self.default_lang)
+            sess_v4 = self._get_v4_studio_session(self.default_lang, voice=self.default_voice)
             if sess_v4 is not None:
                 self.session = sess_v4
             else:
@@ -421,6 +423,7 @@ class Ninada:
         candidates.extend(
             [
                 self._repo_root / "docs" / "models" / fname,
+                self._repo_root / "artifacts" / "ninada_v5" / "onnx" / fname,
                 self._repo_root / "artifacts" / "ninada_v4" / "onnx" / fname,
                 self._repo_root / "docs" / fname,
             ]
@@ -597,14 +600,15 @@ class Ninada:
     ) -> Iterator[dict[str, Any]]:
         """Stream 24 kHz native studio neural audio chunks (Native Studio VITS ONNX) or Tier-2 Klatt fallback."""
         use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
+        use_voice = voice if voice is not None else self.default_voice
         eff_rate = max(0.45, min(2.5, float(rate)))
         clauses = split_prosodic_clauses(text)
         t_start = time.perf_counter()
         ttfa_ms: float | None = None
         chunk_idx = 0
 
-        # Path 0: Primary v4.0 Per-Language Native 24,000 Hz Studio VITS Specialist (`input_ids`, `scales`)
-        v4_sess = self._get_v4_studio_session(use_lang, voice=voice) if tier != "klatt" else None
+        # Path 0: Primary v5.0 Per-Language Native 24,000 Hz Studio VITS Specialist (`input_ids`, `scales`)
+        v4_sess = self._get_v4_studio_session(use_lang, voice=use_voice) if tier != "klatt" else None
         if v4_sess is not None:
             import numpy as np
 
@@ -666,7 +670,7 @@ class Ninada:
                     continue
 
                 studio_ids, resolved_lc, _ = studio_text_to_ids(clause, lang=parsed["lang"])
-                active_sess = self._get_v4_studio_session(resolved_lc, voice=voice) or v4_sess
+                active_sess = self._get_v4_studio_session(resolved_lc, voice=use_voice) or v4_sess
                 wav_out, durs_out = active_sess.run(
                     None,
                     {
@@ -1097,11 +1101,12 @@ class Ninada:
     ) -> tuple[Any, dict[str, Any]]:
         """Synthesize full 24 kHz waveform array + linguistic metadata."""
         use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
+        use_voice = voice if voice is not None else self.default_voice
         parsed = text_to_ids(text, lang=use_lang)
 
         has_neural = (
             self.is_neural
-            or self._get_v4_studio_session(use_lang, voice=voice) is not None
+            or self._get_v4_studio_session(use_lang, voice=use_voice) is not None
             or self._get_specialist_sessions(use_lang) is not None
         )
         if tier != "klatt" and has_neural:
@@ -1117,7 +1122,7 @@ class Ninada:
                 noise=noise,
                 noise_duration=noise_duration,
                 tier=tier,
-                voice=voice,
+                voice=use_voice,
             ):
                 pieces.append(np.asarray(ch["pcm"], dtype=np.float32))
                 if ch.get("durations"):

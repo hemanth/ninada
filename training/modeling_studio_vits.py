@@ -39,7 +39,7 @@ N_MELS = 80
 SPEC_CHANNELS = FFT_SIZE // 2 + 1  # 513
 SEGMENT_FRAMES = 32  # 32 * 256 = 8,192 samples @ 24 kHz
 
-SUPPORTED_LANGS = ("sa", "hi", "kn", "ta", "te", "ml")
+SUPPORTED_LANGS = ("sa", "hi", "kn", "ta", "te", "ml", "en", "mr", "bn", "gu", "pa", "or")
 
 DEFAULT_MIN_BIN_WIDTH = 1e-3
 DEFAULT_MIN_BIN_HEIGHT = 1e-3
@@ -156,12 +156,87 @@ _MALAYALAM_CHILLU_SEQ = {
     "\u0d15\u0d4d\u200d": "\u0d7f",  # ൿ
 }
 
+_EN_ONES = (
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+    "seventeen", "eighteen", "nineteen",
+)
+_EN_TENS = ("", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
+_EN_ORD_MAP = {
+    "one": "first", "two": "second", "three": "third", "five": "fifth",
+    "eight": "eighth", "nine": "ninth", "twelve": "twelfth",
+}
+_EN_ABBREVS = (
+    (re.compile(r"\bmrs\.", re.IGNORECASE), "missus"),
+    (re.compile(r"\bmr\.", re.IGNORECASE), "mister"),
+    (re.compile(r"\bms\.", re.IGNORECASE), "miss"),
+    (re.compile(r"\bdr\.", re.IGNORECASE), "doctor"),
+    (re.compile(r"\bprof\.", re.IGNORECASE), "professor"),
+    (re.compile(r"\bvs\.", re.IGNORECASE), "versus"),
+    (re.compile(r"\betc\.", re.IGNORECASE), "et cetera"),
+    (re.compile(r"\be\.g\.", re.IGNORECASE), "for example"),
+    (re.compile(r"\bi\.e\.", re.IGNORECASE), "that is"),
+    (re.compile(r"\brs\.", re.IGNORECASE), "rupees"),
+)
+
+
+def _en_int_to_words(n: int) -> str:
+    if n < 0:
+        return "minus " + _en_int_to_words(-n)
+    if n < 20:
+        return _EN_ONES[n]
+    if n < 100:
+        t, r = divmod(n, 10)
+        return _EN_TENS[t] if r == 0 else f"{_EN_TENS[t]} {_EN_ONES[r]}"
+    if n < 1000:
+        h, r = divmod(n, 100)
+        return f"{_EN_ONES[h]} hundred" if r == 0 else f"{_EN_ONES[h]} hundred {_en_int_to_words(r)}"
+    if 1900 <= n <= 2099 and n % 100 != 0 and not (2001 <= n <= 2009):
+        hi, lo = divmod(n, 100)
+        lo_str = f"oh {_EN_ONES[lo]}" if lo < 10 else _en_int_to_words(lo)
+        return f"{_en_int_to_words(hi)} {lo_str}"
+    if n < 1_000_000:
+        k, r = divmod(n, 1000)
+        return f"{_en_int_to_words(k)} thousand" if r == 0 else f"{_en_int_to_words(k)} thousand {_en_int_to_words(r)}"
+    return " ".join(_EN_ONES[int(d)] for d in str(n))
+
+
+def _en_ordinal_to_words(n: int) -> str:
+    words = _en_int_to_words(n).split()
+    last = words[-1]
+    if last in _EN_ORD_MAP:
+        words[-1] = _EN_ORD_MAP[last]
+    elif last.endswith("y"):
+        words[-1] = last[:-1] + "ieth"
+    else:
+        words[-1] = last + "th"
+    return " ".join(words)
+
+
+def _normalize_english_text(t: str) -> str:
+    for pat, rep in _EN_ABBREVS:
+        t = pat.sub(rep, t)
+    t = t.replace("&", " and ").replace("%", " percent ").replace("₹", " rupees ").replace("$", " dollars ")
+    # Strip thousands commas inside numbers (e.g. 24,000 -> 24000)
+    t = re.sub(r"(?<=\d),(?=\d{3}\b)", "", t)
+    t = re.sub(
+        r"\b(\d{1,6})(st|nd|rd|th)\b",
+        lambda m: _en_ordinal_to_words(int(m.group(1))),
+        t,
+        flags=re.IGNORECASE,
+    )
+    t = re.sub(r"\b(\d{1,6})\b", lambda m: _en_int_to_words(int(m.group(1))), t)
+    return t
+
 
 def clean_native_text(text: str, lang: str) -> str:
-    """Normalize native Indic/Sanskrit text while keeping 100% authentic script codepoints."""
+    """Normalize native Indic/Sanskrit/English text while keeping 100% authentic script codepoints."""
     t = unicodedata.normalize("NFC", str(text or "")).strip()
     if not t:
         return ""
+
+    if lang == "en":
+        t = _normalize_english_text(t)
 
     # If Sanskrit input is provided in Latin/IAST, convert to native Devanagari
     if lang == "sa":
@@ -172,6 +247,23 @@ def clean_native_text(text: str, lang: str) -> str:
         # Strip Vedic pitch marks (udatta/anudatta/svarita) that are unvoiced in Rasa studio corpus
         t = re.sub(r"[\u0951-\u0954\u1cda-\u1cdf]", "", t)
         t = t.replace("॥", ".").replace("।", ",")
+
+    if lang == "mr":
+        t = re.sub(r"[\u0951-\u0954\u1cda-\u1cdf]", "", t)
+        t = t.replace("॥", "।")
+
+    if lang == "bn":
+        t = t.replace("\u09f1", "ব").replace("॥", "।")
+
+    if lang == "gu":
+        t = t.replace("॥", ".").replace("।", ".")
+
+    if lang == "pa":
+        t = t.replace("\u0a74", "ਇੱਕ ਓਅੰਕਾਰ")
+        t = t.replace("॥", ".").replace("।", ".")
+
+    if lang == "or":
+        t = t.replace("॥", ".").replace("।", ".")
 
     if lang == "kn":
         t = re.sub(r"\u0cbf\u0c83(?=[\s,.;:!?।॥]|$)", "ಿಹಿ", t)
@@ -219,9 +311,9 @@ def clean_native_text(text: str, lang: str) -> str:
         .replace(":", ",")
         .replace("-", " ")
     )
-    if lang in ("kn", "ta", "te", "ml"):
+    if lang in ("kn", "ta", "te", "ml", "en", "gu", "pa", "or"):
         t = t.replace("॥", ".").replace("।", ".")
-    elif lang == "hi":
+    elif lang in ("hi", "mr", "bn"):
         t = t.replace("॥", "।")
 
     t = t.lower()
@@ -333,7 +425,29 @@ NATIVE_MALAYALAM_CHARS = (
 )
 
 NATIVE_SANSKRIT_EXTRA_CHARS = "ऌॡॢॣऽ।॥ॐॠॄृःंँळक्षज्ञ"
+NATIVE_MARATHI_EXTRA_CHARS = "ऌॡॢॣऽ।॥ॐॠॄृःंँळऱॲऍऑॉॅ़"
+NATIVE_BENGALI_EXTRA_CHARS = (
+    "ঁংঃঅআইঈউঊঋঌএঐওঔকখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলশষসহ"
+    "়ঽািীুূৃৄেৈোৌ্ৎৗৠৡ০১২৩৪৫৬৭৮৯।ৰ"
+)
+NATIVE_GUJARATI_EXTRA_CHARS = (
+    "ઁંઃઅઆઇઈઉઊઋઌઍએઐઑઓઔકખગઘઙચછજઝઞટઠડઢણતથદધનપફબભમયરલળવશષસહ"
+    "઼ઽાિીુૂૃૄૅેૈૉોૌ્ૐૠૡ૦૧૨૩૪૫૬૭૮૯"
+)
 NATIVE_TAMIL_EXTRA_CHARS = "ஂஃஅஆஇஈஉஊஎஏஐஒஓஔகஙசஜஞடணதநனபமயரறலளழவஷஸஹாிீுூெேைொோௌ்ௗ"
+NATIVE_PUNJABI_CHARS = (
+    "ਁਂਃਅਆਇਈਉਊਏਐਓਔ"
+    "ਕਖਗਘਙਚਛਜਝਞਟਠਡਢਣਤਥਦਧਨਪਫਬਭਮਯਰਲਵਸਹ"
+    "਼ਾਿੀੁੂੇੈੋੌ੍"
+    "ੜੰੱੲੳ"
+    "੦੧੨੩੪੫੬੭੮੯"
+)
+NATIVE_ODIA_CHARS = (
+    "ଁଂଃଅଆଇଈଉଊଋଌଏଐଓଔ"
+    "କଖଗଘଙଚଛଜଝଞଟଠଡଢଣତଥଦଧନପଫବଭମଯରଲଳଵଶଷସହ"
+    "଼ଽାିୀୁୂୃୄେୈୋୌ୍ୖୗୟୠୡୱ"
+    "୦୧୨୩୪୫୬୭୮୯"
+)
 
 
 def build_target_tokenizer_and_remap_embeddings(
@@ -425,16 +539,54 @@ def build_target_tokenizer_and_remap_embeddings(
         )
         return target_tok, new_emb
 
-    # Same-script specialists (`kn`, `te`, `hi`, `ta`, and `sa` from Marathi Devanagari):
+    if lang == "pa":
+        # Build dedicated native Punjabi Gurmukhi tokenizer and map 1-to-1 from SYSPIN Hindi Devanagari (-0x0100) offsets
+        target_tok = StudioCharTokenizer(
+            lang="pa",
+            pad="<PAD>",
+            punctuations="!¡'(),-.:;¿? ",
+            characters=NATIVE_PUNJABI_CHARS,
+            blank="<BLNK>",
+            add_blank=True,
+        )
+        new_emb = remap_embeddings_to_existing_tokenizer(
+            target_tok, src_cfg, src_emb_weight, "pa"
+        )
+        return target_tok, new_emb
+
+    if lang == "or":
+        # Build dedicated native Odia tokenizer and map 1-to-1 from SYSPIN Bengali Eastern-Indo-Aryan (-0x0180) offsets
+        target_tok = StudioCharTokenizer(
+            lang="or",
+            pad="<PAD>",
+            punctuations="!¡'(),-.:;¿? ",
+            characters=NATIVE_ODIA_CHARS,
+            blank="<BLNK>",
+            add_blank=True,
+        )
+        new_emb = remap_embeddings_to_existing_tokenizer(
+            target_tok, src_cfg, src_emb_weight, "or"
+        )
+        return target_tok, new_emb
+
+    # Same-script specialists (`kn`, `te`, `hi`, `en`, `mr`, `bn`, `gu`, and `sa` from Marathi Devanagari):
     # Preserve 100% of checkpoint characters at exact indices, and append any missing native codepoints before `<BLNK>`.
     extra_needed = ""
     if lang == "sa":
         extra_needed = NATIVE_SANSKRIT_EXTRA_CHARS
+    elif lang == "mr":
+        extra_needed = NATIVE_MARATHI_EXTRA_CHARS
+    elif lang == "bn":
+        extra_needed = NATIVE_BENGALI_EXTRA_CHARS
+    elif lang == "gu":
+        extra_needed = NATIVE_GUJARATI_EXTRA_CHARS
+    elif lang == "en":
+        extra_needed = "abcdefghijklmnopqrstuvwxyz0123456789'-.,"
     elif lang == "ta":
         extra_needed = NATIVE_TAMIL_EXTRA_CHARS + "'-()"
 
     existing_set = set(src_tok.vocab)
-    append_chars = "".join(ch for ch in extra_needed if ch not in existing_set)
+    append_chars = "".join(dict.fromkeys(ch for ch in extra_needed if ch not in existing_set))
     if not append_chars:
         return src_tok, patched_src_emb
 
@@ -461,6 +613,18 @@ def build_target_tokenizer_and_remap_embeddings(
         "॥": "।",
         "।": ",",
         "ऽ": "अ",
+        "ऱ": "र",
+        "ॲ": "ऍ",
+        "ঌ": "ল",
+        "ৡ": "ল",
+        "ৄ": "ৃ",
+        "ৠ": "ঋ",
+        "ঽ": "অ",
+        "ઌ": "લ",
+        "ૡ": "લ",
+        "ૄ": "ૃ",
+        "ઽ": "અ",
+        "ૐ": "ઓ",
         "ௗ": "ௌ",
         "-": " ",
         "'": " ",
@@ -513,7 +677,14 @@ def remap_embeddings_to_existing_tokenizer(
         "റ": "ರ", "ഴ": "ಳ", "ഩ": "ನ", "ൗ": "ೌ", "ൠ": "ಋ", "ൡ": "ಲ", "ഌ": "ಲ",
         "ൺ": "ಣ", "ൻ": "ನ", "ർ": "ರ", "ൽ": "ಲ", "ൾ": "ಳ", "ൿ": "ಕ",
         "ன": "ನ", "ற": "ರ", "ழ": "ಳ", "ௗ": "ೌ", "ஃ": "ಹ", "ஂ": "ಂ", "ங": "ಂ",
-        "ऌ": "ल", "ॡ": "ल", "ॢ": "ृ", "ॣ": "ॄ", "॥": "।", "।": ",", "ऽ": "अ",
+        "ऌ": "ल", "ॡ": "ल", "ॢ": "ृ", "ॣ": "ॄ", "॥": "।", "।": ",", "ऽ": "अ", "ऱ": "र",
+        "ঌ": "ল", "ৡ": "ল", "ৄ": "ৃ", "ৠ": "ঋ", "ঽ": "অ",
+        "ઌ": "લ", "ૡ": "લ", "ૄ": "ૃ", "ઽ": "અ", "ૐ": "ઓ",
+        # Punjabi Gurmukhi -> Hindi Devanagari
+        "ੰ": "ं", "ੱ": "्", "ੜ": "ड़", "ੲ": "इ", "ੳ": "उ", "ਃ": "ः", "ਁ": "ँ", "ਂ": "ं",
+        # Odia -> Bengali
+        "ଳ": "ল", "ଵ": "ব", "ୟ": "য", "ୱ": "ব", "଼": "়", "ୖ": "ৈ", "ୗ": "ৗ", "ଽ": "অ",
+        "ଌ": "ল", "ୡ": "ল", "ୄ": "ৃ", "ୠ": "ঋ",
     }
     for idx, tok in enumerate(target_tok.vocab):
         if tok == target_tok.pad:
@@ -524,6 +695,8 @@ def remap_embeddings_to_existing_tokenizer(
             new_emb[idx] = patched_src_emb[src_tok.char_to_id[tok]]
         elif tok in special_map and special_map[tok] in src_tok.char_to_id:
             new_emb[idx] = patched_src_emb[src_tok.char_to_id[special_map[tok]]]
+        elif tok == "ੜ" and "ड" in src_tok.char_to_id:
+            new_emb[idx] = patched_src_emb[src_tok.char_to_id["ड"]]
         elif lang == "ml" and len(tok) == 1 and 0x0D00 <= ord(tok) <= 0x0D7F:
             kn_cousin = chr(ord(tok) - 0x0080)
             if kn_cousin in src_tok.char_to_id:
@@ -532,6 +705,14 @@ def remap_embeddings_to_existing_tokenizer(
             kn_cousin = chr(ord(tok) + 0x0100)
             if kn_cousin in src_tok.char_to_id:
                 new_emb[idx] = patched_src_emb[src_tok.char_to_id[kn_cousin]]
+        elif lang == "pa" and len(tok) == 1 and 0x0A00 <= ord(tok) <= 0x0A6F:
+            hi_cousin = chr(ord(tok) - 0x0100)
+            if hi_cousin in src_tok.char_to_id:
+                new_emb[idx] = patched_src_emb[src_tok.char_to_id[hi_cousin]]
+        elif lang == "or" and len(tok) == 1 and 0x0B00 <= ord(tok) <= 0x0B6F:
+            bn_cousin = chr(ord(tok) - 0x0180)
+            if bn_cousin in src_tok.char_to_id:
+                new_emb[idx] = patched_src_emb[src_tok.char_to_id[bn_cousin]]
     return new_emb
 
 

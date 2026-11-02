@@ -1,3 +1,5 @@
+export type IndicLang = 'sa' | 'hi' | 'kn' | 'ta' | 'te' | 'ml' | 'en' | 'mr' | 'bn' | 'gu' | 'pa' | 'or';
+
 export interface AksharaUnit {
   akshara: string;
   weight: 'G' | 'L' | 'C';
@@ -8,7 +10,7 @@ export interface G2PResult {
   attentionMask: number[];
   ipa: string;
   ipaIds: number[];
-  lang: 'sa' | 'hi' | 'kn' | 'ta' | 'te' | 'ml';
+  lang: IndicLang;
   langId: number;
   script: string;
   normalizedDevanagari: string;

@@ -26,7 +26,7 @@ def test_vocab_size_and_sanskrit_extensions() -> None:
     assert VOCAB_TOKENS[85] == "\u090b"
     assert VOCAB_TOKENS[86] == "\u0919"
     assert IPA_VOCAB["\u026d"] == RETROFLEX_LATERAL_ID == 79
-    assert set(LANGUAGE_IDS.keys()) == {"sa", "hi", "kn", "ta", "te", "ml"}
+    assert set(LANGUAGE_IDS.keys()) == {"sa", "hi", "kn", "ta", "te", "ml", "en", "mr", "bn", "gu", "pa", "or"}
 
 
 def test_sanskrit_phonology_and_akshara_weights() -> None:

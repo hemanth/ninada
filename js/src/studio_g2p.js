@@ -1,5 +1,5 @@
 /**
- * Ninada v4.0 — Native Per-Language 24,000 Hz Studio VITS Character Tokenizer (Zero-Dep ESM).
+ * Ninada v5.0 — Native Per-Language 24,000 Hz Studio VITS Character Tokenizer (Zero-Dep ESM).
  */
 import { detectScriptAndLang, iastToDevanagari, toNativeModelText } from './g2p.js';
 
@@ -43,6 +43,42 @@ export const STUDIO_SPECS = Object.freeze({
     characters: 'ംഃഅആഇഈഉഊഋഌഎഏഐഒഓഔകഖഗഘങചഛജഝഞടഠഡഢണതഥദധനഩപഫബഭമയരറലളഴവശഷസഹഽാിീുൂൃെേൈൊോൌ്ൗൠൡ൦൧൨൩൪൫൬൭൮൯ൺൻർൽൾൿ',
     blank: '<BLNK>',
   },
+  en: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: 'â,pGYI&“US7(9…Z–v1yadHND`@lw”80ti?42mOgCE_XRMz\ufe0fk3‘VeP5jè"rK#F’)scQ\'Jôfq xA»bTouhnBWL6àé',
+    blank: '<BLNK>',
+  },
+  mr: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: ')ऊभॐब८•औॲ?z५ी/ऩठअवइ\',डळत3° ञोnआफ़ॊच:․छऍई;ओuगझल0२ॆऑऱ!ॕ"(मर|9…न-ॄु5ृहेॅःएघ७शऎ1ङॠं।१ष४cॉधाऽ\u200aकि2.ऋउ–ूa्स६जखदथ०68णऐैफ़ँs९३4ौ7—टपढयऌॡॢॣ॥',
+    blank: '<BLNK>',
+  },
+  bn: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: 'এাসৎঢঊচঢ়রখৰঘড়ঋ"ঔহনবভঅঠ্ঃৌছৃিড়কতীেওলং, জউ?থঞ\'ফুআঐয়ইূৈযগঁঙঝ।ঈৗণষধশটপদোমঌঽৄৠৡ০১২৩৪৫৬৭৮৯',
+    blank: '<BLNK>',
+  },
+  gu: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: 'ધઋલ૭ઉઊઝઈછઍત6ગेફ“78ખથरયજન૧ળણ,ૉ}ઞ૪ઔશચ3ા૦"(ૅ્મષૠ૩સ‘अઇઠુक૫દોર\'ીપૈ૬઼मઆ”ૌ4)ૂિહ{ઑઓ કઢઃ2ૃેવભि?અએ5૯ઘટંડઐ1૮ઁબ’09૨ઌઙઽૄૐૡ',
+    blank: '<BLNK>',
+  },
+  pa: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: 'ਁਂਃਅਆਇਈਉਊਏਐਓਔਕਖਗਘਙਚਛਜਝਞਟਠਡਢਣਤਥਦਧਨਪਫਬਭਮਯਰਲਵਸਹ਼ਾਿੀੁੂੇੈੋੌ੍ੜੰੱੲੳ੦੧੨੩੪੫੬੭੮੯',
+    blank: '<BLNK>',
+  },
+  or: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: 'ଁଂଃଅଆଇଈଉଊଋଌଏଐଓଔକଖଗଘଙଚଛଜଝଞଟଠଡଢଣତଥଦଧନପଫବଭମଯରଲଳଵଶଷସହ଼ଽାିୀୁୂୃୄେୈୋୌ୍ୖୗୟୠୡୱ୦୧୨୩୪୫୬୭୮୯',
+    blank: '<BLNK>',
+  },
 });
 
 export const STUDIO_VOCABS = Object.freeze(
@@ -71,11 +107,92 @@ export const STUDIO_VOCABS = Object.freeze(
 const SCRIPT_RANGES = {
   sa: [0x0900, 0x097f],
   hi: [0x0900, 0x097f],
-  kn: [0x0c80, 0x0cff],
+  mr: [0x0900, 0x097f],
+  bn: [0x0980, 0x09ff],
+  pa: [0x0a00, 0x0a7f],
+  gu: [0x0a80, 0x0aff],
+  or: [0x0b00, 0x0b7f],
   ta: [0x0b80, 0x0bff],
   te: [0x0c00, 0x0c7f],
+  kn: [0x0c80, 0x0cff],
   ml: [0x0d00, 0x0d7f],
+  en: [0x0041, 0x007a],
 };
+
+const EN_ONES = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+  'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
+  'seventeen', 'eighteen', 'nineteen',
+];
+const EN_TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+const EN_ORD_MAP = {
+  one: 'first', two: 'second', three: 'third', five: 'fifth',
+  eight: 'eighth', nine: 'ninth', twelve: 'twelfth',
+};
+const EN_ABBREVS = [
+  [/\bmrs\./gi, 'missus'],
+  [/\bmr\./gi, 'mister'],
+  [/\bms\./gi, 'miss'],
+  [/\bdr\./gi, 'doctor'],
+  [/\bprof\./gi, 'professor'],
+  [/\bvs\./gi, 'versus'],
+  [/\betc\./gi, 'et cetera'],
+  [/\be\.g\./gi, 'for example'],
+  [/\bi\.e\./gi, 'that is'],
+  [/\brs\./gi, 'rupees'],
+];
+
+function enIntToWords(n) {
+  if (n < 0) return `minus ${enIntToWords(-n)}`;
+  if (n < 20) return EN_ONES[n];
+  if (n < 100) {
+    const t = Math.floor(n / 10);
+    const r = n % 10;
+    return r === 0 ? EN_TENS[t] : `${EN_TENS[t]} ${EN_ONES[r]}`;
+  }
+  if (n < 1000) {
+    const h = Math.floor(n / 100);
+    const r = n % 100;
+    return r === 0 ? `${EN_ONES[h]} hundred` : `${EN_ONES[h]} hundred ${enIntToWords(r)}`;
+  }
+  if (n >= 1900 && n <= 2099 && n % 100 !== 0 && !(n >= 2001 && n <= 2009)) {
+    const hi = Math.floor(n / 100);
+    const lo = n % 100;
+    const loStr = lo < 10 ? `oh ${EN_ONES[lo]}` : enIntToWords(lo);
+    return `${enIntToWords(hi)} ${loStr}`;
+  }
+  if (n < 1_000_000) {
+    const k = Math.floor(n / 1000);
+    const r = n % 1000;
+    return r === 0 ? `${enIntToWords(k)} thousand` : `${enIntToWords(k)} thousand ${enIntToWords(r)}`;
+  }
+  return [...String(n)].map((d) => EN_ONES[Number(d)]).join(' ');
+}
+
+function enOrdinalToWords(n) {
+  const words = enIntToWords(n).split(' ');
+  const last = words[words.length - 1];
+  if (EN_ORD_MAP[last]) words[words.length - 1] = EN_ORD_MAP[last];
+  else if (last.endsWith('y')) words[words.length - 1] = `${last.slice(0, -1)}ieth`;
+  else words[words.length - 1] = `${last}th`;
+  return words.join(' ');
+}
+
+function normalizeEnglishText(t) {
+  let out = t;
+  for (const [pat, rep] of EN_ABBREVS) {
+    out = out.replace(pat, rep);
+  }
+  out = out
+    .replaceAll('&', ' and ')
+    .replaceAll('%', ' percent ')
+    .replaceAll('₹', ' rupees ')
+    .replaceAll('$', ' dollars ');
+  out = out.replace(/(?<=\d),(?=\d{3}\b)/g, '');
+  out = out.replace(/\b(\d{1,6})(st|nd|rd|th)\b/gi, (_, num) => enOrdinalToWords(Number(num)));
+  out = out.replace(/\b(\d{1,6})\b/g, (_, num) => enIntToWords(Number(num)));
+  return out;
+}
 
 const MALAYALAM_CHILLU_PAIRS = [
   ['\u0d23\u0d4d\u200d', '\u0d7a'],
@@ -97,22 +214,49 @@ export function cleanStudioText(text, lang = 'sa') {
   let t = String(text ?? '').normalize('NFC').trim();
   if (!t) return '';
 
-  const [lo, hi] = SCRIPT_RANGES[lc];
-  let hasTarget = false;
-  for (const ch of t) {
-    const cp = ch.codePointAt(0);
-    if (cp >= lo && cp <= hi) {
-      hasTarget = true;
-      break;
+  if (lc === 'en') {
+    t = normalizeEnglishText(t);
+  } else {
+    const [lo, hi] = SCRIPT_RANGES[lc];
+    let hasTarget = false;
+    for (const ch of t) {
+      const cp = ch.codePointAt(0);
+      if (cp >= lo && cp <= hi) {
+        hasTarget = true;
+        break;
+      }
     }
-  }
-  if (!hasTarget) {
-    t = lc === 'sa' ? iastToDevanagari(t) : toNativeModelText(t, lc);
+    if (!hasTarget) {
+      if (lc === 'sa') {
+        t = iastToDevanagari(t);
+      } else {
+        const [detSc] = detectScriptAndLang(t, lc);
+        const dev = detSc === 'iast' || detSc === 'latin' ? iastToDevanagari(t) : t;
+        t = toNativeModelText(t, lc, detSc, dev);
+      }
+    }
   }
 
   if (lc === 'sa') {
     t = t.replace(/[\u0951-\u0954\u1cd0-\u1cff]/g, '');
     t = t.replaceAll('॥', '.').replaceAll('।', ',');
+  }
+  if (lc === 'mr') {
+    t = t.replace(/[\u0951-\u0954\u1cd0-\u1cff]/g, '');
+    t = t.replaceAll('॥', '।');
+  }
+  if (lc === 'bn') {
+    t = t.replaceAll('\u09f1', 'ব').replaceAll('॥', '।');
+  }
+  if (lc === 'gu') {
+    t = t.replaceAll('॥', '.').replaceAll('।', '.');
+  }
+  if (lc === 'pa') {
+    t = t.replaceAll('\u0a74', 'ਇੱਕ ਓਅੰਕਾਰ');
+    t = t.replaceAll('॥', '.').replaceAll('।', '.');
+  }
+  if (lc === 'or') {
+    t = t.replaceAll('॥', '.').replaceAll('।', '.');
   }
   if (lc === 'kn') {
     t = t.replace(/\u0cbf\u0c83(?=[\s,.;:!?।॥]|$)/g, 'ಿಹಿ');
@@ -155,9 +299,9 @@ export function cleanStudioText(text, lang = 'sa') {
     .replace(/[;:]/g, ',')
     .replace(/-/g, ' ');
 
-  if (lc === 'kn' || lc === 'ta' || lc === 'te' || lc === 'ml') {
+  if (lc === 'kn' || lc === 'ta' || lc === 'te' || lc === 'ml' || lc === 'en' || lc === 'gu' || lc === 'pa' || lc === 'or') {
     t = t.replace(/[॥।]/g, '.');
-  } else if (lc === 'hi') {
+  } else if (lc === 'hi' || lc === 'mr' || lc === 'bn') {
     t = t.replaceAll('॥', '।');
   }
 

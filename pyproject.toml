@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ninada"
-version = "4.0.2"
-description = "Ninada (निनाद) — Streaming 24 kHz Native Per-Language Studio VITS neural text-to-speech for Classical Sanskrit & 5 Indian languages (6 dedicated ~28 MB W8A32+FP16 ONNX specialists for Browser WASM SIMD, Node.js, and Python)."
+version = "5.0.0"
+description = "Ninada (निनाद) — Streaming 24 kHz Native Per-Language Studio VITS neural text-to-speech for Indian English, Classical Sanskrit & 10 Indian languages (24 Male & Female ~27.9 MB W8A32+FP16 ONNX specialists for Browser WASM SIMD, Node.js, and Python)."
 readme = "README.md"
 license = "MIT"
 authors = [

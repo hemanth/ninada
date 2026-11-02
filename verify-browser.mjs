@@ -177,11 +177,13 @@ async function main() {
       cacheHitFirstLoad: window.__ninadaCacheHit,
       readyInfo: window.__ninadaReadyInfo,
       synthDisabled: document.getElementById("synthBtn")?.disabled,
+      langBtnCount: document.querySelectorAll(".lang-btn").length,
       langAnyDisabled: Array.from(document.querySelectorAll(".lang-btn")).some((b) => b.disabled),
       downloadDisabled: document.getElementById("downloadLink")?.classList.contains("is-disabled"),
     }));
     console.log("Post-load Multi-Thread WASM, Cache & Unlock State:", postLoadState);
     assert.equal(postLoadState.crossOriginIsolated, true);
+    assert.equal(postLoadState.langBtnCount, 12, `Expected all 12 language tabs in v5.0 Studio UI, got ${postLoadState.langBtnCount}`);
     assert.ok(
       postLoadState.readyInfo.threads >= 2,
       `Expected >=2 WASM threads under COI, got ${postLoadState.readyInfo.threads}`
@@ -498,7 +500,48 @@ async function main() {
       `Expected ZERO audio buffer underruns during ML stream, got ${mlStream.stats.underrunCount}!`
     );
 
+    // 5c. Test v5.0 Indian English (`en`) & Marathi (`mr`) 24 kHz Neural ONNX AudioWorklet streaming (0 underruns!)
+    activeBucket = "v5NewLangs";
+    onnxBuckets.v5NewLangs = [];
+    for (const v5Lang of ["en", "mr"]) {
+      await page.locator(`.lang-btn[data-lang="${v5Lang}"]`).click();
+      await page.waitForFunction(
+        (lc) => window.__ninadaReady === true && window.__ninadaLoadedLang === lc && !window.__ninadaControlsLocked,
+        v5Lang,
+        { timeout: 90000 }
+      );
+      await page.locator(".preset-chip", { hasText: "Streaming Passage" }).click();
+      await page.evaluate(() => {
+        window.__ninadaLastResult = null;
+      });
+      await page.locator("#synthBtn").click();
+      await page.waitForFunction(
+        (lc) =>
+          window.__ninadaLastResult &&
+          window.__ninadaLastResult.lang === lc &&
+          window.__ninadaLastResult.tier === "neural_onnx",
+        v5Lang,
+        { timeout: 60000 }
+      );
+      const v5Stream = await page.evaluate(async () => {
+        const statsAfterDrain = await window.__ninadaWaitForPlayback();
+        return {
+          result: window.__ninadaLastResult,
+          stats: { ...statsAfterDrain },
+        };
+      });
+      console.log(`v5.0 ${v5Lang.toUpperCase()} Multi-Sentence Real-Time AudioWorklet Stream:`, v5Stream);
+      assert.equal(v5Stream.result.lang, v5Lang);
+      assert.ok(v5Stream.result.rms > 0.02);
+      assert.equal(
+        v5Stream.stats.underrunCount,
+        0,
+        `Expected ZERO audio buffer underruns during ${v5Lang} stream, got ${v5Stream.stats.underrunCount}!`
+      );
+    }
+
     // 6. Check mobile viewport responsiveness + zero horizontal code clipping across all SDK tabs
+    activeBucket = "revisitCached";
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('.lang-btn[data-lang="kn"]').click();
     await page.waitForFunction(
@@ -574,7 +617,7 @@ async function main() {
 
     assert.equal(errors.length, 0, `Browser errors detected: ${errors.join(" | ")}`);
     await browser.close();
-    console.log(`ALL NINADA v4.0 24KHZ NATIVE STUDIO SPECIALIST STREAMING & CACHE BROWSER CHECKS PASSED ON ${TARGET_URL} WITH ZERO UNDERRUNS & ZERO ERRORS!`);
+    console.log(`ALL NINADA v5.0 24KHZ NATIVE 12-LANGUAGE STUDIO SPECIALIST STREAMING & CACHE BROWSER CHECKS PASSED ON ${TARGET_URL} WITH ZERO UNDERRUNS & ZERO ERRORS!`);
   } finally {
     if (server) {
       server.kill("SIGTERM");

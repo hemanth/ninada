@@ -1,7 +1,7 @@
 {
   "name": "ninada",
-  "version": "4.0.2",
-  "description": "Stream Classical Sanskrit and 5 Indian languages at 24 kHz studio quality in the browser and Node.js via dedicated ~28 MB Native Studio VITS ONNX specialists or zero-dep Klatt synthesis.",
+  "version": "5.0.0",
+  "description": "Stream Indian English, Classical Sanskrit, and 10 Indian languages at 24 kHz studio quality in the browser and Node.js via 24 dedicated ~27.9 MB Native Studio VITS ONNX specialists or zero-dep Klatt synthesis.",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -47,7 +47,13 @@
     "tamil",
     "telugu",
     "malayalam",
-    "hindi"
+    "hindi",
+    "english",
+    "marathi",
+    "bengali",
+    "gujarati",
+    "punjabi",
+    "odia"
   ],
   "peerDependencies": {
     "webml-kit": ">=0.4.0"

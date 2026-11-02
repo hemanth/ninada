@@ -93,6 +93,11 @@ RASA_LANG_DIRS = {
     "ta": "Tamil",
     "te": "Telugu",
     "ml": "Malayalam",
+    "mr": "Marathi",
+    "bn": "Bengali",
+    "gu": "Gujarati",
+    "pa": "Punjabi",
+    "or": "Odia",
 }
 
 CANONICAL_PROBES: dict[str, str] = {
@@ -102,6 +107,12 @@ CANONICAL_PROBES: dict[str, str] = {
     "ta": "வணக்கம், இன்று சென்னையில் வானிலை மிகவும் இனிமையாக உள்ளது, நன்றி.",
     "te": "నమస్కారం, ఈరోజు హైదరాబాద్‌లో వాతావరణం చాలా బాగుంది.",
     "ml": "നമസ്കാരം, ഇന്ന് കേരളത്തിൽ വളരെ നല്ല കാലാവസ്ഥയാണ്, നന്ദി.",
+    "en": "Hello and welcome to Bengaluru, where science, literature, and studio speech technology meet.",
+    "mr": "नमस्कार, आज पुण्यातील हवामान खूप छान आणि आल्हाददायक आहे, धन्यवाद.",
+    "bn": "নমস্কার, আজ কলকাতার আবহাওয়া খুব সুন্দর এবং মনোরম রয়েছে, ধন্যবাদ।",
+    "gu": "નમસ્તે, આજે અમદાવાદમાં હવામાન ખૂબ જ સુંદર અને આનંદદાયક છે.",
+    "pa": "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ, ਅੱਜ ਅੰਮ੍ਰਿਤਸਰ ਵਿੱਚ ਮੌਸਮ ਬਹੁਤ ਸੁਹਾਵਣਾ ਅਤੇ ਵਧੀਆ ਹੈ।",
+    "or": "ନମସ୍କାର, ଆଜି ଭୁବନେଶ୍ୱରରେ ପାଣିପାଗ ବହୁତ ସୁନ୍ଦର ଏବଂ ମନୋରମ ଅଛି।",
 }
 
 SPECIALIST_RECIPES: dict[str, dict[str, Any]] = {
@@ -171,6 +182,72 @@ SPECIALIST_RECIPES: dict[str, dict[str, Any]] = {
         "lr_d": 1.8e-4,
         "target_male_utts": 1800,
         "target_female_utts": 1100,
+    },
+    "en": {
+        "male_donor": "SYSPIN/vits_English_Male",
+        "female_donor": "SYSPIN/vits_English_Female",
+        "male_steps": 1800,
+        "female_steps": 1200,
+        "lr_g": 1.2e-4,
+        "lr_text": 6.5e-5,
+        "lr_d": 1.2e-4,
+        "target_male_utts": 1200,
+        "target_female_utts": 900,
+    },
+    "mr": {
+        "male_donor": "SYSPIN/vits_Marathi_Male",
+        "female_donor": "SYSPIN/vits_Marathi_Female",
+        "male_steps": 1800,
+        "female_steps": 1200,
+        "lr_g": 1.3e-4,
+        "lr_text": 1.0e-4,
+        "lr_d": 1.3e-4,
+        "target_male_utts": 1100,
+        "target_female_utts": 800,
+    },
+    "bn": {
+        "male_donor": "SYSPIN/vits_Bengali_Male",
+        "female_donor": "SYSPIN/vits_Bengali_Female",
+        "male_steps": 1800,
+        "female_steps": 1200,
+        "lr_g": 1.3e-4,
+        "lr_text": 1.0e-4,
+        "lr_d": 1.3e-4,
+        "target_male_utts": 1100,
+        "target_female_utts": 800,
+    },
+    "gu": {
+        "male_donor": "SYSPIN/vits_Gujarati_Male",
+        "female_donor": "SYSPIN/vits_Gujarati_Female",
+        "male_steps": 1800,
+        "female_steps": 1200,
+        "lr_g": 1.3e-4,
+        "lr_text": 1.0e-4,
+        "lr_d": 1.3e-4,
+        "target_male_utts": 1100,
+        "target_female_utts": 800,
+    },
+    "pa": {
+        "male_donor": "SYSPIN/vits_Hindi_Male",
+        "female_donor": "SYSPIN/vits_Hindi_Female",
+        "male_steps": 4200,
+        "female_steps": 2500,
+        "lr_g": 2.0e-4,
+        "lr_text": 3.4e-4,
+        "lr_d": 1.8e-4,
+        "target_male_utts": 1600,
+        "target_female_utts": 1000,
+    },
+    "or": {
+        "male_donor": "SYSPIN/vits_Bengali_Male",
+        "female_donor": "SYSPIN/vits_Bengali_Female",
+        "male_steps": 4200,
+        "female_steps": 2500,
+        "lr_g": 2.0e-4,
+        "lr_text": 3.4e-4,
+        "lr_d": 1.8e-4,
+        "target_male_utts": 1600,
+        "target_female_utts": 1000,
     },
 }
 
@@ -478,6 +555,147 @@ def gcs_blob_exists(bucket_name: str | None, blob_path: str) -> bool:
         return False
 
 
+def gcs_exists_v5_or_v4(bucket_name: str | None, v5_rel: str, v4_rel: str | None = None) -> bool:
+    if not bucket_name:
+        return False
+    if gcs_blob_exists(bucket_name, f"ninada_v5/{v5_rel}"):
+        return True
+    fallback_rel = v4_rel if v4_rel is not None else v5_rel.replace("samples_v5/", "samples_v4/")
+    return gcs_blob_exists(bucket_name, f"ninada_v4/{fallback_rel}")
+
+
+def gcs_restore_v5_or_v4(
+    bucket_name: str | None,
+    v5_rel: str,
+    local_path: Path,
+    v4_rel: str | None = None,
+) -> bool:
+    if not bucket_name:
+        return False
+    if gcs_download_if_exists(bucket_name, f"ninada_v5/{v5_rel}", local_path):
+        return True
+    fallback_rel = v4_rel if v4_rel is not None else v5_rel.replace("samples_v5/", "samples_v4/")
+    return gcs_download_if_exists(bucket_name, f"ninada_v4/{fallback_rel}", local_path)
+
+
+def stream_indictts_english_splits(
+    lang_wav_dir: Path,
+    t_male: int,
+    t_fem: int,
+    need_eval: int,
+    eval_blacklist: set[str],
+    seen_local: set[str],
+    hf_tok: str | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """
+    Stream single-speaker 48,000 Hz -> 24,000 Hz Indian English studio splits from
+    `SPRINGLab/IndicTTS-English` (`train_hindifullmale_` Male & `train_hindifullfemale_` Female).
+    """
+    primary_shards = [
+        "data/train-00008-of-00028.parquet",
+        "data/train-00007-of-00028.parquet",
+        "data/train-00009-of-00028.parquet",
+    ]
+    male_list: list[dict[str, Any]] = []
+    fem_list: list[dict[str, Any]] = []
+
+    for shard in primary_shards:
+        if len(male_list) >= t_male + need_eval and len(fem_list) >= t_fem:
+            break
+        try:
+            pq_path = hf_hub_download(
+                repo_id="SPRINGLab/IndicTTS-English",
+                filename=shard,
+                repo_type="dataset",
+                token=hf_tok,
+            )
+            pf = pq.ParquetFile(pq_path)
+        except Exception as exc:
+            print(f"[WARN] IndicTTS-English shard {shard} skipped: {exc}", flush=True)
+            continue
+
+        for batch in pf.iter_batches(batch_size=64):
+            if len(male_list) >= t_male + need_eval and len(fem_list) >= t_fem:
+                break
+            cols = batch.to_pydict()
+            texts = cols.get("text", [])
+            audio_col = cols.get("audio", [])
+
+            for i in range(len(texts)):
+                aud = audio_col[i] if i < len(audio_col) else None
+                if not isinstance(aud, dict):
+                    continue
+                apath = str(aud.get("path") or "").lower()
+                if "train_hindifullmale_" in apath:
+                    g_str = "Male"
+                elif "train_hindifullfemale_" in apath:
+                    g_str = "Female"
+                else:
+                    continue
+
+                if g_str == "Male" and len(male_list) >= t_male + need_eval:
+                    continue
+                if g_str == "Female" and len(fem_list) >= t_fem:
+                    continue
+
+                raw_text = str(texts[i] or "").strip()
+                if len(raw_text) < 10 or len(raw_text) > 260:
+                    continue
+                norm_t = clean_native_text(raw_text, "en")
+                if len(norm_t) < 8:
+                    continue
+                key = f"en:{norm_t}"
+                if key in eval_blacklist or key in seen_local:
+                    continue
+
+                b_payload = aud.get("bytes")
+                if not b_payload:
+                    continue
+                try:
+                    raw_wav, orig_sr = sf.read(io.BytesIO(b_payload), dtype="float32")
+                except Exception:
+                    continue
+
+                wav_24k = clean_studio_vits_24k(resample_to_24k(raw_wav, int(orig_sr)))
+                if wav_24k is None:
+                    continue
+
+                dur_s = wav_24k.size / SAMPLE_RATE_24K
+                cps = len(norm_t) / max(dur_s, 0.1)
+                if cps < 4.5 or cps > 26.0:
+                    continue
+
+                seen_local.add(key)
+                uid = hashlib.sha1(f"{g_str}:{key}".encode("utf-8")).hexdigest()[:12]
+                wpath = lang_wav_dir / g_str / f"en_{uid}.wav"
+                sf.write(str(wpath), wav_24k, SAMPLE_RATE_24K, subtype="PCM_16")
+                item = {
+                    "utt_id": f"en_{uid}",
+                    "lang": "en",
+                    "gender": g_str,
+                    "style": "STUDIO",
+                    "text": raw_text,
+                    "local_wav": str(wpath),
+                    "n_frames": wav_24k.size // HOP_LENGTH,
+                    "duration_sec": round(dur_s, 4),
+                }
+                if g_str == "Male":
+                    male_list.append(item)
+                else:
+                    fem_list.append(item)
+
+        try:
+            if os.path.exists(pq_path) and os.path.islink(pq_path):
+                real_p = os.path.realpath(pq_path)
+                os.unlink(pq_path)
+                if os.path.exists(real_p):
+                    os.unlink(real_p)
+        except Exception:
+            pass
+
+    return male_list, fem_list
+
+
 def prepare_heldout_and_native_splits(
     work_dir: Path,
     out_dir: Path,
@@ -490,10 +708,10 @@ def prepare_heldout_and_native_splits(
     skip_bench: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, dict[str, list[dict[str, Any]]]]]:
     """
-    1. Restores leakage-free held-out `val` (240) and `test` (240) studio splits from
-       `gs://training-gemina/ninada_v3/curated_24k_cache.tar.gz` (or streams fresh if smoke mode).
-    2. Streams native per-language Male & Female 24,000 Hz studio splits from `ai4bharat/Rasa`,
-       strictly excluding all held-out `val`/`test` transcripts.
+    1. Restores leakage-free held-out `val` and `test` studio splits from
+       `gs://training-gemina/ninada_v3/curated_24k_cache.tar.gz` + per-language `ninada_v5/eval_splits/{lang}_eval.tar.gz`.
+    2. Streams native per-language Male & Female 24,000 Hz studio splits from `ai4bharat/Rasa`
+       (and `SPRINGLab/IndicTTS-English` for `en`), strictly excluding all held-out `val`/`test` transcripts.
     """
     cache_dir = work_dir / "heldout_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -584,14 +802,59 @@ def prepare_heldout_and_native_splits(
             )
         shutil.rmtree(cache_dir, ignore_errors=True)
 
-    hf_tok = os.environ.get("HF_TOKEN") or None
-    api = HfApi(token=hf_tok)
-    rasa_files = api.list_repo_files("ai4bharat/Rasa", repo_type="dataset")
-    train_data: dict[str, dict[str, list[dict[str, Any]]]] = {}
-
     f_male_set = force_male_langs if force_male_langs is not None else (force_langs or set())
     f_fem_set = force_fem_langs if force_fem_langs is not None else (force_langs or set())
     active_langs = only_langs if only_langs else set(SUPPORTED_LANGS)
+
+    # Restore cached per-language held-out eval splits (`ninada_v5/eval_splits/{lc}_eval.tar.gz`) for new languages
+    if not smoke_limit and gcs_bucket:
+        test_gt_dir = out_dir / "test_gt_wavs"
+        test_gt_dir.mkdir(parents=True, exist_ok=True)
+        for lc in SUPPORTED_LANGS:
+            if skip_bench and lc not in active_langs:
+                continue
+            if sum(1 for r in test_rows if r["lang"] == lc) >= 40:
+                continue
+            eval_tar = work_dir / f"{lc}_eval.tar.gz"
+            if gcs_download_if_exists(gcs_bucket, f"ninada_v5/eval_splits/{lc}_eval.tar.gz", eval_tar):
+                ex_dir = work_dir / f"eval_extract_{lc}"
+                ex_dir.mkdir(parents=True, exist_ok=True)
+                with tarfile.open(eval_tar, "r:gz") as tf:
+                    tf.extractall(path=ex_dir)
+                eval_tar.unlink(missing_ok=True)
+                w_map = {p.name: p for p in ex_dir.rglob("*.wav")}
+                vf = ex_dir / "val.jsonl"
+                tf_p = ex_dir / "test.jsonl"
+                if vf.exists():
+                    for line in vf.read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        rv = json.loads(line)
+                        val_rows.append(rv)
+                        eval_blacklist.add(f"{lc}:{clean_native_text(rv['text'], lc)}")
+                if tf_p.exists():
+                    for line in tf_p.read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        rt = json.loads(line)
+                        wn = Path(rt["wav_path"]).name
+                        if wn in w_map:
+                            dst = test_gt_dir / wn
+                            shutil.copy2(w_map[wn], dst)
+                            rt["local_wav"] = str(dst)
+                            rt["wav_path"] = f"test_gt_wavs/{wn}"
+                            test_rows.append(rt)
+                            eval_blacklist.add(f"{lc}:{clean_native_text(rt['text'], lc)}")
+                shutil.rmtree(ex_dir, ignore_errors=True)
+                print(
+                    f"[DATA] Restored cached leakage-free eval split for {lc} (test_n={sum(1 for r in test_rows if r['lang'] == lc)})",
+                    flush=True,
+                )
+
+    hf_tok = os.environ.get("HF_TOKEN") or None
+    rasa_files: list[str] | None = None
+    train_data: dict[str, dict[str, list[dict[str, Any]]]] = {}
+
     for lang in SUPPORTED_LANGS:
         if lang not in active_langs:
             train_data[lang] = {"Male": list(seeded_male.get(lang, [])), "Female": []}
@@ -599,23 +862,28 @@ def prepare_heldout_and_native_splits(
         recipe = SPECIALIST_RECIPES[lang]
         t_male = smoke_limit if smoke_limit > 0 else int(recipe["target_male_utts"])
         t_fem = smoke_limit if smoke_limit > 0 else int(recipe["target_female_utts"])
-        need_eval = 0 if (skip_bench or len(test_rows) >= 240) else (4 if smoke_limit > 0 else 80)
+        existing_lang_test = sum(1 for r in test_rows if r["lang"] == lang)
+        target_test_n = 2 if smoke_limit > 0 else 40
+        need_eval = (4 if smoke_limit > 0 else 80) if existing_lang_test < target_test_n else 0
 
         male_done = (
             not smoke_limit
             and lang not in f_male_set
-            and gcs_blob_exists(gcs_bucket, f"ninada_v4/checkpoints/{lang}_male.safetensors")
-            and gcs_blob_exists(gcs_bucket, f"ninada_v4/onnx/{lang}.onnx")
+            and gcs_exists_v5_or_v4(gcs_bucket, f"checkpoints/{lang}_male.safetensors")
+            and gcs_exists_v5_or_v4(gcs_bucket, f"onnx/{lang}.onnx")
         )
         fem_done = (
-            not smoke_limit
-            and lang not in f_fem_set
-            and gcs_blob_exists(gcs_bucket, f"ninada_v4/onnx/{lang}_female.onnx")
-            and gcs_blob_exists(gcs_bucket, f"ninada_v4/samples_v4/{lang}_female.wav")
+            os.environ.get("SKIP_FEMALE", "0").strip() == "1"
+            or (
+                not smoke_limit
+                and lang not in f_fem_set
+                and gcs_exists_v5_or_v4(gcs_bucket, f"onnx/{lang}_female.onnx")
+                and gcs_exists_v5_or_v4(gcs_bucket, f"samples_v5/{lang}_female.wav")
+            )
         )
         if male_done and fem_done and need_eval == 0:
             train_data[lang] = {"Male": list(seeded_male.get(lang, [])), "Female": []}
-            print(f"[DATA] {lang}: Both Male & Female specialists already in GCS; skipping shard stream", flush=True)
+            print(f"[DATA] {lang}: Both Male & Female specialists + eval split already in GCS; skipping shard stream", flush=True)
             continue
         if male_done and need_eval == 0:
             t_male = 0
@@ -626,115 +894,132 @@ def prepare_heldout_and_native_splits(
         (lang_wav_dir / "Male").mkdir(parents=True, exist_ok=True)
         (lang_wav_dir / "Female").mkdir(parents=True, exist_ok=True)
 
-        lang_dir = RASA_LANG_DIRS[lang]
-        tr_shards = sorted(f for f in rasa_files if f.startswith(f"{lang_dir}/train-") and f.endswith(".parquet"))
-        te_shards = sorted(f for f in rasa_files if f.startswith(f"{lang_dir}/test-") and f.endswith(".parquet"))
-        ordered_shards = interleave_from_ends(tr_shards) + interleave_from_ends(te_shards)
-
-        male_list: list[dict[str, Any]] = list(seeded_male.get(lang, []))[: t_male + need_eval]
-        fem_list: list[dict[str, Any]] = []
         seen_local: set[str] = set(seeded_seen.get(lang, set()))
+        if lang == "en":
+            male_list, fem_list = stream_indictts_english_splits(
+                lang_wav_dir=lang_wav_dir,
+                t_male=t_male,
+                t_fem=t_fem,
+                need_eval=need_eval,
+                eval_blacklist=eval_blacklist,
+                seen_local=seen_local,
+                hf_tok=hf_tok,
+            )
+        else:
+            if rasa_files is None:
+                api = HfApi(token=hf_tok)
+                rasa_files = api.list_repo_files("ai4bharat/Rasa", repo_type="dataset")
+            lang_dir = RASA_LANG_DIRS[lang]
+            tr_shards = sorted(f for f in rasa_files if f.startswith(f"{lang_dir}/train-") and f.endswith(".parquet"))
+            te_shards = sorted(f for f in rasa_files if f.startswith(f"{lang_dir}/test-") and f.endswith(".parquet"))
+            ordered_shards = interleave_from_ends(tr_shards) + interleave_from_ends(te_shards)
 
-        for shard in ordered_shards:
-            if len(male_list) >= t_male + need_eval and len(fem_list) >= t_fem:
-                break
-            try:
-                pq_path = hf_hub_download(repo_id="ai4bharat/Rasa", filename=shard, repo_type="dataset", token=hf_tok)
-                pf = pq.ParquetFile(pq_path)
-            except Exception as exc:
-                print(f"[WARN] Shard {shard} skipped: {exc}", flush=True)
-                continue
+            male_list = list(seeded_male.get(lang, []))[: t_male + need_eval]
+            fem_list = []
 
-            for batch in pf.iter_batches(batch_size=48):
+            for shard in ordered_shards:
                 if len(male_list) >= t_male + need_eval and len(fem_list) >= t_fem:
                     break
-                cols = batch.to_pydict()
-                texts = cols.get("text", [])
-                genders = cols.get("gender", [""] * len(texts))
-                styles = cols.get("style", ["BOOK"] * len(texts))
-                raw_bytes_col = cols.get("bytes")
-                audio_struct_col = cols.get("audio")
+                try:
+                    pq_path = hf_hub_download(repo_id="ai4bharat/Rasa", filename=shard, repo_type="dataset", token=hf_tok)
+                    pf = pq.ParquetFile(pq_path)
+                except Exception as exc:
+                    print(f"[WARN] Shard {shard} skipped: {exc}", flush=True)
+                    continue
 
-                for i in range(len(texts)):
-                    g_str = str(genders[i] or "").strip()
-                    if g_str not in ("Male", "Female"):
-                        continue
-                    if g_str == "Male" and len(male_list) >= t_male + need_eval:
-                        continue
-                    if g_str == "Female" and len(fem_list) >= t_fem:
-                        continue
+                for batch in pf.iter_batches(batch_size=48):
+                    if len(male_list) >= t_male + need_eval and len(fem_list) >= t_fem:
+                        break
+                    cols = batch.to_pydict()
+                    texts = cols.get("text", [])
+                    genders = cols.get("gender", [""] * len(texts))
+                    styles = cols.get("style", ["BOOK"] * len(texts))
+                    raw_bytes_col = cols.get("bytes")
+                    audio_struct_col = cols.get("audio")
 
-                    st = str(styles[i] or "").strip().upper()
-                    if st and st not in NEUTRAL_RASA_STYLES:
-                        continue
+                    for i in range(len(texts)):
+                        g_str = str(genders[i] or "").strip()
+                        if g_str not in ("Male", "Female"):
+                            continue
+                        if g_str == "Male" and len(male_list) >= t_male + need_eval:
+                            continue
+                        if g_str == "Female" and len(fem_list) >= t_fem:
+                            continue
 
-                    raw_text = str(texts[i] or "").strip()
-                    if len(raw_text) < 8 or len(raw_text) > 260:
-                        continue
-                    norm_t = clean_native_text(raw_text, lang)
-                    if len(norm_t) < 6:
-                        continue
-                    key = f"{lang}:{norm_t}"
-                    if key in eval_blacklist or key in seen_local:
-                        continue
+                        st = str(styles[i] or "").strip().upper()
+                        if st and st not in NEUTRAL_RASA_STYLES:
+                            continue
 
-                    b_payload = None
-                    if raw_bytes_col is not None and raw_bytes_col[i]:
-                        b_payload = raw_bytes_col[i]
-                    elif audio_struct_col is not None and isinstance(audio_struct_col[i], dict):
-                        b_payload = audio_struct_col[i].get("bytes")
-                    if not b_payload:
-                        continue
+                        raw_text = str(texts[i] or "").strip()
+                        if len(raw_text) < 8 or len(raw_text) > 260:
+                            continue
+                        norm_t = clean_native_text(raw_text, lang)
+                        if len(norm_t) < 6:
+                            continue
+                        key = f"{lang}:{norm_t}"
+                        if key in eval_blacklist or key in seen_local:
+                            continue
 
-                    try:
-                        raw_wav, orig_sr = sf.read(io.BytesIO(b_payload), dtype="float32")
-                    except Exception:
-                        continue
+                        b_payload = None
+                        if raw_bytes_col is not None and raw_bytes_col[i]:
+                            b_payload = raw_bytes_col[i]
+                        elif audio_struct_col is not None and isinstance(audio_struct_col[i], dict):
+                            b_payload = audio_struct_col[i].get("bytes")
+                        if not b_payload:
+                            continue
 
-                    wav_24k = clean_studio_vits_24k(resample_to_24k(raw_wav, int(orig_sr)))
-                    if wav_24k is None:
-                        continue
+                        try:
+                            raw_wav, orig_sr = sf.read(io.BytesIO(b_payload), dtype="float32")
+                        except Exception:
+                            continue
 
-                    dur_s = wav_24k.size / SAMPLE_RATE_24K
-                    cps = len(norm_t) / max(dur_s, 0.1)
-                    if cps < 3.5 or cps > 28.0:
-                        continue
+                        wav_24k = clean_studio_vits_24k(resample_to_24k(raw_wav, int(orig_sr)))
+                        if wav_24k is None:
+                            continue
 
-                    seen_local.add(key)
-                    uid = hashlib.sha1(f"{g_str}:{key}".encode("utf-8")).hexdigest()[:12]
-                    wpath = lang_wav_dir / g_str / f"{lang}_{uid}.wav"
-                    sf.write(str(wpath), wav_24k, SAMPLE_RATE_24K, subtype="PCM_16")
-                    item = {
-                        "utt_id": f"{lang}_{uid}",
-                        "lang": lang,
-                        "gender": g_str,
-                        "style": st,
-                        "text": raw_text,
-                        "local_wav": str(wpath),
-                        "n_frames": wav_24k.size // HOP_LENGTH,
-                        "duration_sec": round(dur_s, 4),
-                    }
-                    if g_str == "Male":
-                        male_list.append(item)
-                    else:
-                        fem_list.append(item)
+                        dur_s = wav_24k.size / SAMPLE_RATE_24K
+                        cps = len(norm_t) / max(dur_s, 0.1)
+                        if cps < 3.5 or cps > 28.0:
+                            continue
 
-            # Free raw parquet shard from HF cache if disk space tight
-            try:
-                if os.path.exists(pq_path) and os.path.islink(pq_path):
-                    real_p = os.path.realpath(pq_path)
-                    os.unlink(pq_path)
-                    if os.path.exists(real_p):
-                        os.unlink(real_p)
-            except Exception:
-                pass
+                        seen_local.add(key)
+                        uid = hashlib.sha1(f"{g_str}:{key}".encode("utf-8")).hexdigest()[:12]
+                        wpath = lang_wav_dir / g_str / f"{lang}_{uid}.wav"
+                        sf.write(str(wpath), wav_24k, SAMPLE_RATE_24K, subtype="PCM_16")
+                        item = {
+                            "utt_id": f"{lang}_{uid}",
+                            "lang": lang,
+                            "gender": g_str,
+                            "style": st,
+                            "text": raw_text,
+                            "local_wav": str(wpath),
+                            "n_frames": wav_24k.size // HOP_LENGTH,
+                            "duration_sec": round(dur_s, 4),
+                        }
+                        if g_str == "Male":
+                            male_list.append(item)
+                        else:
+                            fem_list.append(item)
+
+                # Free raw parquet shard from HF cache if disk space tight
+                try:
+                    if os.path.exists(pq_path) and os.path.islink(pq_path):
+                        real_p = os.path.realpath(pq_path)
+                        os.unlink(pq_path)
+                        if os.path.exists(real_p):
+                            os.unlink(real_p)
+                except Exception:
+                    pass
 
         if need_eval > 0:
             half = need_eval // 2
             test_gt_dir = out_dir / "test_gt_wavs"
             test_gt_dir.mkdir(parents=True, exist_ok=True)
-            for r in male_list[:half]:
+            carved_val = male_list[:half]
+            carved_test: list[dict[str, Any]] = []
+            for r in carved_val:
                 val_rows.append(r)
+                eval_blacklist.add(f"{lang}:{clean_native_text(r['text'], lang)}")
             for r in male_list[half : 2 * half]:
                 dst = test_gt_dir / f"{r['utt_id']}.wav"
                 shutil.copy2(r["local_wav"], dst)
@@ -742,13 +1027,58 @@ def prepare_heldout_and_native_splits(
                 r_copy["local_wav"] = str(dst)
                 r_copy["wav_path"] = f"test_gt_wavs/{dst.name}"
                 test_rows.append(r_copy)
+                carved_test.append(r_copy)
+                eval_blacklist.add(f"{lang}:{clean_native_text(r['text'], lang)}")
             male_list = male_list[2 * half :]
+
+            # Persist leakage-free held-out split for this language to GCS immediately
+            if not smoke_limit and gcs_bucket and len(carved_test) >= 40:
+                stage_d = work_dir / f"eval_stage_{lang}"
+                (stage_d / "test_gt_wavs").mkdir(parents=True, exist_ok=True)
+                with open(stage_d / "val.jsonl", "w", encoding="utf-8") as fv:
+                    for rv in carved_val:
+                        fv.write(
+                            json.dumps(
+                                {
+                                    "utt_id": rv["utt_id"],
+                                    "lang": lang,
+                                    "text": rv["text"],
+                                    "duration_sec": rv["duration_sec"],
+                                },
+                                ensure_ascii=False,
+                            )
+                            + "\n"
+                        )
+                with open(stage_d / "test.jsonl", "w", encoding="utf-8") as ft:
+                    for rt in carved_test:
+                        shutil.copy2(rt["local_wav"], stage_d / "test_gt_wavs" / f"{rt['utt_id']}.wav")
+                        ft.write(
+                            json.dumps(
+                                {
+                                    "utt_id": rt["utt_id"],
+                                    "lang": lang,
+                                    "text": rt["text"],
+                                    "wav_path": f"test_gt_wavs/{rt['utt_id']}.wav",
+                                    "duration_sec": rt["duration_sec"],
+                                },
+                                ensure_ascii=False,
+                            )
+                            + "\n"
+                        )
+                eval_tar_out = work_dir / f"{lang}_eval.tar.gz"
+                with tarfile.open(eval_tar_out, "w:gz") as tf_out:
+                    tf_out.add(stage_d / "val.jsonl", arcname="val.jsonl")
+                    tf_out.add(stage_d / "test.jsonl", arcname="test.jsonl")
+                    tf_out.add(stage_d / "test_gt_wavs", arcname="test_gt_wavs")
+                gcs_upload_if_configured(gcs_bucket, eval_tar_out, f"ninada_v5/eval_splits/{lang}_eval.tar.gz")
+                eval_tar_out.unlink(missing_ok=True)
+                shutil.rmtree(stage_d, ignore_errors=True)
 
         min_m = 0 if t_male == 0 else (4 if smoke_limit > 0 else 150)
         min_f = 0 if t_fem == 0 else (4 if smoke_limit > 0 else 100)
         if len(male_list) < min_m or len(fem_list) < min_f:
             raise RuntimeError(
-                f"Insufficient native Rasa studio data for {lang}: Male={len(male_list)}, Female={len(fem_list)} (check HF_TOKEN access to ai4bharat/Rasa)"
+                f"Insufficient native studio data for {lang}: Male={len(male_list)}, Female={len(fem_list)} (check HF_TOKEN access)"
             )
         train_data[lang] = {"Male": male_list, "Female": fem_list}
         print(
@@ -1062,15 +1392,24 @@ def evaluate_all_systems_on_heldout(
         "ta": "facebook/mms-tts-tam",
         "te": "facebook/mms-tts-tel",
         "ml": "facebook/mms-tts-mal",
+        "en": "facebook/mms-tts-eng",
+        "mr": "facebook/mms-tts-mar",
+        "bn": "facebook/mms-tts-ben",
+        "gu": "facebook/mms-tts-guj",
+        "pa": "facebook/mms-tts-pan",
+        "or": "facebook/mms-tts-ory",
     }
-    print("[BENCH] Evaluating mms_hin_raw & mms_5_fleet on 240 held-out studio utterances...", flush=True)
+    print(f"[BENCH] Evaluating mms_hin_raw & mms_5_fleet on {len(test_rows)} held-out studio utterances...", flush=True)
     loaded_mms: dict[str, tuple[Any, Any]] = {}
-    for repo in sorted(set(mms_repos.values())):
+    active_test_langs = {r["lang"] for r in test_rows}
+    needed_mms_repos = sorted({mms_repos[lc] for lc in active_test_langs} | {"facebook/mms-tts-hin"})
+    for repo in needed_mms_repos:
         tk_m = AutoTokenizer.from_pretrained(repo)
         md_m = VitsModel.from_pretrained(repo).to(device).eval()
         loaded_mms[repo] = (tk_m, md_m)
 
-    for sys_key, use_fleet, sz_mb in [("mms_hin_raw", False, 138.8), ("mms_5_fleet", True, 694.0)]:
+    fleet_sz_mb = round(len(set(mms_repos.values())) * 138.8, 1)
+    for sys_key, use_fleet, sz_mb in [("mms_hin_raw", False, 138.8), ("mms_5_fleet", True, fleet_sz_mb)]:
         utts, ttfas, rtfs = [], [], []
         for r in test_rows:
             uid, lc = r["utt_id"], r["lang"]
@@ -1078,7 +1417,7 @@ def evaluate_all_systems_on_heldout(
             tk_m, md_m = loaded_mms[repo]
             t0 = time.perf_counter()
             inps = tk_m(r["text"], return_tensors="pt")
-            if inps["input_ids"].shape[1] == 0:
+            if inps["input_ids"].shape[1] < 3:
                 syn = np.zeros(1600, dtype=np.float32)
             else:
                 inps = {k: v.to(device) for k, v in inps.items()}
@@ -1118,14 +1457,15 @@ def evaluate_all_systems_on_heldout(
         )
     systems_out["ninada_v3_warmstart"] = _agg(ws_utts, 112.0, SAMPLE_RATE_24K, ws_ttfas, ws_rtfs)
 
-    # 4 & 5. Ninada v4.0 Native Studio VITS Specialists (PyTorch FP32 & Active Browser ONNX ~28 MB)
-    print("[BENCH] Evaluating Ninada v4.0 Native Specialists (PyTorch FP32 + CPU ONNX W8A32/FP16)...", flush=True)
+    # 4 & 5. Ninada v5.0 Native Studio VITS Specialists (PyTorch FP32 & Active Browser ONNX ~28 MB)
+    print("[BENCH] Evaluating Ninada v5.0 Native Specialists (PyTorch FP32 + CPU ONNX W8A32/FP16)...", flush=True)
     ort_sessions: dict[str, ort.InferenceSession] = {}
     onnx_sizes: list[float] = []
     sess_opts = ort.SessionOptions()
     sess_opts.intra_op_num_threads = 4
     sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    for lc in SUPPORTED_LANGS:
+    eval_langs = [lc for lc in SUPPORTED_LANGS if lc in active_test_langs]
+    for lc in eval_langs:
         op = onnx_dir / f"{lc}.onnx"
         onnx_sizes.append(op.stat().st_size / (1024 * 1024))
         ort_sessions[lc] = ort.InferenceSession(str(op), sess_options=sess_opts, providers=["CPUExecutionProvider"])
@@ -1255,8 +1595,8 @@ def evaluate_all_systems_on_heldout(
 
     dur_r = float(np.corrcoef(pt_durs_det, ox_durs_det)[0, 1]) if len(pt_durs_det) > 2 else 1.0
     return {
-        "benchmark": "ninada_24khz_native_studio_6lang",
-        "version": "4.0.0",
+        "benchmark": "ninada_24khz_native_studio_12lang",
+        "version": "5.0.0",
         "sample_rate_hz": SAMPLE_RATE_24K,
         "num_train_utterances": num_train_total,
         "num_val_utterances": num_val_total,
@@ -1265,7 +1605,7 @@ def evaluate_all_systems_on_heldout(
         "systems": systems_out,
         "onnx_parity": {
             "active_specialist_size_mb": round(active_onnx_mb, 2),
-            "per_lang_onnx_mb": {lc: round(sz, 2) for lc, sz in zip(SUPPORTED_LANGS, onnx_sizes)},
+            "per_lang_onnx_mb": {lc: round(sz, 2) for lc, sz in zip(eval_langs, onnx_sizes)},
             "pt_vs_onnx_mcd_db": round(float(np.mean(parity_mcds)), 3),
             "duration_corr_r": round(dur_r, 5),
         },
@@ -1274,14 +1614,14 @@ def evaluate_all_systems_on_heldout(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--work-dir", type=Path, default=Path("/tmp/ninada_v4_work"))
-    parser.add_argument("--out-dir", type=Path, default=Path("/tmp/ninada_v4_out"))
+    parser.add_argument("--work-dir", type=Path, default=Path("/tmp/ninada_v5_work"))
+    parser.add_argument("--out-dir", type=Path, default=Path("/tmp/ninada_v5_out"))
     parser.add_argument("--gcs-bucket", type=str, default="")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--smoke-steps", type=int, default=0, help="If >0, run fast smoke test")
-    parser.add_argument("--force-langs", type=str, default="", help="Comma-separated langs to force retrain (e.g. 'sa' or 'sa:male')")
+    parser.add_argument("--force-langs", type=str, default="", help="Comma-separated langs to force retrain (e.g. 'en' or 'en:male')")
     parser.add_argument("--only-langs", type=str, default="", help="Optional comma-separated subset of langs to train in this worker")
-    parser.add_argument("--skip-bench", action="store_true", help="Exit after uploading trained specialists without running 6-lang benchmark")
+    parser.add_argument("--skip-bench", action="store_true", help="Exit after uploading trained specialists without running 12-lang benchmark")
     args = parser.parse_args()
     raw_force = [s.strip().lower() for s in args.force_langs.split(",") if s.strip()]
     force_male_langs = {s.split(":")[0] for s in raw_force if ":" not in s or s.endswith(":male")}
@@ -1293,14 +1633,14 @@ def main() -> None:
     args.work_dir.mkdir(parents=True, exist_ok=True)
     args.out_dir.mkdir(parents=True, exist_ok=True)
     onnx_dir = args.out_dir / "onnx"
-    samples_dir = args.out_dir / "samples_v4"
+    samples_dir = args.out_dir / "samples_v5"
     ckpt_dir = args.out_dir / "checkpoints"
     onnx_dir.mkdir(parents=True, exist_ok=True)
     samples_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"[INIT] Ninada v4.0 Native Studio Specialists on device={device}", flush=True)
+    print(f"[INIT] Ninada v5.0 Native Studio Specialists (12 Languages) on device={device}", flush=True)
 
     gcs_bucket = args.gcs_bucket.strip() or None
     resume_male_cont = os.environ.get("RESUME_MALE", "0").strip() == "1"
@@ -1356,18 +1696,18 @@ def main() -> None:
                 dt_ms = (time.perf_counter() - t0) * 1000.0
                 warmstart_wavs[r["utt_id"]] = (w_ws[0].detach().cpu().numpy().astype(np.float32), donor_sr, dt_ms)
 
-        # Check GCS resume cache for completed Male specialist
+        # Check GCS resume cache (`ninada_v5/` first, fallback `ninada_v4/`) for completed Male specialist
         ckpt_st_path = ckpt_dir / f"{lang}_male.safetensors"
         out_onnx_p = onnx_dir / f"{lang}.onnx"
         sample_p = samples_dir / f"{lang}.wav"
         if (
             not args.smoke_steps
             and lang not in force_male_langs
-            and gcs_download_if_exists(gcs_bucket, f"ninada_v4/checkpoints/{lang}_male.safetensors", ckpt_st_path)
-            and gcs_download_if_exists(gcs_bucket, f"ninada_v4/onnx/{lang}.onnx", out_onnx_p)
+            and gcs_restore_v5_or_v4(gcs_bucket, f"checkpoints/{lang}_male.safetensors", ckpt_st_path)
+            and gcs_restore_v5_or_v4(gcs_bucket, f"onnx/{lang}.onnx", out_onnx_p)
         ):
             net.load_state_dict(load_file(str(ckpt_st_path)), strict=False)
-            gcs_download_if_exists(gcs_bucket, f"ninada_v4/samples_v4/{lang}.wav", sample_p)
+            gcs_restore_v5_or_v4(gcs_bucket, f"samples_v5/{lang}.wav", sample_p)
             print(f"[RESUME] Restored trained {lang} Male specialist from GCS!", flush=True)
             t_stats = {"restored_from_gcs": True}
         else:
@@ -1375,8 +1715,8 @@ def main() -> None:
             lr_g_eff = float(recipe["lr_g"])
             lr_text_eff = float(recipe["lr_text"])
             lr_d_eff = float(recipe["lr_d"])
-            if resume_male_cont and gcs_download_if_exists(
-                gcs_bucket, f"ninada_v4/checkpoints/{lang}_male.safetensors", ckpt_st_path
+            if resume_male_cont and gcs_restore_v5_or_v4(
+                gcs_bucket, f"checkpoints/{lang}_male.safetensors", ckpt_st_path
             ):
                 net.load_state_dict(load_file(str(ckpt_st_path)), strict=False)
                 steps = int(os.environ.get("RESUME_STEPS", "2200"))
@@ -1411,29 +1751,30 @@ def main() -> None:
                 net, tok, out_onnx_p, CANONICAL_PROBES[lang], sample_p
             )
             t_stats.update(ox_stats)
-            gcs_upload_if_configured(gcs_bucket, ckpt_st_path, f"ninada_v4/checkpoints/{lang}_male.safetensors")
-            gcs_upload_if_configured(gcs_bucket, out_onnx_p, f"ninada_v4/onnx/{lang}.onnx")
-            gcs_upload_if_configured(gcs_bucket, sample_p, f"ninada_v4/samples_v4/{lang}.wav")
+            gcs_upload_if_configured(gcs_bucket, ckpt_st_path, f"ninada_v5/checkpoints/{lang}_male.safetensors")
+            gcs_upload_if_configured(gcs_bucket, out_onnx_p, f"ninada_v5/onnx/{lang}.onnx")
+            gcs_upload_if_configured(gcs_bucket, sample_p, f"ninada_v5/samples_v5/{lang}.wav")
 
         pt_models[lang] = copy.deepcopy(net).cpu().eval()
         training_summary[f"{lang}_male"] = t_stats
         if device.type == "cuda":
             torch.cuda.empty_cache()
 
-    # Save canonical `vocabs.json` when all 6 languages are loaded
+    # Save canonical `vocabs.json` when all 12 languages are loaded
     if len(target_langs) == len(SUPPORTED_LANGS):
         vocabs_payload = {
-            "version": "4.0.0",
+            "version": "5.0.0",
             "sample_rate": SAMPLE_RATE_24K,
             "hop_length": HOP_LENGTH,
             "languages": {lc: tokenizers[lc].to_dict() for lc in SUPPORTED_LANGS},
         }
         vocabs_path = args.out_dir / "vocabs.json"
         vocabs_path.write_text(json.dumps(vocabs_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        gcs_upload_if_configured(gcs_bucket, vocabs_path, "ninada_v4/vocabs.json")
+        gcs_upload_if_configured(gcs_bucket, vocabs_path, "ninada_v5/vocabs.json")
 
     # 2. Train & Export Native Female 24,000 Hz Studio Specialists (`{lang}_female.onnx`)
-    for lang in target_langs:
+    skip_female = os.environ.get("SKIP_FEMALE", "0").strip() == "1"
+    for lang in ([] if skip_female else target_langs):
         recipe = SPECIALIST_RECIPES[lang]
         tok = tokenizers[lang]
         out_fem_onnx = onnx_dir / f"{lang}_female.onnx"
@@ -1443,8 +1784,8 @@ def main() -> None:
         if (
             not args.smoke_steps
             and lang not in force_fem_langs
-            and gcs_download_if_exists(gcs_bucket, f"ninada_v4/onnx/{lang}_female.onnx", out_fem_onnx)
-            and gcs_download_if_exists(gcs_bucket, f"ninada_v4/samples_v4/{lang}_female.wav", sample_fem_p)
+            and gcs_restore_v5_or_v4(gcs_bucket, f"onnx/{lang}_female.onnx", out_fem_onnx)
+            and gcs_restore_v5_or_v4(gcs_bucket, f"samples_v5/{lang}_female.wav", sample_fem_p)
         ):
             print(f"[RESUME] Restored trained {lang} Female specialist from GCS!", flush=True)
             training_summary[f"{lang}_female"] = {"restored_from_gcs": True}
@@ -1484,9 +1825,9 @@ def main() -> None:
         )
         f_stats.update(ox_f_stats)
         training_summary[f"{lang}_female"] = f_stats
-        gcs_upload_if_configured(gcs_bucket, ckpt_fem_path, f"ninada_v4/checkpoints/{lang}_female.safetensors")
-        gcs_upload_if_configured(gcs_bucket, out_fem_onnx, f"ninada_v4/onnx/{lang}_female.onnx")
-        gcs_upload_if_configured(gcs_bucket, sample_fem_p, f"ninada_v4/samples_v4/{lang}_female.wav")
+        gcs_upload_if_configured(gcs_bucket, ckpt_fem_path, f"ninada_v5/checkpoints/{lang}_female.safetensors")
+        gcs_upload_if_configured(gcs_bucket, out_fem_onnx, f"ninada_v5/onnx/{lang}_female.onnx")
+        gcs_upload_if_configured(gcs_bucket, sample_fem_p, f"ninada_v5/samples_v5/{lang}_female.wav")
         del net_f
         if device.type == "cuda":
             torch.cuda.empty_cache()
@@ -1495,16 +1836,16 @@ def main() -> None:
         print(f"[WORKER DONE] Finished training & uploading specialists for {target_langs}: {training_summary}", flush=True)
         return
 
-    # 3. Save dataset split manifests & run full 240-utterance scientific benchmark
+    # 3. Save dataset split manifests & run full 480-utterance scientific benchmark
     num_train_total = sum(
         max(len(train_data[lc]["Male"]), 0 if args.smoke_steps else int(SPECIALIST_RECIPES[lc]["target_male_utts"]))
         + max(len(train_data[lc]["Female"]), 0 if args.smoke_steps else int(SPECIALIST_RECIPES[lc]["target_female_utts"]))
         for lc in SUPPORTED_LANGS
     )
-    (args.out_dir / "training_summary_v4.json").write_text(
+    (args.out_dir / "training_summary_v5.json").write_text(
         json.dumps(training_summary, indent=2) + "\n", encoding="utf-8"
     )
-    with open(args.out_dir / "test_v4.jsonl", "w", encoding="utf-8") as f_te:
+    with open(args.out_dir / "test_v5.jsonl", "w", encoding="utf-8") as f_te:
         for r in test_rows:
             f_te.write(
                 json.dumps(
@@ -1532,19 +1873,19 @@ def main() -> None:
     )
     results_path = args.out_dir / "results.json"
     results_path.write_text(json.dumps(bench_results, indent=2) + "\n", encoding="utf-8")
-    gcs_upload_if_configured(gcs_bucket, results_path, "ninada_v4/results.json")
-    gcs_upload_if_configured(gcs_bucket, args.out_dir / "training_summary_v4.json", "ninada_v4/training_summary_v4.json")
-    gcs_upload_if_configured(gcs_bucket, args.out_dir / "test_v4.jsonl", "ninada_v4/test_v4.jsonl")
+    gcs_upload_if_configured(gcs_bucket, results_path, "ninada_v5/results.json")
+    gcs_upload_if_configured(gcs_bucket, args.out_dir / "training_summary_v5.json", "ninada_v5/training_summary_v5.json")
+    gcs_upload_if_configured(gcs_bucket, args.out_dir / "test_v5.jsonl", "ninada_v5/test_v5.jsonl")
 
-    bundle_tar = args.out_dir / "ninada_v4_artifacts.tar.gz"
+    bundle_tar = args.out_dir / "ninada_v5_artifacts.tar.gz"
     with tarfile.open(bundle_tar, "w:gz") as tf:
-        for rel in ("onnx", "samples_v4", "vocabs.json", "results.json", "training_summary_v4.json", "test_v4.jsonl", "test_gt_wavs"):
+        for rel in ("onnx", "samples_v5", "vocabs.json", "results.json", "training_summary_v5.json", "test_v5.jsonl", "test_gt_wavs"):
             target = args.out_dir / rel
             if target.exists():
                 tf.add(target, arcname=rel)
-    gcs_upload_if_configured(gcs_bucket, bundle_tar, "ninada_v4/ninada_v4_artifacts.tar.gz")
+    gcs_upload_if_configured(gcs_bucket, bundle_tar, "ninada_v5/ninada_v5_artifacts.tar.gz")
 
-    print("\n=== NINADA v4.0 SCIENTIFIC SUMMARY ===", flush=True)
+    print("\n=== NINADA v5.0 SCIENTIFIC SUMMARY ===", flush=True)
     for sk, sv in bench_results["systems"].items():
         print(
             f"  {sk:22s}: MCD={sv['mcd_db']['mean']:.2f} dB | HF={sv['hf_8_12k_err_db']['mean']:.2f} dB | "

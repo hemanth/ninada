@@ -1,8 +1,8 @@
 {
   "name": "ninada-workspace",
   "private": true,
-  "version": "4.0.2",
-  "description": "Ninada (निनाद) — 24,000 Hz Native Per-Language Studio VITS Neural TTS for Classical Sanskrit & 5 Indian Languages (6 Dedicated ~28 MB W8A32+FP16 ONNX Specialists + AudioWorklet WASM SIMD + Zero-Dep Klatt Fallback)",
+  "version": "5.0.0",
+  "description": "Ninada (निनाद) — 24,000 Hz Native Per-Language Studio VITS Neural TTS for Indian English, Classical Sanskrit & 10 Indian Languages (24 Dedicated ~28 MB W8A32+FP16 ONNX Specialists + AudioWorklet WASM SIMD + Zero-Dep Klatt Fallback)",
   "type": "module",
   "scripts": {
     "test": "node --test js/test/*.test.js",

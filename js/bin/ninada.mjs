@@ -6,7 +6,7 @@ import ninada from '../src/index.js';
 
 const args = process.argv.slice(2);
 if (args.length === 0 || args.includes('-h') || args.includes('--help')) {
-  console.log('Usage: ninada <text> [-l sa|hi|kn|ta|te|ml] [-m model.onnx|dir] [-r 1.0] [-o output.wav] [--json]');
+  console.log('Usage: ninada <text> [-l sa|hi|kn|ta|te|ml|en|mr|bn|gu|pa|or] [-m model.onnx|dir] [-r 1.0] [-o output.wav] [--json]');
   process.exit(0);
 }
 
@@ -36,15 +36,17 @@ for (let i = 0; i < args.length; i++) {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const opts = {};
-const LANGS = ['sa', 'hi', 'kn', 'ta', 'te', 'ml'];
+const LANGS = ['sa', 'hi', 'kn', 'ta', 'te', 'ml', 'en', 'mr', 'bn', 'gu', 'pa', 'or'];
 
 function populateSpecialistMap(baseDir) {
   const found = {};
   for (const lc of LANGS) {
-    for (const cand of [path.join(baseDir, `${lc}.onnx`), path.join(baseDir, 'models', `${lc}.onnx`), path.join(baseDir, 'onnx', `${lc}.onnx`)]) {
-      if (fs.existsSync(cand)) {
-        found[lc] = cand;
-        break;
+    for (const key of [lc, `${lc}_female`]) {
+      for (const cand of [path.join(baseDir, `${key}.onnx`), path.join(baseDir, 'models', `${key}.onnx`), path.join(baseDir, 'onnx', `${key}.onnx`)]) {
+        if (fs.existsSync(cand)) {
+          found[key] = cand;
+          break;
+        }
       }
     }
   }
@@ -69,7 +71,9 @@ if (modelArg) {
     opts.model = modelArg;
   }
 } else {
+  const merged = {};
   for (const dir of [
+    path.join(repoRoot, 'artifacts', 'ninada_v5', 'onnx'),
     path.join(repoRoot, 'docs', 'models'),
     path.join(repoRoot, 'artifacts', 'ninada_v4', 'onnx'),
     path.join(repoRoot, 'docs'),
@@ -77,21 +81,13 @@ if (modelArg) {
   ]) {
     const map = populateSpecialistMap(dir);
     if (map) {
-      opts.models = map;
-      break;
+      for (const [k, v] of Object.entries(map)) {
+        if (!merged[k]) merged[k] = v;
+      }
     }
-    const ef = path.join(dir, 'encoder_flow_quantized.onnx');
-    const vf = path.join(dir, 'vocoder_quantized.onnx');
-    const mf = path.join(dir, 'model_quantized.onnx');
-    if (fs.existsSync(ef) && fs.existsSync(vf)) {
-      opts.encoderModel = ef;
-      opts.vocoderModel = vf;
-      break;
-    }
-    if (fs.existsSync(mf)) {
-      opts.model = mf;
-      break;
-    }
+  }
+  if (Object.keys(merged).length > 0) {
+    opts.models = merged;
   }
 }
 

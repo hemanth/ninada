@@ -221,6 +221,41 @@ async function runWebKitIosSafariE2E(baseUrl) {
   assert.ok(klattRes.samples > 24000);
   assert.ok(klattRes.rms > 0.02);
 
+  // 1f. Switch back to Tier-1 Neural (`auto`) + tap Indian English (`en`) tab -> stream 24 kHz Indian English on WebKit!
+  await page.selectOption("#tierSelect", "auto");
+  await tapLocator(page, page.locator('.lang-btn[data-lang="en"]'));
+  await waitForReadyUnlock(page, "en");
+  await page.waitForTimeout(220);
+  await page.evaluate(() => {
+    if (typeof window.__ninadaCancel === "function") window.__ninadaCancel();
+    window.__ninadaLastResult = null;
+  });
+  await tapLocator(page, synthBtn);
+  await page.waitForFunction(
+    () =>
+      window.__ninadaLastResult &&
+      window.__ninadaLastResult.lang === "en" &&
+      window.__ninadaLastResult.tier === "neural_onnx",
+    null,
+    { timeout: 60000 }
+  );
+  const enWebkitStream = await page.evaluate(async () => {
+    const drained = await window.__ninadaWaitForPlayback();
+    return {
+      result: window.__ninadaLastResult,
+      stats: { ...drained },
+    };
+  });
+  console.log("  ✔ WebKit Indian English (`en`) Neural Stream:", {
+    lang: enWebkitStream.result.lang,
+    ttfaMs: Math.round(enWebkitStream.result.ttfaMs * 10) / 10,
+    chunkCount: enWebkitStream.result.chunkCount,
+    underrunCount: enWebkitStream.stats.underrunCount,
+  });
+  assert.equal(enWebkitStream.result.lang, "en");
+  assert.ok(enWebkitStream.result.rms > 0.02);
+  assert.equal(enWebkitStream.stats.underrunCount, 0);
+
   assert.equal(errors.length, 0, `WebKit E2E errors: ${errors.join(" | ")}`);
   await context.close();
   await browser.close();

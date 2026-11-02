@@ -156,14 +156,61 @@ def _vowel_ipa(ch: str, is_matra: bool, lang: str) -> str:
 
 
 def _normalize_script_word_to_dev(word: str, lang: str) -> str:
-    """Losslessly project Kannada/Tamil/Telugu/Malayalam codepoints to extended Devanagari while keeping chillu."""
+    """Losslessly project Brahmic codepoints (Bengali, Gurmukhi, Gujarati, Odia, Tamil, Telugu, Kannada, Malayalam) to extended Devanagari."""
     out: list[str] = []
-    for ch in unicodedata.normalize("NFC", word):
+    norm = unicodedata.normalize("NFC", word)
+    i = 0
+    n = len(norm)
+    while i < n:
+        ch = norm[i]
         if ch in _ML_CHILLU_IPA:
             out.append(ch)
+            i += 1
             continue
         cp = ord(ch)
-        if 0x0B80 <= cp <= 0x0BFF:      # Tamil
+        if 0x0980 <= cp <= 0x09FF:      # Bengali / Eastern Nagari
+            if cp == 0x09CE:            # ৎ khanda-ta
+                out.append("त्")
+            elif cp == 0x09F0:          # ৰ
+                out.append("र")
+            elif cp == 0x09F1:          # ৱ
+                out.append("ब")
+            elif cp == 0x09D7:          # ৗ au length mark
+                out.append("ौ")
+            elif cp == 0x09B0:          # র (Bengali lacks 0x09B1; 0x09B0 is ra)
+                out.append("र")
+            else:
+                # Bengali lacks व (0x09B5); ব (0x09AC) is [b]
+                out.append(chr(cp - 0x0980 + 0x0900))
+        elif 0x0A00 <= cp <= 0x0A7F:    # Gurmukhi (Punjabi)
+            if cp == 0x0A70:            # ੰ Tippi
+                out.append("ं")
+            elif cp == 0x0A71:          # ੱ Adhak (geminates following consonant)
+                if i + 1 < n and 0x0A15 <= ord(norm[i + 1]) <= 0x0A39:
+                    c_dev = chr(ord(norm[i + 1]) - 0x0A00 + 0x0900)
+                    out.append(c_dev + "्")
+            elif cp == 0x0A5C:          # ੜ Rra
+                out.append("ड़")
+            elif cp == 0x0A72:          # ੲ Iri
+                out.append("इ")
+            elif cp == 0x0A73:          # ੳ Ura
+                out.append("उ")
+            else:
+                out.append(chr(cp - 0x0A00 + 0x0900))
+        elif 0x0A80 <= cp <= 0x0AFF:    # Gujarati
+            out.append(chr(cp - 0x0A80 + 0x0900))
+        elif 0x0B00 <= cp <= 0x0B7F:    # Odia
+            if cp == 0x0B5F:            # ୟ Yya
+                out.append("य")
+            elif cp == 0x0B71:          # ୱ Wa
+                out.append("व")
+            elif cp == 0x0B56:
+                out.append("ै")
+            elif cp == 0x0B57:
+                out.append("ौ")
+            else:
+                out.append(chr(cp - 0x0B00 + 0x0900))
+        elif 0x0B80 <= cp <= 0x0BFF:    # Tamil
             if ch == "\u0b83":          # ஃ āytam
                 out.append("ख़")
             else:
@@ -179,6 +226,7 @@ def _normalize_script_word_to_dev(word: str, lang: str) -> str:
                 out.append(chr(cp - 0x0D00 + 0x0900))
         else:
             out.append(ch)
+        i += 1
     return "".join(out)
 
 
@@ -355,8 +403,14 @@ def _apply_language_allophony(units: list[dict[str, object]], lang: str) -> None
                 # Sanskrit, Kannada, Tamil, Telugu, Malayalam word-final anusvara/sunna -> bilabial [m]
                 u["nasal"] = "m"
 
-    # 2. Hindi Ohala (1983) Schwa Deletion + 'ह' harmony
-    if lang == "hi":
+    # 2. Hindi / Marathi / Gujarati / Punjabi Schwa Deletion + Bengali / Odia rounded [ɔ] inherent vowel
+    if lang in ("bn", "or"):
+        for u in units:
+            if u["inherent"] and u["vowel"] == "ə":
+                u["vowel"] = "ɔ"
+            if lang == "bn" and u["raw_c"] in ("श", "ष", "स") and u["cons"] in ("ʂ", "s"):
+                u["cons"] = "ʃ"
+    if lang in ("hi", "mr", "gu", "pa"):
         # Count vowel-bearing nuclei
         nuclei = [idx for idx, u in enumerate(units) if u["vowel"]]
         if len(nuclei) >= 2:
@@ -574,18 +628,30 @@ _DIGIT_WORDS_HI = {
     "0": "ʃˈuːnjə", "1": "ˈeːk", "2": "dˈoː", "3": "tˈiːn", "4": "ʧˈɑːɾ",
     "5": "pˈɑ̃ːʧ", "6": "ʧʰˈɛː", "7": "sˈɑːt", "8": "ˈɑːʈʰ", "9": "nˈɔː",
 }
-_INDIC_ZERO_BASES = (0x0966, 0x0BE6, 0x0C66, 0x0CE6, 0x0D66)
+_DIGIT_WORDS_EN = {
+    "0": "zˈɪːɾoː", "1": "wˈʌn", "2": "tˈuː", "3": "tʰɾˈiː", "4": "fˈɔːɾ",
+    "5": "fˈaɪv", "6": "sˈɪks", "7": "sˈɛvən", "8": "ˈeːt", "9": "nˈaɪn",
+}
+_INDIC_ZERO_BASES = (0x0966, 0x09E6, 0x0A66, 0x0AE6, 0x0B66, 0x0BE6, 0x0C66, 0x0CE6, 0x0D66)
 _LATIN_CHAR_IPA = {
     "a": "ə", "b": "b", "c": "k", "d": "d", "e": "ɛ", "f": "f", "g": "ɡ",
     "h": "h", "i": "ɪ", "j": "ʤ", "k": "k", "l": "l", "m": "m", "n": "n",
-    "o": "o", "p": "p", "q": "k", "r": "ɾ", "s": "s", "t": "t", "u": "ʊ",
-    "v": "v", "w": "w", "x": "ks", "y": "j", "z": "z",
+    "o": "o", "p": "p", "q": "k", "r": "ɾ", "s": "s", "t": "ʈ", "u": "ʊ",
+    "v": "ʋ", "w": "ʋ", "x": "ks", "y": "j", "z": "z",
 }
 
 
 def _latin_word_to_ipa(word: str) -> str:
-    w = word.lower()
-    for dg, rep in (("tion", "ʃən"), ("sh", "ʃ"), ("ch", "ʧ"), ("th", "tʰ"), ("ph", "f"), ("ng", "ŋ"), ("ee", "iː"), ("oo", "uː")):
+    w = word.lower().strip("'")
+    if not w:
+        return ""
+    for dg, rep in (
+        ("tion", "ʃən"), ("sion", "ʒən"), ("igh", "aɪ"), ("tch", "ʧ"),
+        ("sh", "ʃ"), ("ch", "ʧ"), ("th", "tʰ"), ("ph", "f"), ("wh", "ʋ"),
+        ("ng", "ŋ"), ("ee", "iː"), ("ea", "iː"), ("oo", "uː"), ("ou", "aʊ"),
+        ("ai", "eː"), ("ay", "eː"), ("oa", "oː"), ("ow", "oː"), ("ar", "ɑːɾ"),
+        ("er", "əɾ"), ("ir", "əɾ"), ("ur", "əɾ"), ("or", "ɔːɾ"), ("ck", "k"),
+    ):
         w = w.replace(dg, rep)
     out: list[str] = []
     for ch in w:
@@ -627,14 +693,15 @@ def text_to_ipa(text: str, lang: str = "sa", normalized_dev_fallback: str | None
         raw = raw.replace("\u0964", ".").replace("|", ".")
     raw = raw.replace("...", "…").replace("–", "—")
 
-    # If input was Roman/IAST and caller provided normalized Devanagari, use that
-    if normalized_dev_fallback and re.search(r"[A-Za-z\u0100-\u024F]", raw):
+    # If input was Roman/IAST and caller provided normalized Devanagari (for non-English), use that
+    if lang != "en" and normalized_dev_fallback and re.search(r"[A-Za-z\u0100-\u024F]", raw):
         work = normalized_dev_fallback.replace("\u0965", ".").replace("\u0964", ",")
     else:
         work = raw
 
     tokens = re.findall(r"[^\s,.;:!?—…\"()“”]+|[,.;:!?—…\"()“”]+|\s+", work)
     out_chunks: list[str] = []
+    digit_map = _DIGIT_WORDS_EN if lang == "en" else _DIGIT_WORDS_HI
 
     for tok in tokens:
         if tok.isspace():
@@ -649,7 +716,7 @@ def text_to_ipa(text: str, lang: str = "sa", normalized_dev_fallback: str | None
                 out_chunks.append(p)
             continue
         if tok.isdigit():
-            out_chunks.append(" ".join(_DIGIT_WORDS_HI.get(d, "ʃˈuːnjə") for d in tok))
+            out_chunks.append(" ".join(digit_map.get(d, "ʃˈuːnjə") for d in tok))
             continue
         if re.fullmatch(r"[A-Za-z']+", tok):
             lat_ipa = _latin_word_to_ipa(tok)

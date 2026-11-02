@@ -1,4 +1,4 @@
-// Auto-generated ESM bundle for ninada v4.0
+// Auto-generated ESM bundle for ninada v5.0
 const { IPA_VOCAB, IPA_ID_TO_TOKEN, RETROFLEX_LATERAL_ID, textToIpa, ipaToIds } = (() => {
 /**
  * Zero-dependency Pan-Indic & Classical/Vedic Sanskrit -> 24 kHz IPA Phonemizer for Ninada v3.0.
@@ -138,13 +138,44 @@ function vowelIpa(ch, isMatra, lang) {
 
 function normalizeScriptWordToDev(word) {
   const out = [];
-  for (const ch of String(word).normalize('NFC')) {
+  const norm = [...String(word).normalize('NFC')];
+  const n = norm.length;
+  for (let i = 0; i < n; i++) {
+    const ch = norm[i];
     if (ML_CHILLU_IPA[ch] !== undefined) {
       out.push(ch);
       continue;
     }
     const cp = ch.codePointAt(0);
-    if (cp >= 0x0b80 && cp <= 0x0bff) {
+    if (cp >= 0x0980 && cp <= 0x09ff) {
+      if (cp === 0x09ce) out.push('त्');
+      else if (cp === 0x09f0) out.push('र');
+      else if (cp === 0x09f1) out.push('ब');
+      else if (cp === 0x09d7) out.push('ौ');
+      else if (cp === 0x09b0) out.push('र');
+      else out.push(String.fromCodePoint(cp - 0x0980 + 0x0900));
+    } else if (cp >= 0x0a00 && cp <= 0x0a7f) {
+      if (cp === 0x0a70) out.push('ं');
+      else if (cp === 0x0a71) {
+        if (i + 1 < n) {
+          const ncp = norm[i + 1].codePointAt(0);
+          if (ncp >= 0x0a15 && ncp <= 0x0a39) {
+            out.push(`${String.fromCodePoint(ncp - 0x0a00 + 0x0900)}्`);
+          }
+        }
+      } else if (cp === 0x0a5c) out.push('ड़');
+      else if (cp === 0x0a72) out.push('इ');
+      else if (cp === 0x0a73) out.push('उ');
+      else out.push(String.fromCodePoint(cp - 0x0a00 + 0x0900));
+    } else if (cp >= 0x0a80 && cp <= 0x0aff) {
+      out.push(String.fromCodePoint(cp - 0x0a80 + 0x0900));
+    } else if (cp >= 0x0b00 && cp <= 0x0b7f) {
+      if (cp === 0x0b5f) out.push('य');
+      else if (cp === 0x0b71) out.push('व');
+      else if (cp === 0x0b56) out.push('ै');
+      else if (cp === 0x0b57) out.push('ौ');
+      else out.push(String.fromCodePoint(cp - 0x0b00 + 0x0900));
+    } else if (cp >= 0x0b80 && cp <= 0x0bff) {
       if (ch === '\u0b83') out.push('ख़');
       else out.push(String.fromCodePoint(cp - 0x0b80 + 0x0900));
     } else if (cp >= 0x0c00 && cp <= 0x0c7f) {
@@ -355,7 +386,15 @@ function applyLanguageAllophony(units, lang) {
     }
   }
 
-  if (lang === 'hi') {
+  if (lang === 'bn' || lang === 'or') {
+    for (const u of units) {
+      if (u.inherent && u.vowel === 'ə') u.vowel = 'ɔ';
+      if (lang === 'bn' && (u.rawC === 'श' || u.rawC === 'ष' || u.rawC === 'स') && (u.cons === 'ʂ' || u.cons === 's')) {
+        u.cons = 'ʃ';
+      }
+    }
+  }
+  if (lang === 'hi' || lang === 'mr' || lang === 'gu' || lang === 'pa') {
     const nuclei = [];
     for (let idx = 0; idx < units.length; idx++) {
       if (units[idx].vowel) nuclei.push(idx);
@@ -556,17 +595,28 @@ const DIGIT_WORDS_HI = {
   '0': 'ʃˈuːnjə', '1': 'ˈeːk', '2': 'dˈoː', '3': 'tˈiːn', '4': 'ʧˈɑːɾ',
   '5': 'pˈɑ̃ːʧ', '6': 'ʧʰˈɛː', '7': 'sˈɑːt', '8': 'ˈɑːʈʰ', '9': 'nˈɔː',
 };
-const INDIC_ZERO_BASES = [0x0966, 0x0be6, 0x0c66, 0x0ce6, 0x0d66];
+const DIGIT_WORDS_EN = {
+  '0': 'zˈɪːɾoː', '1': 'wˈʌn', '2': 'tˈuː', '3': 'tʰɾˈiː', '4': 'fˈɔːɾ',
+  '5': 'fˈaɪv', '6': 'sˈɪks', '7': 'sˈɛvən', '8': 'ˈeːt', '9': 'nˈaɪn',
+};
+const INDIC_ZERO_BASES = [0x0966, 0x09e6, 0x0a66, 0x0ae6, 0x0b66, 0x0be6, 0x0c66, 0x0ce6, 0x0d66];
 const LATIN_CHAR_IPA = {
   a: 'ə', b: 'b', c: 'k', d: 'd', e: 'ɛ', f: 'f', g: 'ɡ',
   h: 'h', i: 'ɪ', j: 'ʤ', k: 'k', l: 'l', m: 'm', n: 'n',
-  o: 'o', p: 'p', q: 'k', r: 'ɾ', s: 's', t: 't', u: 'ʊ',
-  v: 'v', w: 'w', x: 'ks', y: 'j', z: 'z',
+  o: 'o', p: 'p', q: 'k', r: 'ɾ', s: 's', t: 'ʈ', u: 'ʊ',
+  v: 'ʋ', w: 'ʋ', x: 'ks', y: 'j', z: 'z',
 };
 
 function latinWordToIpa(word) {
-  let w = String(word || '').toLowerCase();
-  for (const [dg, rep] of [['tion', 'ʃən'], ['sh', 'ʃ'], ['ch', 'ʧ'], ['th', 'tʰ'], ['ph', 'f'], ['ng', 'ŋ'], ['ee', 'iː'], ['oo', 'uː']]) {
+  let w = String(word || '').toLowerCase().replace(/^'+|'+$/g, '');
+  if (!w) return '';
+  for (const [dg, rep] of [
+    ['tion', 'ʃən'], ['sion', 'ʒən'], ['igh', 'aɪ'], ['tch', 'ʧ'],
+    ['sh', 'ʃ'], ['ch', 'ʧ'], ['th', 'tʰ'], ['ph', 'f'], ['wh', 'ʋ'],
+    ['ng', 'ŋ'], ['ee', 'iː'], ['ea', 'iː'], ['oo', 'uː'], ['ou', 'aʊ'],
+    ['ai', 'eː'], ['ay', 'eː'], ['oa', 'oː'], ['ow', 'oː'], ['ar', 'ɑːɾ'],
+    ['er', 'əɾ'], ['ir', 'əɾ'], ['ur', 'əɾ'], ['or', 'ɔːɾ'], ['ck', 'k'],
+  ]) {
     w = w.split(dg).join(rep);
   }
   let out = '';
@@ -610,12 +660,13 @@ function textToIpa(text, lang = 'sa', normalizedDevFallback = null) {
   raw = raw.replace(/\.\.\./g, '…').replace(/–/g, '—');
 
   let work = raw;
-  if (normalizedDevFallback && /[A-Za-z\u0100-\u024F]/.test(raw)) {
+  if (lang !== 'en' && normalizedDevFallback && /[A-Za-z\u0100-\u024F]/.test(raw)) {
     work = String(normalizedDevFallback).replace(/\u0965/g, '.').replace(/\u0964/g, ',');
   }
 
   const tokens = work.match(/[^\s,.;:!?—…"()“”]+|[,.;:!?—…"()“”]+|\s+/g) || [];
   const outChunks = [];
+  const digitMap = lang === 'en' ? DIGIT_WORDS_EN : DIGIT_WORDS_HI;
 
   for (const tok of tokens) {
     if (/^\s+$/.test(tok)) {
@@ -634,7 +685,7 @@ function textToIpa(text, lang = 'sa', normalizedDevFallback = null) {
       continue;
     }
     if (/^\d+$/.test(tok)) {
-      outChunks.push([...tok].map((d) => DIGIT_WORDS_HI[d] || 'ʃˈuːnjə').join(' '));
+      outChunks.push([...tok].map((d) => digitMap[d] || 'ʃˈuːnjə').join(' '));
       continue;
     }
     if (/^[A-Za-z']+$/.test(tok)) {
@@ -708,6 +759,12 @@ const PAD_TOKEN_ID = {
   ta: 4,
   te: 45,
   ml: 43,
+  en: 0,
+  mr: 33,
+  bn: 0,
+  gu: 0,
+  pa: 0,
+  or: 0,
 };
 const VIRAMA_TOKEN_IDS = {
   sa: 15,  // ್ (\u0ccd)
@@ -716,6 +773,12 @@ const VIRAMA_TOKEN_IDS = {
   ta: 18,  // ் (\u0bcd)
   te: 48,  // ్ (\u0c4d)
   ml: 36,  // ് (\u0d4d)
+  en: -1,
+  mr: 53,  // ् (\u094d)
+  bn: 56,  // ् (\u09cd)
+  gu: 60,  // ् (\u0acd)
+  pa: 53,  // ् (\u0a4d)
+  or: 58,  // ् (\u0b4d)
 };
 
 const LANGUAGE_IDS = {
@@ -725,6 +788,12 @@ const LANGUAGE_IDS = {
   ta: 3,
   te: 4,
   ml: 5,
+  en: 6,
+  mr: 7,
+  bn: 8,
+  gu: 9,
+  pa: 10,
+  or: 11,
 };
 
 function makeNativeVocab(tokens, donorChars = []) {
@@ -788,6 +857,27 @@ const NATIVE_VOCABS = {
     'ഐ', "'", 'q', 'ശ', '<unk>',
   ], ['\u0d1d']),
 };
+
+function buildRangeVocab(lo, hi) {
+  const letters = [];
+  for (let cp = lo; cp < hi; cp++) {
+    const ch = String.fromCodePoint(cp);
+    if (/[\p{L}\p{M}]/u.test(ch)) letters.push(ch);
+  }
+  letters.sort();
+  return ['_', ...[..." ',.-?"], ...letters, '<unk>'];
+}
+
+NATIVE_VOCABS.en = ['_', ...[..." abcdefghijklmnopqrstuvwxyz'-,.?!"], '<unk>'];
+NATIVE_VOCABS.mr = [...NATIVE_VOCABS.hi.slice(0, -1), '\u0933', '<unk>'];
+NATIVE_VOCABS.bn = buildRangeVocab(0x0981, 0x09fa);
+NATIVE_VOCABS.gu = buildRangeVocab(0x0a81, 0x0af2);
+NATIVE_VOCABS.pa = buildRangeVocab(0x0a01, 0x0a76);
+NATIVE_VOCABS.or = buildRangeVocab(0x0b01, 0x0b73);
+for (const [lc, vir] of [['bn', '\u09cd'], ['gu', '\u0acd'], ['pa', '\u0a4d'], ['or', '\u0b4d']]) {
+  const idx = NATIVE_VOCABS[lc].indexOf(vir);
+  if (idx >= 0) VIRAMA_TOKEN_IDS[lc] = idx;
+}
 
 const NATIVE_TOKEN_TO_ID = Object.fromEntries(
   Object.entries(NATIVE_VOCABS).map(([lc, toks]) => [lc, Object.fromEntries(toks.map((t, i) => [t, i]))])
@@ -918,7 +1008,16 @@ function detectScriptAndLang(text, defaultLang = 'sa') {
   }
   entries.sort((a, b) => b[1] - a[1]);
   const dom = entries[0][0];
-  const map = { kannada: 'kn', tamil: 'ta', telugu: 'te', malayalam: 'ml' };
+  const map = {
+    kannada: 'kn',
+    tamil: 'ta',
+    telugu: 'te',
+    malayalam: 'ml',
+    bengali: 'bn',
+    gurmukhi: 'pa',
+    gujarati: 'gu',
+    odia: 'or',
+  };
   return [dom, map[dom] || defaultLang];
 }
 
@@ -1005,12 +1104,161 @@ function iastToDevanagari(text) {
   return out.join('');
 }
 
+const EN_DIGIT_DEV = {
+  '0': 'जीरो', '1': 'वन', '2': 'टू', '3': 'थ्री', '4': 'फोर',
+  '5': 'फाइव', '6': 'सिक्स', '7': 'सेवन', '8': 'एट', '9': 'नाइन',
+};
+
+function englishToDevanagari(text) {
+  let s = String(text).normalize('NFC').trim().toLowerCase();
+  for (const [d, w] of Object.entries(EN_DIGIT_DEV)) {
+    s = s.replace(new RegExp(`\\b${d}\\b`, 'g'), ` ${w} `);
+  }
+  s = s
+    .replaceAll('tion', 'shan')
+    .replaceAll('sion', 'zhan')
+    .replaceAll('qu', 'kw')
+    .replaceAll('ck', 'k')
+    .replaceAll('wh', 'w');
+  const enVows = [
+    ['oo', '\u090a', '\u0942'],
+    ['ee', '\u0908', '\u0940'],
+    ['ea', '\u0908', '\u0940'],
+    ['ai', '\u090f', '\u0947'],
+    ['ay', '\u090f', '\u0947'],
+    ['ou', '\u0914', '\u094c'],
+    ['ow', '\u0913', '\u094b'],
+    ['oa', '\u0913', '\u094b'],
+    ['oi', '\u0913\u0907', '\u094b\u0907'],
+    ['oy', '\u0913\u0907', '\u094b\u0907'],
+    ['a', '\u0905', ''],
+    ['e', '\u090f', '\u0947'],
+    ['i', '\u0907', '\u093f'],
+    ['o', '\u0913', '\u094b'],
+    ['u', '\u0905', ''],
+  ];
+  const enCons = [
+    ['tch', '\u091a'], ['sh', '\u0936'], ['ch', '\u091a'], ['th', '\u0925'],
+    ['ph', '\u092b'], ['gh', '\u0917'], ['ng', '\u0919'], ['zh', '\u091d'],
+    ['kh', '\u0916'], ['bh', '\u092d'], ['dh', '\u0927'],
+    ['b', '\u092c'], ['d', '\u0921'], ['f', '\u092b'], ['g', '\u0917'],
+    ['h', '\u0939'], ['j', '\u091c'], ['k', '\u0915'], ['l', '\u0932'],
+    ['m', '\u092e'], ['n', '\u0928'], ['p', '\u092a'], ['q', '\u0915'],
+    ['r', '\u0930'], ['s', '\u0938'], ['t', '\u091f'], ['v', '\u0935'],
+    ['w', '\u0935'], ['x', '\u0915\u094d\u0938'], ['z', '\u091c'],
+  ];
+  const out = [];
+  let i = 0;
+  const n = s.length;
+  let prevC = false;
+  while (i < n) {
+    const ch = s[i];
+    if (/\s/.test(ch)) {
+      if (prevC) { out.push(VIRAMA); prevC = false; }
+      out.push(' ');
+      i += 1;
+      continue;
+    }
+    if (EN_DIGIT_DEV[ch]) {
+      if (prevC) { out.push(VIRAMA); prevC = false; }
+      out.push(EN_DIGIT_DEV[ch]);
+      i += 1;
+      continue;
+    }
+    if (ch === 'c') {
+      const nxt = i + 1 < n ? s[i + 1] : '';
+      if (prevC) out.push(VIRAMA);
+      out.push(nxt === 'e' || nxt === 'i' || nxt === 'y' ? '\u0938' : '\u0915');
+      prevC = true;
+      i += 1;
+      continue;
+    }
+    if (ch === 'y') {
+      const nxt = i + 1 < n ? s[i + 1] : '';
+      if (nxt && 'aeiou'.includes(nxt)) {
+        if (prevC) out.push(VIRAMA);
+        out.push('\u092f');
+        prevC = true;
+      } else {
+        out.push(prevC ? '\u0940' : '\u0908');
+        prevC = false;
+      }
+      i += 1;
+      continue;
+    }
+    let mv = false;
+    for (const [rom, indep, matra] of enVows) {
+      if (s.startsWith(rom, i)) {
+        if (rom === 'e' && i + 1 === n && prevC && out.length >= 2) {
+          out.push(VIRAMA);
+          prevC = false;
+          i += 1;
+          mv = true;
+          break;
+        }
+        if (prevC) {
+          if (matra) out.push(matra);
+        } else {
+          out.push(indep);
+        }
+        prevC = false;
+        i += rom.length;
+        mv = true;
+        break;
+      }
+    }
+    if (mv) continue;
+    let mc = false;
+    for (const [rom, dev] of enCons) {
+      if (s.startsWith(rom, i)) {
+        if (prevC) out.push(VIRAMA);
+        out.push(dev);
+        prevC = true;
+        i += rom.length;
+        mc = true;
+        break;
+      }
+    }
+    if (mc) continue;
+    if (prevC && ch !== "'" && ch !== '\u2019') {
+      out.push(VIRAMA);
+      prevC = false;
+    }
+    i += 1;
+  }
+  if (prevC) out.push(VIRAMA);
+  return out.join('');
+}
+
 function brahmicToDevanagari(text) {
   let norm = String(text).normalize('NFC');
   for (const [zwjSeq, atomic] of MALAYALAM_ZWJ_CHILLU) {
     norm = norm.split(zwjSeq).join(atomic);
   }
-  norm = norm.replace(/\u0d4c/g, '\u0d57');
+  norm = norm
+    .replace(/\u0d4c/g, '\u0d57')
+    .replaceAll('\u0a74', '\u0907\u0915 \u0913\u0902\u0915\u093e\u0930')
+    .replaceAll('\u09af\u09bc', '\u09df')
+    .replaceAll('\u0a71', '');
+  const specialCp = {
+    0x09ce: '\u0924\u094d',
+    0x09d7: '\u094c',
+    0x09dc: '\u0921\u093c',
+    0x09dd: '\u0922\u093c',
+    0x09df: '\u092f',
+    0x09f0: '\u0930',
+    0x09f1: '\u0935',
+    0x0a5c: '\u0921\u093c',
+    0x0a70: '\u0902',
+    0x0a72: '\u0907',
+    0x0a73: '\u0909',
+    0x0b56: '\u0948',
+    0x0b57: '\u094c',
+    0x0b5c: '\u0921\u093c',
+    0x0b5d: '\u0922\u093c',
+    0x0b5f: '\u092f',
+    0x0b71: '\u0935',
+  };
   const out = [];
   for (const ch of norm) {
     const cp = ch.codePointAt(0);
@@ -1022,6 +1270,10 @@ function brahmicToDevanagari(text) {
       out.push('\u094c');
       continue;
     }
+    if (specialCp[cp]) {
+      out.push(specialCp[cp]);
+      continue;
+    }
     if (cp >= 0x0900 && cp <= 0x097F) {
       out.push(ch);
       continue;
@@ -1031,7 +1283,7 @@ function brahmicToDevanagari(text) {
       const [lo, hi] = BRAHMIC_BASES[b];
       if (cp >= lo && cp <= hi) {
         const offset = cp - lo;
-        if ((offset >= 0x01 && offset <= 0x4D) || offset === 0x60 || offset === 0x62 || offset === 0x63) {
+        if ((offset >= 0x01 && offset <= 0x4D) || offset === 0x50 || offset === 0x60 || offset === 0x62 || offset === 0x63) {
           out.push(String.fromCodePoint(0x0900 + offset));
         } else if (offset >= 0x66 && offset <= 0x6F) {
           out.push(String(offset - 0x66));
@@ -1213,7 +1465,7 @@ function applyPhonologicalRules(devText, lang = 'sa') {
   }
   s = dOut.join('');
 
-  if (lang === 'hi') {
+  if (lang === 'hi' || lang === 'mr' || lang === 'gu' || lang === 'pa') {
     s = deleteHindiSchwa(s);
   } else if (lang === 'sa') {
     const chars = [...s];
@@ -1256,12 +1508,49 @@ const TA_FOLD = {
 };
 
 function devanagariToTargetScript(devText, targetLang) {
-  if (targetLang === 'hi') {
+  if (targetLang === 'hi' || targetLang === 'mr') {
     return devText.replace(/[\u0964\u0965]/g, ' ');
   }
-  const baseMap = { sa: 0x0C80, kn: 0x0C80, ta: 0x0B80, te: 0x0C00, ml: 0x0D00 };
+  if (targetLang === 'en') {
+    const revMap = {
+      '\u0905': 'a', '\u0906': 'aa', '\u0907': 'i', '\u0908': 'ee', '\u0909': 'u', '\u090a': 'oo',
+      '\u090f': 'e', '\u0910': 'ai', '\u0913': 'o', '\u0914': 'au',
+      '\u093e': 'aa', '\u093f': 'i', '\u0940': 'ee', '\u0941': 'u', '\u0942': 'oo',
+      '\u0947': 'e', '\u0948': 'ai', '\u094b': 'o', '\u094c': 'au',
+      '\u0902': 'm', '\u0901': 'n', '\u0903': 'h',
+      '\u0915': 'k', '\u0916': 'kh', '\u0917': 'g', '\u0918': 'gh', '\u0919': 'ng',
+      '\u091a': 'ch', '\u091b': 'chh', '\u091c': 'j', '\u091d': 'jh', '\u091e': 'ny',
+      '\u091f': 't', '\u0920': 'th', '\u0921': 'd', '\u0922': 'dh', '\u0923': 'n',
+      '\u0924': 't', '\u0925': 'th', '\u0926': 'd', '\u0927': 'dh', '\u0928': 'n',
+      '\u092a': 'p', '\u092b': 'f', '\u092c': 'b', '\u092d': 'bh', '\u092e': 'm',
+      '\u092f': 'y', '\u0930': 'r', '\u0932': 'l', '\u0933': 'l', '\u0935': 'v',
+      '\u0936': 'sh', '\u0937': 'sh', '\u0938': 's', '\u0939': 'h',
+    };
+    const chars = [...devText];
+    const romOut = [];
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      if (ch === '\u094d' || ch === '\u093c') continue;
+      if (ch === '\u0964' || ch === '\u0965') { romOut.push(' '); continue; }
+      romOut.push(revMap[ch] !== undefined ? revMap[ch] : ch);
+      if (isDevConsonant(ch)) {
+        const nxt = i + 1 < chars.length ? chars[i + 1] : '';
+        if (!isDevMatra(nxt) && nxt !== VIRAMA) romOut.push('a');
+      }
+    }
+    return romOut.join('').toLowerCase();
+  }
+  const baseMap = {
+    sa: 0x0C80, kn: 0x0C80, ta: 0x0B80, te: 0x0C00, ml: 0x0D00,
+    bn: 0x0980, pa: 0x0A00, gu: 0x0A80, or: 0x0B00,
+  };
   const targetBase = baseMap[targetLang] ?? 0x0C80;
   let s = devText.replace(/\u0901/g, '\u0902');
+  if (targetLang === 'bn' || targetLang === 'or') {
+    s = s.replaceAll('\u0935', '\u092c');
+  } else if (targetLang === 'pa') {
+    s = s.replaceAll('\u0937', '\u0936').replaceAll('\u090b', '\u0930\u093f').replaceAll('\u0943', '\u0930\u093f');
+  }
   if (targetLang === 'ta') {
     s = [...s].map((c) => (TA_FOLD[c] !== undefined ? TA_FOLD[c] : c)).join('');
   }
@@ -1272,9 +1561,15 @@ function devanagariToTargetScript(devText, targetLang) {
       continue;
     }
     const cp = ch.codePointAt(0);
-    if (cp === 0x093C) continue;
+    if (cp === 0x093C) {
+      if (targetLang === 'bn' || targetLang === 'pa' || targetLang === 'or') {
+        out.push(String.fromCodePoint(targetBase + 0x3C));
+      }
+      continue;
+    }
     if (cp >= 0x0901 && cp <= 0x0963) {
-      out.push(String.fromCodePoint(targetBase + (cp - 0x0900)));
+      const targetCh = String.fromCodePoint(targetBase + (cp - 0x0900));
+      if (/[\p{L}\p{M}]/u.test(targetCh)) out.push(targetCh);
     } else {
       out.push(ch);
     }
@@ -1284,12 +1579,21 @@ function devanagariToTargetScript(devText, targetLang) {
 
 function toNativeModelText(text, lang, detectedScript, phonemicDev) {
   const sRaw = String(text).normalize('NFC');
-  const scriptForLang = { kn: 'kannada', hi: 'devanagari', ta: 'tamil', te: 'telugu', ml: 'malayalam' };
+  const scriptForLang = {
+    kn: 'kannada', hi: 'devanagari', mr: 'devanagari', ta: 'tamil', te: 'telugu',
+    ml: 'malayalam', en: 'latin', bn: 'bengali', gu: 'gujarati', pa: 'gurmukhi', or: 'odia',
+  };
   let native;
 
   if (lang === 'sa') {
     // Preserve homorganic nasal+stop clusters (ಙ್, ಞ್, ಣ್, ನ್, ಮ್) for accurate Sanskrit articulation
     native = devanagariToTargetScript(phonemicDev, 'sa');
+  } else if (lang === 'en') {
+    if (detectedScript === 'latin' || detectedScript === 'iast') {
+      native = sRaw.toLowerCase();
+    } else {
+      native = devanagariToTargetScript(phonemicDev, 'en');
+    }
   } else if (detectedScript === scriptForLang[lang]) {
     native = sRaw;
     if (lang === 'hi') {
@@ -1309,8 +1613,8 @@ function toNativeModelText(text, lang, detectedScript, phonemicDev) {
         .replace(/\u0c19/g, '\u0c02');
     } else if (lang === 'ta') {
       native = native.toLowerCase().replace(/\u0b83/g, '\u0bb9\u0bcd');
-    } else if (lang === 'kn') {
-      // Preserve ಙ
+    } else if (lang === 'pa') {
+      native = native.replaceAll('\u0a74', '\u0a07\u0a71\u0a15 \u0a13\u0a05\u0a70\u0a15\u0a3e\u0a30');
     }
   } else {
     native = devanagariToTargetScript(phonemicDev, lang);
@@ -1447,7 +1751,9 @@ function textToIds(
 ) {
   const [detectedScript, detectedLang] = detectScriptAndLang(text, lang || 'sa');
   const activeLang = lang && LANGUAGE_IDS[lang] !== undefined ? lang : detectedLang;
-  const dev = (detectedScript === 'iast' || detectedScript === 'latin')
+  const dev = activeLang === 'en' && detectedScript === 'latin'
+    ? englishToDevanagari(text)
+    : (detectedScript === 'iast' || detectedScript === 'latin')
     ? iastToDevanagari(text)
     : brahmicToDevanagari(text);
   const aksharas = segmentAksharas(dev);
@@ -1474,7 +1780,10 @@ function textToIds(
     }
   }
   if (rawIds.length === 0) {
-    const fb = { sa: '\u0c85', kn: '\u0c85', hi: '\u0905', ta: '\u0b85', te: '\u0c05', ml: '\u0d05' }[activeLang];
+    const fb = {
+      sa: '\u0c85', kn: '\u0c85', hi: '\u0905', mr: '\u0905', ta: '\u0b85',
+      te: '\u0c05', ml: '\u0d05', en: 'a', bn: '\u0985', gu: '\u0a85', pa: '\u0a05', or: '\u0b05',
+    }[activeLang];
     rawIds.push(langMap[fb]);
     nativeTokens.push(fb);
   }
@@ -1518,14 +1827,19 @@ function textToIds(
     sa: '\u0ccd',
     kn: '\u0ccd',
     hi: '\u094d',
+    mr: '\u094d',
     ta: '\u0bcd',
     te: '\u0c4d',
     ml: '\u0d4d',
-  }[activeLang] ?? '\u0ccd';
-  const viramaId = langMap[viramaTok] ?? -1;
+    bn: '\u09cd',
+    gu: '\u0acd',
+    pa: '\u0a4d',
+    or: '\u0b4d',
+  }[activeLang] ?? '';
+  const viramaId = viramaTok ? (langMap[viramaTok] ?? -1) : -1;
   const isVirama = inputIds.map((tid) => (tid === viramaId ? 1 : 0));
 
-  const ipa = textToIpa(text, activeLang, phonemic);
+  const ipa = textToIpa(text, activeLang, activeLang !== 'en' ? dev : null);
   const ipaIds = ipaToIds(ipa);
 
   return {
@@ -1554,7 +1868,7 @@ function textToIds(
 
 const { STUDIO_HOP_LENGTH, STUDIO_VOCABS, cleanStudioText, studioTextToIds } = (() => {
 /**
- * Ninada v4.0 — Native Per-Language 24,000 Hz Studio VITS Character Tokenizer (Zero-Dep ESM).
+ * Ninada v5.0 — Native Per-Language 24,000 Hz Studio VITS Character Tokenizer (Zero-Dep ESM).
  */
 
 
@@ -1598,6 +1912,42 @@ const STUDIO_SPECS = Object.freeze({
     characters: 'ംഃഅആഇഈഉഊഋഌഎഏഐഒഓഔകഖഗഘങചഛജഝഞടഠഡഢണതഥദധനഩപഫബഭമയരറലളഴവശഷസഹഽാിീുൂൃെേൈൊോൌ്ൗൠൡ൦൧൨൩൪൫൬൭൮൯ൺൻർൽൾൿ',
     blank: '<BLNK>',
   },
+  en: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: 'â,pGYI&“US7(9…Z–v1yadHND`@lw”80ti?42mOgCE_XRMz\ufe0fk3‘VeP5jè"rK#F’)scQ\'Jôfq xA»bTouhnBWL6àé',
+    blank: '<BLNK>',
+  },
+  mr: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: ')ऊभॐब८•औॲ?z५ी/ऩठअवइ\',डळत3° ञोnआफ़ॊच:․छऍई;ओuगझल0२ॆऑऱ!ॕ"(मर|9…न-ॄु5ृहेॅःएघ७शऎ1ङॠं।१ष४cॉधाऽ\u200aकि2.ऋउ–ूa्स६जखदथ०68णऐैफ़ँs९३4ौ7—टपढयऌॡॢॣ॥',
+    blank: '<BLNK>',
+  },
+  bn: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: 'এাসৎঢঊচঢ়রখৰঘড়ঋ"ঔহনবভঅঠ্ঃৌছৃিড়কতীেওলং, জউ?থঞ\'ফুআঐয়ইূৈযগঁঙঝ।ঈৗণষধশটপদোমঌঽৄৠৡ০১২৩৪৫৬৭৮৯',
+    blank: '<BLNK>',
+  },
+  gu: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: 'ધઋલ૭ઉઊઝઈછઍત6ગेફ“78ખથरયજન૧ળણ,ૉ}ઞ૪ઔશચ3ા૦"(ૅ્મષૠ૩સ‘अઇઠુक૫દોર\'ીપૈ૬઼मઆ”ૌ4)ૂિહ{ઑઓ કઢઃ2ૃેવભि?અએ5૯ઘટંડઐ1૮ઁબ’09૨ઌઙઽૄૐૡ',
+    blank: '<BLNK>',
+  },
+  pa: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: 'ਁਂਃਅਆਇਈਉਊਏਐਓਔਕਖਗਘਙਚਛਜਝਞਟਠਡਢਣਤਥਦਧਨਪਫਬਭਮਯਰਲਵਸਹ਼ਾਿੀੁੂੇੈੋੌ੍ੜੰੱੲੳ੦੧੨੩੪੫੬੭੮੯',
+    blank: '<BLNK>',
+  },
+  or: {
+    pad: '<PAD>',
+    punctuations: "!¡'(),-.:;¿? ",
+    characters: 'ଁଂଃଅଆଇଈଉଊଋଌଏଐଓଔକଖଗଘଙଚଛଜଝଞଟଠଡଢଣତଥଦଧନପଫବଭମଯରଲଳଵଶଷସହ଼ଽାିୀୁୂୃୄେୈୋୌ୍ୖୗୟୠୡୱ୦୧୨୩୪୫୬୭୮୯',
+    blank: '<BLNK>',
+  },
 });
 
 const STUDIO_VOCABS = Object.freeze(
@@ -1626,11 +1976,92 @@ const STUDIO_VOCABS = Object.freeze(
 const SCRIPT_RANGES = {
   sa: [0x0900, 0x097f],
   hi: [0x0900, 0x097f],
-  kn: [0x0c80, 0x0cff],
+  mr: [0x0900, 0x097f],
+  bn: [0x0980, 0x09ff],
+  pa: [0x0a00, 0x0a7f],
+  gu: [0x0a80, 0x0aff],
+  or: [0x0b00, 0x0b7f],
   ta: [0x0b80, 0x0bff],
   te: [0x0c00, 0x0c7f],
+  kn: [0x0c80, 0x0cff],
   ml: [0x0d00, 0x0d7f],
+  en: [0x0041, 0x007a],
 };
+
+const EN_ONES = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+  'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
+  'seventeen', 'eighteen', 'nineteen',
+];
+const EN_TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+const EN_ORD_MAP = {
+  one: 'first', two: 'second', three: 'third', five: 'fifth',
+  eight: 'eighth', nine: 'ninth', twelve: 'twelfth',
+};
+const EN_ABBREVS = [
+  [/\bmrs\./gi, 'missus'],
+  [/\bmr\./gi, 'mister'],
+  [/\bms\./gi, 'miss'],
+  [/\bdr\./gi, 'doctor'],
+  [/\bprof\./gi, 'professor'],
+  [/\bvs\./gi, 'versus'],
+  [/\betc\./gi, 'et cetera'],
+  [/\be\.g\./gi, 'for example'],
+  [/\bi\.e\./gi, 'that is'],
+  [/\brs\./gi, 'rupees'],
+];
+
+function enIntToWords(n) {
+  if (n < 0) return `minus ${enIntToWords(-n)}`;
+  if (n < 20) return EN_ONES[n];
+  if (n < 100) {
+    const t = Math.floor(n / 10);
+    const r = n % 10;
+    return r === 0 ? EN_TENS[t] : `${EN_TENS[t]} ${EN_ONES[r]}`;
+  }
+  if (n < 1000) {
+    const h = Math.floor(n / 100);
+    const r = n % 100;
+    return r === 0 ? `${EN_ONES[h]} hundred` : `${EN_ONES[h]} hundred ${enIntToWords(r)}`;
+  }
+  if (n >= 1900 && n <= 2099 && n % 100 !== 0 && !(n >= 2001 && n <= 2009)) {
+    const hi = Math.floor(n / 100);
+    const lo = n % 100;
+    const loStr = lo < 10 ? `oh ${EN_ONES[lo]}` : enIntToWords(lo);
+    return `${enIntToWords(hi)} ${loStr}`;
+  }
+  if (n < 1_000_000) {
+    const k = Math.floor(n / 1000);
+    const r = n % 1000;
+    return r === 0 ? `${enIntToWords(k)} thousand` : `${enIntToWords(k)} thousand ${enIntToWords(r)}`;
+  }
+  return [...String(n)].map((d) => EN_ONES[Number(d)]).join(' ');
+}
+
+function enOrdinalToWords(n) {
+  const words = enIntToWords(n).split(' ');
+  const last = words[words.length - 1];
+  if (EN_ORD_MAP[last]) words[words.length - 1] = EN_ORD_MAP[last];
+  else if (last.endsWith('y')) words[words.length - 1] = `${last.slice(0, -1)}ieth`;
+  else words[words.length - 1] = `${last}th`;
+  return words.join(' ');
+}
+
+function normalizeEnglishText(t) {
+  let out = t;
+  for (const [pat, rep] of EN_ABBREVS) {
+    out = out.replace(pat, rep);
+  }
+  out = out
+    .replaceAll('&', ' and ')
+    .replaceAll('%', ' percent ')
+    .replaceAll('₹', ' rupees ')
+    .replaceAll('$', ' dollars ');
+  out = out.replace(/(?<=\d),(?=\d{3}\b)/g, '');
+  out = out.replace(/\b(\d{1,6})(st|nd|rd|th)\b/gi, (_, num) => enOrdinalToWords(Number(num)));
+  out = out.replace(/\b(\d{1,6})\b/g, (_, num) => enIntToWords(Number(num)));
+  return out;
+}
 
 const MALAYALAM_CHILLU_PAIRS = [
   ['\u0d23\u0d4d\u200d', '\u0d7a'],
@@ -1652,22 +2083,49 @@ function cleanStudioText(text, lang = 'sa') {
   let t = String(text ?? '').normalize('NFC').trim();
   if (!t) return '';
 
-  const [lo, hi] = SCRIPT_RANGES[lc];
-  let hasTarget = false;
-  for (const ch of t) {
-    const cp = ch.codePointAt(0);
-    if (cp >= lo && cp <= hi) {
-      hasTarget = true;
-      break;
+  if (lc === 'en') {
+    t = normalizeEnglishText(t);
+  } else {
+    const [lo, hi] = SCRIPT_RANGES[lc];
+    let hasTarget = false;
+    for (const ch of t) {
+      const cp = ch.codePointAt(0);
+      if (cp >= lo && cp <= hi) {
+        hasTarget = true;
+        break;
+      }
     }
-  }
-  if (!hasTarget) {
-    t = lc === 'sa' ? iastToDevanagari(t) : toNativeModelText(t, lc);
+    if (!hasTarget) {
+      if (lc === 'sa') {
+        t = iastToDevanagari(t);
+      } else {
+        const [detSc] = detectScriptAndLang(t, lc);
+        const dev = detSc === 'iast' || detSc === 'latin' ? iastToDevanagari(t) : t;
+        t = toNativeModelText(t, lc, detSc, dev);
+      }
+    }
   }
 
   if (lc === 'sa') {
     t = t.replace(/[\u0951-\u0954\u1cd0-\u1cff]/g, '');
     t = t.replaceAll('॥', '.').replaceAll('।', ',');
+  }
+  if (lc === 'mr') {
+    t = t.replace(/[\u0951-\u0954\u1cd0-\u1cff]/g, '');
+    t = t.replaceAll('॥', '।');
+  }
+  if (lc === 'bn') {
+    t = t.replaceAll('\u09f1', 'ব').replaceAll('॥', '।');
+  }
+  if (lc === 'gu') {
+    t = t.replaceAll('॥', '.').replaceAll('।', '.');
+  }
+  if (lc === 'pa') {
+    t = t.replaceAll('\u0a74', 'ਇੱਕ ਓਅੰਕਾਰ');
+    t = t.replaceAll('॥', '.').replaceAll('।', '.');
+  }
+  if (lc === 'or') {
+    t = t.replaceAll('॥', '.').replaceAll('।', '.');
   }
   if (lc === 'kn') {
     t = t.replace(/\u0cbf\u0c83(?=[\s,.;:!?।॥]|$)/g, 'ಿಹಿ');
@@ -1710,9 +2168,9 @@ function cleanStudioText(text, lang = 'sa') {
     .replace(/[;:]/g, ',')
     .replace(/-/g, ' ');
 
-  if (lc === 'kn' || lc === 'ta' || lc === 'te' || lc === 'ml') {
+  if (lc === 'kn' || lc === 'ta' || lc === 'te' || lc === 'ml' || lc === 'en' || lc === 'gu' || lc === 'pa' || lc === 'or') {
     t = t.replace(/[॥।]/g, '.');
-  } else if (lc === 'hi') {
+  } else if (lc === 'hi' || lc === 'mr' || lc === 'bn') {
     t = t.replaceAll('॥', '।');
   }
 
@@ -1954,15 +2412,16 @@ function encodeWavBuffer(pcm, sr = SAMPLE_RATE) {
 }
 
 /**
- * ninada v4.0 — Streaming 24 kHz Native Per-Language Studio VITS Neural TTS
- * (6 Dedicated Native 24,000 Hz Studio VITS Specialists + Zero-Dep Klatt Fallback for Browser WASM SIMD & Node.js)
+ * ninada v5.0 — Streaming 24 kHz Native Per-Language Studio VITS Neural TTS
+ * (24 Dedicated Male & Female Native 24,000 Hz Studio VITS Specialists across 12 Languages
+ *  + Zero-Dep Klatt Fallback for Browser WASM SIMD & Node.js)
  *
  * Streaming quick start:
  *   import ninada from 'ninada';
- *   const voice = await ninada('kannada', {
- *     models: { kn: './models/kn.onnx', sa: './models/sa.onnx' },
+ *   const voice = await ninada('english', {
+ *     models: { en: './models/en.onnx', kn: './models/kn.onnx', sa: './models/sa.onnx' },
  *   });
- *   for await (const chunk of voice.stream('ನಮಸ್ಕಾರ, ಇಂದು ಬೆಂಗಳೂರಿನಲ್ಲಿ ಹವಾಮಾನ ತುಂಬಾ ಚೆನ್ನಾಗಿದೆ.')) {
+ *   for await (const chunk of voice.stream('Hello from Bengaluru, welcome to Ninada Studio.')) {
  *     // chunk.pcm (Float32Array @ 24kHz), chunk.ttfaMs
  *   }
  */
@@ -1975,8 +2434,9 @@ const VOICE_BANK_FLOATS = 510 * 256;
 const VOICE_BANK_BYTES = VOICE_BANK_FLOATS * 4;
 const DEFAULT_HF_REPO = 'gnumanth/ninada';
 const ALL_SPECIALIST_KEYS = [
-  'sa', 'kn', 'hi', 'ta', 'te', 'ml',
+  'sa', 'kn', 'hi', 'ta', 'te', 'ml', 'en', 'mr', 'bn', 'gu', 'pa', 'or',
   'sa_female', 'kn_female', 'hi_female', 'ta_female', 'te_female', 'ml_female',
+  'en_female', 'mr_female', 'bn_female', 'gu_female', 'pa_female', 'or_female',
 ];
 
 const LANG_ALIASES = {
@@ -1986,6 +2446,12 @@ const LANG_ALIASES = {
   ta: 'ta', tamil: 'ta',
   te: 'te', telugu: 'te',
   ml: 'ml', malayalam: 'ml',
+  en: 'en', english: 'en', 'indian-english': 'en', 'en-in': 'en',
+  mr: 'mr', marathi: 'mr',
+  bn: 'bn', bengali: 'bn', bangla: 'bn',
+  gu: 'gu', gujarati: 'gu',
+  pa: 'pa', punjabi: 'pa', gurmukhi: 'pa',
+  or: 'or', odia: 'or', oriya: 'or',
 };
 
 function resolveLang(val) {
@@ -2055,7 +2521,7 @@ function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
       if (words.length >= 2) {
         let splitIdx = words[0].length >= 16 ? 1 : Math.max(2, Math.floor(words.length / 2));
         for (let i = 2; i < words.length - 1; i++) {
-          if (/^(ಮತ್ತು|और|तथा|மற்றும்|మరియు|കൂടാതെ|च)$/.test(words[i])) {
+          if (/^(ಮತ್ತು|और|तथा|மற்றும்|మరియు|കൂടാതെ|च|and|आणि|এবং|અને|ਅਤੇ|ଏବଂ)$/i.test(words[i])) {
             splitIdx = i;
             break;
           }
@@ -2199,7 +2665,7 @@ async function resolveOrt(explicitOrt, webmlKit = null) {
   return null;
 }
 
-const BROWSER_MODEL_CACHE = 'ninada-onnx-v4.0.0';
+const BROWSER_MODEL_CACHE = 'ninada-onnx-v5.0.0';
 
 async function fetchBrowserCachedBytes(url, useCache = true, validator = null) {
   const absUrl =
@@ -3292,18 +3758,20 @@ async function ninada(input = 'sa', opts = {}) {
                 } else if (isFinalClause && remFrames <= 54) {
                   stepF = remFrames;
                 } else if (chunkIndex === 0 && fBounds.length === 1) {
-                  stepF = 120;
+                  stepF = 124;
                 } else if (!isFinalClause) {
                   stepF = 124;
                 } else {
                   stepF = 98;
                 }
               } else if (fBounds.length === 1) {
-                stepF = 38;
+                stepF = 40;
               } else if (fBounds.length === 2) {
-                stepF = 68;
+                stepF = 56;
+              } else if (fBounds.length === 3) {
+                stepF = 72;
               } else {
-                stepF = 116;
+                stepF = 96;
               }
               let fNext = Math.min(totalLatentFrames, fCur + stepF);
               if (totalLatentFrames - fNext < 20) fNext = totalLatentFrames;

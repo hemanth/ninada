@@ -215,6 +215,7 @@ test('In-memory Studio VITS ONNX splitter enables sub-clause latent-window strea
   if (!fs.existsSync(saPath)) return;
 
   const rawBuf = fs.readFileSync(saPath);
+  splitStudioVitsOnnxBuffer(rawBuf); // Warmup V8 JIT
   const tSplit0 = performance.now();
   const split = splitStudioVitsOnnxBuffer(rawBuf);
   const splitMs = performance.now() - tSplit0;
@@ -263,6 +264,52 @@ test('In-memory Studio VITS ONNX splitter enables sub-clause latent-window strea
   const snrDb = 10 * Math.log10(sigEnergy / Math.max(1e-12, errEnergy));
   assert.ok(snrDb > 35, `Expected latent-windowed HiFi-GAN SNR > 35 dB vs monolithic, got ${snrDb.toFixed(2)} dB`);
   await voice.dispose();
+});
+
+test('12-language v5.0 roster supports Indian English, Marathi, Bengali, Gujarati, Punjabi, and Odia end-to-end', async () => {
+  const samples = [
+    ['en', 'Hello Dr. Rao, welcome to the 24,000 Hz Ninada studio in 2026!'],
+    ['mr', 'नमस्कार, आज पुण्यातील हवामान खूप छान आहे.'],
+    ['bn', 'নমস্কার, আজ কলকাতার আবহাওয়া খুব সুন্দর।'],
+    ['gu', 'નમસ્તે, આજે અમદાવાદમાં હવામાન ખૂબ સુંદર છે.'],
+    ['pa', 'ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ, ਅੱਜ ਅੰਮ੍ਰਿਤਸਰ ਵਿੱਚ ਮੌਸਮ ਵਧੀਆ ਹੈ।'],
+    ['or', 'ନମସ୍କାର, ଆଜି ଭୁବନେଶ୍ୱରରେ ପାଣିପାଗ ବହୁତ ସୁନ୍ଦର ଅଛି।'],
+  ];
+
+  for (const [lc, text] of samples) {
+    const parsed = textToIds(text, { lang: lc });
+    assert.equal(parsed.lang, lc);
+    assert.ok(parsed.inputIds.length >= 10, `Expected inputIds >= 10 for ${lc}`);
+    assert.ok(parsed.aksharas.length >= 3, `Expected aksharas >= 3 for ${lc}`);
+
+    const voice = await ninada(lc);
+    const wav = await voice.speak(text, { tier: 'klatt' });
+    assert.ok(wav.byteLength > 4000, `Expected non-empty 24 kHz WAV for ${lc}`);
+    await voice.dispose();
+  }
+
+  const loadedFiles = [];
+  const fakeSession = {
+    inputNames: ['input_ids', 'scales'],
+    async run() {
+      return {
+        waveform: { data: new Float32Array(2400).fill(0.05), dispose() {} },
+        durations: { data: new Float32Array([2, 2, 2]), dispose() {} },
+      };
+    },
+    async release() {},
+  };
+  const fakeWebml = {
+    async createOnnxPipeline(cfg) {
+      loadedFiles.push(cfg.modelFile);
+      return { sessions: [fakeSession], backend: 'wasm', dispose() {} };
+    },
+  };
+  const enVoice = await ninada('gnumanth/ninada', { lang: 'english', voice: 'female', webml: fakeWebml });
+  await enVoice.speak('Welcome to Bengaluru');
+  await enVoice.speak('ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ', { lang: 'punjabi', voice: 'male' });
+  assert.deepEqual(loadedFiles, ['onnx/en_female.onnx', 'onnx/pa.onnx']);
+  await enVoice.dispose();
 });
 
 

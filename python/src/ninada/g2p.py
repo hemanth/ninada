@@ -35,6 +35,12 @@ PAD_TOKEN_ID: dict[str, int] = {
     "ta": 4,
     "te": 45,
     "ml": 43,
+    "en": 0,
+    "mr": 33,
+    "bn": 0,
+    "gu": 0,
+    "pa": 0,
+    "or": 0,
 }
 VIRAMA_TOKEN_IDS: dict[str, int] = {
     "sa": 15,  # ್ (\u0ccd)
@@ -43,16 +49,28 @@ VIRAMA_TOKEN_IDS: dict[str, int] = {
     "ta": 18,  # ் (\u0bcd)
     "te": 48,  # ్ (\u0c4d)
     "ml": 36,  # ് (\u0d4d)
+    "en": -1,
+    "mr": 53,  # ् (\u094d)
+    "bn": 56,  # ् (\u09cd)
+    "gu": 60,  # ् (\u0acd)
+    "pa": 53,  # ् (\u0a4d)
+    "or": 58,  # ् (\u0b4d)
 }
 UNK_ID: int = TOKEN_TO_ID["<unk>"]
 
 LANGUAGE_IDS: dict[str, int] = {
-    "sa": 0,  # Sanskrit (Classical & Vedic, zero-schwa-deletion Kannada-isomorphic phoneme map)
-    "hi": 1,  # Hindi (Native Devanagari)
-    "kn": 2,  # Kannada (Native Kannada)
-    "ta": 3,  # Tamil (Native Tamil)
-    "te": 4,  # Telugu (Native Telugu)
-    "ml": 5,  # Malayalam (Native Malayalam with atomic chillu letters)
+    "sa": 0,   # Sanskrit (Classical & Vedic, zero-schwa-deletion Kannada-isomorphic phoneme map)
+    "hi": 1,   # Hindi (Native Devanagari)
+    "kn": 2,   # Kannada (Native Kannada)
+    "ta": 3,   # Tamil (Native Tamil)
+    "te": 4,   # Telugu (Native Telugu)
+    "ml": 5,   # Malayalam (Native Malayalam with atomic chillu letters)
+    "en": 6,   # English (Indian English Studio)
+    "mr": 7,   # Marathi (Native Devanagari)
+    "bn": 8,   # Bengali (Native Eastern Nagari)
+    "gu": 9,   # Gujarati (Native Gujarati)
+    "pa": 10,  # Punjabi (Native Gurmukhi)
+    "or": 11,  # Odia (Native Odia)
 }
 ID_TO_LANGUAGE: dict[int, str] = {v: k for k, v in LANGUAGE_IDS.items()}
 
@@ -120,6 +138,37 @@ NATIVE_VOCABS: dict[str, list[str]] = {
 }
 # Sanskrit uses the full zero-schwa-deletion Kannada phoneme inventory (0..75) + 3 Vedic/Classical extensions (76..78)
 NATIVE_VOCABS["sa"] = list(NATIVE_VOCABS["kn"]) + ["\u0c99", "\u0ce0", "\u0cc4"]
+NATIVE_VOCABS["en"] = ["_"] + list(" abcdefghijklmnopqrstuvwxyz'-,.?!") + ["<unk>"]
+NATIVE_VOCABS["mr"] = list(NATIVE_VOCABS["hi"][:-1]) + ["\u0933", "<unk>"]
+NATIVE_VOCABS["bn"] = (
+    ["_"]
+    + list(" ',.-?")
+    + sorted(chr(cp) for cp in range(0x0981, 0x09FA) if unicodedata.category(chr(cp))[0] in ("L", "M"))
+    + ["<unk>"]
+)
+NATIVE_VOCABS["gu"] = (
+    ["_"]
+    + list(" ',.-?")
+    + sorted(chr(cp) for cp in range(0x0A81, 0x0AF2) if unicodedata.category(chr(cp))[0] in ("L", "M"))
+    + ["<unk>"]
+)
+NATIVE_VOCABS["pa"] = (
+    ["_"]
+    + list(" ',.-?")
+    + sorted(chr(cp) for cp in range(0x0A01, 0x0A76) if unicodedata.category(chr(cp))[0] in ("L", "M"))
+    + ["<unk>"]
+)
+NATIVE_VOCABS["or"] = (
+    ["_"]
+    + list(" ',.-?")
+    + sorted(chr(cp) for cp in range(0x0B01, 0x0B73) if unicodedata.category(chr(cp))[0] in ("L", "M"))
+    + ["<unk>"]
+)
+
+for _lc_v in ("bn", "gu", "pa", "or"):
+    _vir_c = {"bn": "\u09cd", "gu": "\u0acd", "pa": "\u0a4d", "or": "\u0b4d"}[_lc_v]
+    if _vir_c in NATIVE_VOCABS[_lc_v]:
+        VIRAMA_TOKEN_IDS[_lc_v] = NATIVE_VOCABS[_lc_v].index(_vir_c)
 
 NATIVE_TOKEN_TO_ID: dict[str, dict[str, int]] = {
     lc: {tok: idx for idx, tok in enumerate(toks)} for lc, toks in NATIVE_VOCABS.items()
@@ -132,6 +181,12 @@ NATIVE_BASE_CHECKPOINTS: dict[str, str] = {
     "ta": "facebook/mms-tts-tam",
     "te": "facebook/mms-tts-tel",
     "ml": "facebook/mms-tts-mal",
+    "en": "facebook/mms-tts-eng",
+    "mr": "facebook/mms-tts-mar",
+    "bn": "facebook/mms-tts-ben",
+    "gu": "facebook/mms-tts-guj",
+    "pa": "facebook/mms-tts-pan",
+    "or": "facebook/mms-tts-ory",
 }
 
 # Articulatory donor mappings for base MMS checkpoints
@@ -233,7 +288,7 @@ IAST_VOWELS: list[tuple[str, str, str]] = [
 
 
 def detect_script_and_lang(text: str, default_lang: str = "sa") -> tuple[str, str]:
-    """Auto-detect dominant Brahmic/IAST script and likely Indic language code."""
+    """Auto-detect dominant Brahmic/IAST/Latin script and likely Indic/English language code."""
     counts: dict[str, int] = {}
     for ch in text:
         cp = ord(ch)
@@ -251,6 +306,10 @@ def detect_script_and_lang(text: str, default_lang: str = "sa") -> tuple[str, st
         "tamil": "ta",
         "telugu": "te",
         "malayalam": "ml",
+        "bengali": "bn",
+        "gurmukhi": "pa",
+        "gujarati": "gu",
+        "odia": "or",
     }
     if dom in script_to_lang:
         return dom, script_to_lang[dom]
@@ -341,12 +400,193 @@ def iast_to_devanagari(text: str) -> str:
     return "".join(out)
 
 
+_EN_DIGIT_DEV: dict[str, str] = {
+    "0": "जीरो",
+    "1": "वन",
+    "2": "टू",
+    "3": "थ्री",
+    "4": "फोर",
+    "5": "फाइव",
+    "6": "सिक्स",
+    "7": "सेवन",
+    "8": "एट",
+    "9": "नाइन",
+}
+
+
+def _english_to_devanagari(text: str) -> str:
+    """Convert English text into phonetic Devanagari aksharas for Tier-2 Klatt & prosodic inspection."""
+    s = unicodedata.normalize("NFC", text.strip()).lower()
+    for d, w in _EN_DIGIT_DEV.items():
+        s = re.sub(rf"\b{d}\b", f" {w} ", s)
+    s = (
+        s.replace("tion", "shan")
+        .replace("sion", "zhan")
+        .replace("qu", "kw")
+        .replace("ck", "k")
+        .replace("wh", "w")
+    )
+    en_vows: list[tuple[str, str, str]] = [
+        ("oo", "\u090a", "\u0942"),
+        ("ee", "\u0908", "\u0940"),
+        ("ea", "\u0908", "\u0940"),
+        ("ai", "\u090f", "\u0947"),
+        ("ay", "\u090f", "\u0947"),
+        ("ou", "\u0914", "\u094c"),
+        ("ow", "\u0913", "\u094b"),
+        ("oa", "\u0913", "\u094b"),
+        ("oi", "\u0913\u0907", "\u094b\u0907"),
+        ("oy", "\u0913\u0907", "\u094b\u0907"),
+        ("a", "\u0905", ""),
+        ("e", "\u090f", "\u0947"),
+        ("i", "\u0907", "\u093f"),
+        ("o", "\u0913", "\u094b"),
+        ("u", "\u0905", ""),
+    ]
+    en_cons: list[tuple[str, str]] = [
+        ("tch", "\u091a"),
+        ("sh", "\u0936"),
+        ("ch", "\u091a"),
+        ("th", "\u0925"),
+        ("ph", "\u092b"),
+        ("gh", "\u0917"),
+        ("ng", "\u0919"),
+        ("zh", "\u091d"),
+        ("kh", "\u0916"),
+        ("bh", "\u092d"),
+        ("dh", "\u0927"),
+        ("b", "\u092c"),
+        ("d", "\u0921"),
+        ("f", "\u092b"),
+        ("g", "\u0917"),
+        ("h", "\u0939"),
+        ("j", "\u091c"),
+        ("k", "\u0915"),
+        ("l", "\u0932"),
+        ("m", "\u092e"),
+        ("n", "\u0928"),
+        ("p", "\u092a"),
+        ("q", "\u0915"),
+        ("r", "\u0930"),
+        ("s", "\u0938"),
+        ("t", "\u091f"),
+        ("v", "\u0935"),
+        ("w", "\u0935"),
+        ("x", "\u0915\u094d\u0938"),
+        ("z", "\u091c"),
+    ]
+    out: list[str] = []
+    i = 0
+    n = len(s)
+    prev_c = False
+    while i < n:
+        ch = s[i]
+        if ch.isspace():
+            if prev_c:
+                out.append(VIRAMA)
+                prev_c = False
+            out.append(" ")
+            i += 1
+            continue
+        if ch in _EN_DIGIT_DEV:
+            if prev_c:
+                out.append(VIRAMA)
+                prev_c = False
+            out.append(_EN_DIGIT_DEV[ch])
+            i += 1
+            continue
+        if ch == "c":
+            nxt = s[i + 1] if i + 1 < n else ""
+            if prev_c:
+                out.append(VIRAMA)
+            out.append("\u0938" if nxt in ("e", "i", "y") else "\u0915")
+            prev_c = True
+            i += 1
+            continue
+        if ch == "y":
+            nxt = s[i + 1] if i + 1 < n else ""
+            if nxt in "aeiou":
+                if prev_c:
+                    out.append(VIRAMA)
+                out.append("\u092f")
+                prev_c = True
+            else:
+                out.append("\u0940" if prev_c else "\u0908")
+                prev_c = False
+            i += 1
+            continue
+        mv = False
+        for rom, indep, matra in en_vows:
+            if s.startswith(rom, i):
+                if rom == "e" and i + 1 == n and prev_c and len(out) >= 2:
+                    # Silent word-final 'e' after consonant
+                    out.append(VIRAMA)
+                    prev_c = False
+                    i += 1
+                    mv = True
+                    break
+                if prev_c:
+                    if matra:
+                        out.append(matra)
+                else:
+                    out.append(indep)
+                prev_c = False
+                i += len(rom)
+                mv = True
+                break
+        if mv:
+            continue
+        mc = False
+        for rom, dev in en_cons:
+            if s.startswith(rom, i):
+                if prev_c:
+                    out.append(VIRAMA)
+                out.append(dev)
+                prev_c = True
+                i += len(rom)
+                mc = True
+                break
+        if mc:
+            continue
+        if prev_c and ch not in ("'", "\u2019"):
+            out.append(VIRAMA)
+            prev_c = False
+        i += 1
+    if prev_c:
+        out.append(VIRAMA)
+    return "".join(out)
+
+
 def brahmic_to_devanagari(text: str) -> str:
-    """Map any Unicode Brahmic script (Kannada, Tamil, Telugu, Malayalam, Bengali, etc.) to Devanagari."""
+    """Map any Unicode Brahmic script (Kannada, Tamil, Telugu, Malayalam, Bengali, Gurmukhi, Gujarati, Odia) to Devanagari."""
     norm = unicodedata.normalize("NFC", text)
     for zwj_seq, atomic in MALAYALAM_ZWJ_CHILLU:
         norm = norm.replace(zwj_seq, atomic)
-    norm = norm.replace("\u0d4c", "\u0d57")
+    norm = (
+        norm.replace("\u0d4c", "\u0d57")
+        .replace("\u0a74", "\u0907\u0915 \u0913\u0902\u0915\u093e\u0930")
+        .replace("\u09af\u09bc", "\u09df")
+        .replace("\u0a71", "")
+    )
+    special_cp: dict[int, str] = {
+        0x09CE: "\u0924\u094d",  # Bengali ৎ -> त्
+        0x09D7: "\u094c",        # Bengali ৗ -> ौ
+        0x09DC: "\u0921\u093c",  # Bengali ড় -> ड़
+        0x09DD: "\u0922\u093c",  # Bengali ঢ় -> ढ़
+        0x09DF: "\u092f",        # Bengali য় -> य
+        0x09F0: "\u0930",        # Assamese/Bengali ৰ -> र
+        0x09F1: "\u0935",        # Assamese/Bengali ৱ -> व
+        0x0A5C: "\u0921\u093c",  # Gurmukhi ੜ -> ड़
+        0x0A70: "\u0902",        # Gurmukhi ੰ (Tippi) -> ं
+        0x0A72: "\u0907",        # Gurmukhi ੲ -> इ
+        0x0A73: "\u0909",        # Gurmukhi ੳ -> उ
+        0x0B56: "\u0948",        # Odia ୖ -> ै
+        0x0B57: "\u094c",        # Odia ୗ -> ौ
+        0x0B5C: "\u0921\u093c",  # Odia ଡ଼ -> ड़
+        0x0B5D: "\u0922\u093c",  # Odia ଢ଼ -> ढ़
+        0x0B5F: "\u092f",        # Odia ୟ -> य
+        0x0B71: "\u0935",        # Odia ୱ -> व
+    }
     out: list[str] = []
     for ch in norm:
         cp = ord(ch)
@@ -356,6 +596,9 @@ def brahmic_to_devanagari(text: str) -> str:
         if cp == 0x0D57:
             out.append("\u094c")
             continue
+        if cp in special_cp:
+            out.append(special_cp[cp])
+            continue
         if 0x0900 <= cp <= 0x097F:
             out.append(ch)
             continue
@@ -363,7 +606,7 @@ def brahmic_to_devanagari(text: str) -> str:
         for lo, hi, _ in BRAHMIC_BASES[1:]:
             if lo <= cp <= hi:
                 offset = cp - lo
-                if 0x01 <= offset <= 0x4D or offset in (0x60, 0x62, 0x63):
+                if 0x01 <= offset <= 0x4D or offset in (0x50, 0x60, 0x62, 0x63):
                     out.append(chr(0x0900 + offset))
                 elif 0x66 <= offset <= 0x6F:
                     out.append(str(offset - 0x66))
@@ -546,7 +789,7 @@ def apply_phonological_rules(dev_text: str, lang: str = "sa") -> str:
             out_digits.append(ch)
     s = "".join(out_digits)
 
-    if lang == "hi":
+    if lang in ("hi", "mr", "gu", "pa"):
         s = delete_hindi_schwa(s)
     elif lang == "sa":
         chars = list(s)
@@ -582,9 +825,39 @@ def apply_phonological_rules(dev_text: str, lang: str = "sa") -> str:
 
 
 def _devanagari_to_target_script(dev_text: str, target_lang: str) -> str:
-    """Transliterate canonical Devanagari into target native Brahmic script when input was IAST or cross-script."""
-    if target_lang == "hi":
+    """Transliterate canonical Devanagari into target native Brahmic/Latin script when input was IAST or cross-script."""
+    if target_lang in ("hi", "mr"):
         return dev_text.replace("\u0964", " ").replace("\u0965", " ")
+    if target_lang == "en":
+        # Romanize Devanagari fallback cleanly into lowercase ASCII for English specialist
+        rev_map = {
+            "\u0905": "a", "\u0906": "aa", "\u0907": "i", "\u0908": "ee", "\u0909": "u", "\u090a": "oo",
+            "\u090f": "e", "\u0910": "ai", "\u0913": "o", "\u0914": "au",
+            "\u093e": "aa", "\u093f": "i", "\u0940": "ee", "\u0941": "u", "\u0942": "oo",
+            "\u0947": "e", "\u0948": "ai", "\u094b": "o", "\u094c": "au",
+            "\u0902": "m", "\u0901": "n", "\u0903": "h",
+            "\u0915": "k", "\u0916": "kh", "\u0917": "g", "\u0918": "gh", "\u0919": "ng",
+            "\u091a": "ch", "\u091b": "chh", "\u091c": "j", "\u091d": "jh", "\u091e": "ny",
+            "\u091f": "t", "\u0920": "th", "\u0921": "d", "\u0922": "dh", "\u0923": "n",
+            "\u0924": "t", "\u0925": "th", "\u0926": "d", "\u0927": "dh", "\u0928": "n",
+            "\u092a": "p", "\u092b": "f", "\u092c": "b", "\u092d": "bh", "\u092e": "m",
+            "\u092f": "y", "\u0930": "r", "\u0932": "l", "\u0933": "l", "\u0935": "v",
+            "\u0936": "sh", "\u0937": "sh", "\u0938": "s", "\u0939": "h",
+        }
+        rom_out: list[str] = []
+        n_d = len(dev_text)
+        for idx, ch in enumerate(dev_text):
+            if ch in ("\u094d", "\u093c"):
+                continue
+            if ch in ("\u0964", "\u0965"):
+                rom_out.append(" ")
+                continue
+            rom_out.append(rev_map.get(ch, ch))
+            if ch in DEV_CONSONANTS:
+                nxt = dev_text[idx + 1] if idx + 1 < n_d else ""
+                if nxt not in DEV_MATRAS and nxt != VIRAMA:
+                    rom_out.append("a")
+        return "".join(rom_out).lower()
 
     base_map = {
         "sa": 0x0C80,  # Kannada-isomorphic zero-schwa-deletion Sanskrit
@@ -592,9 +865,19 @@ def _devanagari_to_target_script(dev_text: str, target_lang: str) -> str:
         "ta": 0x0B80,
         "te": 0x0C00,
         "ml": 0x0D00,
+        "bn": 0x0980,
+        "pa": 0x0A00,
+        "gu": 0x0A80,
+        "or": 0x0B00,
     }
     target_base = base_map.get(target_lang, 0x0C80)
     s = dev_text.replace("\u0901", "\u0902")
+    if target_lang in ("bn", "or"):
+        # Bengali and Odia have no native U+0x35 ('व'); map to U+0x3C/0x2C ('ব'/'ବ')
+        s = s.replace("\u0935", "\u092c")
+    elif target_lang == "pa":
+        # Gurmukhi lacks ष (0x37) -> श (0x36), ऋ -> रि
+        s = s.replace("\u0937", "\u0936").replace("\u090b", "\u0930\u093f").replace("\u0943", "\u0930\u093f")
 
     if target_lang == "ta":
         # Fold non-Tamil aspirated/voiced stops & vocalic-r into standard Tamil orthography
@@ -616,11 +899,14 @@ def _devanagari_to_target_script(dev_text: str, target_lang: str) -> str:
             continue
         cp = ord(ch)
         if cp == 0x093C:
-            continue  # strip Devanagari nukta in Southern Brahmic targets
+            if target_lang in ("bn", "pa", "or"):
+                out.append(chr(target_base + 0x3C))
+            continue  # strip Devanagari nukta in Southern/Gujarati Brahmic targets
         if 0x0901 <= cp <= 0x0963:
             offset = cp - 0x0900
-            # Short e/o fallback: if Devanagari had long ಎ/ಒ (0x0F/0x13, 0x47/0x4B), keep long ಏ/ಓ in sa/kn/te/ml/ta
-            out.append(chr(target_base + offset))
+            target_ch = chr(target_base + offset)
+            if unicodedata.category(target_ch)[0] in ("L", "M"):
+                out.append(target_ch)
         else:
             out.append(ch)
     return "".join(out)
@@ -632,14 +918,25 @@ def to_native_model_text(text: str, lang: str, detected_script: str, phonemic_de
     script_for_lang = {
         "kn": "kannada",
         "hi": "devanagari",
+        "mr": "devanagari",
         "ta": "tamil",
         "te": "telugu",
         "ml": "malayalam",
+        "en": "latin",
+        "bn": "bengali",
+        "gu": "gujarati",
+        "pa": "gurmukhi",
+        "or": "odia",
     }
 
     if lang == "sa":
         # Preserve homorganic nasal+stop clusters (ಙ್, ಞ್, ಣ್, ನ್, ಮ್) for accurate Sanskrit articulation
         native = _devanagari_to_target_script(phonemic_dev, "sa")
+    elif lang == "en":
+        if detected_script in ("latin", "iast"):
+            native = s_raw.lower()
+        else:
+            native = _devanagari_to_target_script(phonemic_dev, "en")
     elif detected_script == script_for_lang.get(lang):
         native = s_raw
         if lang == "hi":
@@ -661,8 +958,8 @@ def to_native_model_text(text: str, lang: str, detected_script: str, phonemic_de
             )
         elif lang == "ta":
             native = native.lower().replace("\u0b83", "\u0bb9\u0bcd")
-        elif lang == "kn":
-            pass
+        elif lang == "pa":
+            native = native.replace("\u0a74", "\u0a07\u0a71\u0a15 \u0a13\u0a05\u0a70\u0a15\u0a3e\u0a30")
     else:
         native = _devanagari_to_target_script(phonemic_dev, lang)
         if lang == "hi":
@@ -677,8 +974,6 @@ def to_native_model_text(text: str, lang: str, detected_script: str, phonemic_de
                 native.replace("\u0c0b", "\u0c30\u0c41")
                 .replace("\u0c19", "\u0c02")
             )
-        elif lang == "kn":
-            pass
 
     # Normalize digits across Indic scripts to ASCII digits where present in vocab
     norm_digits: list[str] = []
@@ -773,11 +1068,13 @@ def text_to_ids(
     blank_id: int | None = None,
     legacy_blank: bool = False,
 ) -> dict[str, Any]:
-    """Convert any Indic/Sanskrit/IAST string into blank-interleaved native specialist VITS input_ids + metadata."""
+    """Convert any Indic/Sanskrit/IAST/English string into blank-interleaved native specialist VITS input_ids + metadata."""
     detected_script, detected_lang = detect_script_and_lang(text, default_lang=lang or "sa")
     active_lang = lang if lang in LANGUAGE_IDS else detected_lang
 
-    if detected_script in ("iast", "latin"):
+    if active_lang == "en" and detected_script == "latin":
+        dev = _english_to_devanagari(text)
+    elif detected_script in ("iast", "latin"):
         dev = iast_to_devanagari(text)
     else:
         dev = brahmic_to_devanagari(text)
@@ -806,9 +1103,15 @@ def text_to_ids(
             "sa": "\u0c85",
             "kn": "\u0c85",
             "hi": "\u0905",
+            "mr": "\u0905",
             "ta": "\u0b85",
             "te": "\u0c05",
             "ml": "\u0d05",
+            "en": "a",
+            "bn": "\u0985",
+            "gu": "\u0a85",
+            "pa": "\u0a05",
+            "or": "\u0b05",
         }[active_lang]
         raw_ids = [lang_map[fallback_tok]]
         native_tokens = [fallback_tok]
@@ -847,14 +1150,19 @@ def text_to_ids(
         "sa": "\u0ccd",
         "kn": "\u0ccd",
         "hi": "\u094d",
+        "mr": "\u094d",
         "ta": "\u0bcd",
         "te": "\u0c4d",
         "ml": "\u0d4d",
-    }.get(active_lang, "\u0ccd")
-    virama_id = lang_map.get(virama_tok, -1)
+        "bn": "\u09cd",
+        "gu": "\u0acd",
+        "pa": "\u0a4d",
+        "or": "\u0b4d",
+    }.get(active_lang, "")
+    virama_id = lang_map.get(virama_tok, -1) if virama_tok else -1
     is_virama = [1 if tid == virama_id else 0 for tid in input_ids]
 
-    ipa_str = text_to_ipa(text, lang=active_lang, normalized_dev_fallback=dev)
+    ipa_str = text_to_ipa(text, lang=active_lang, normalized_dev_fallback=dev if active_lang != "en" else None)
     ipa_ids = ipa_to_ids(ipa_str)
 
     return {

@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ninada — Sanskrit &amp; Indian Language Streaming Voice Studio</title>
-  <meta name="description" content="Ninada: Natural, real-time streaming speech synthesis for Classical Sanskrit, Kannada, Hindi, Tamil, Telugu, and Malayalam — running privately in the browser with offline model caching." />
+  <title>Ninada — Sanskrit, Indian English &amp; Pan-Indic Streaming Voice Studio</title>
+  <meta name="description" content="Ninada v5.0: Natural, real-time 24 kHz streaming speech synthesis for Classical Sanskrit, Indian English, Hindi, Kannada, Marathi, Bengali, Tamil, Telugu, Malayalam, Gujarati, Punjabi, and Odia — running privately in the browser with offline caching." />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23121210'/%3E%3Cpath d='M7 16h3l2.5-7 4 14 3.5-10 2.5 3H25' fill='none' stroke='%23fbfaf7' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-  <link rel="modulepreload" href="./ninada.mjs?v=4.0.3" />
-  <link rel="modulepreload" href="./synth-worker.mjs?v=4.0.3" />
+  <link rel="modulepreload" href="./ninada.mjs?v=5.0.0" />
+  <link rel="modulepreload" href="./synth-worker.mjs?v=5.0.0" />
   <link rel="modulepreload" href="./ort/ort.wasm.min.mjs" />
-  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" crossorigin="anonymous" />
-  <noscript><link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" /></noscript>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" crossorigin="anonymous" />
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" /></noscript>
   <style>
     :root {
       --paper: #fbfaf7;
@@ -30,7 +30,7 @@
       --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
       --sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       --serif: 'Playfair Display', Georgia, serif;
-      --indic: 'Noto Serif Devanagari', 'Noto Sans Kannada', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Malayalam', serif;
+      --indic: 'Noto Serif Devanagari', 'Noto Sans Kannada', 'Noto Sans Bengali', 'Noto Sans Gujarati', 'Noto Sans Gurmukhi', 'Noto Sans Oriya', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Malayalam', serif;
     }
 
     * { box-sizing: border-box; }
@@ -303,6 +303,11 @@
       border-radius: 6px;
       outline: none;
       margin-bottom: 16px;
+    }
+    textarea#textInput.latin-script {
+      font-family: var(--sans);
+      font-size: 17.5px;
+      line-height: 1.55;
     }
     textarea#textInput:focus {
       border-color: var(--ink);
@@ -827,11 +832,11 @@
       <div>
         <div class="kicker">
           <span id="modelDot" class="status-dot loading"></span>
-          <span id="modelStatusKicker">NINADA // SANSKRIT &amp; INDIAN LANGUAGE STREAMING VOICE STUDIO</span>
+          <span id="modelStatusKicker">NINADA // SANSKRIT, INDIAN ENGLISH &amp; PAN-INDIC STREAMING VOICE STUDIO</span>
         </div>
         <h1>Ninada<span class="title-dev" id="devTitle"></span></h1>
         <p class="subtitle">
-          Natural, studio-clarity speech for Classical Sanskrit and five Indian languages — streaming live right in your browser, Node.js, and Python with offline caching.
+          Natural, studio-clarity speech for Classical Sanskrit, Indian English, and ten Indian languages — streaming live right in your browser, Node.js, and Python with offline caching.
         </p>
         <div class="install-strip" aria-label="Package install commands">
           <div class="install-pill">
@@ -852,7 +857,7 @@
       </div>
       <div class="masthead-badges">
         <span class="pill-stat">24 KHZ STUDIO VOICE</span>
-        <span class="pill-stat">6 INDIAN LANGUAGES</span>
+        <span class="pill-stat">12 LANGUAGES · 24 VOICES</span>
         <span class="pill-stat">INSTANT STREAMING</span>
         <span class="pill-stat">OFFLINE CACHE</span>
         <a class="pill-stat" href="https://huggingface.co/gnumanth/ninada" target="_blank" rel="noopener" style="text-decoration:none;">HF MODEL</a>
@@ -877,15 +882,24 @@
           <span id="detectedBadge" class="pill-stat">SCRIPT: DEVANAGARI · SA</span>
         </div>
 
-        <div class="lang-tabs" role="tablist" aria-label="Target Indic Language">
+        <div class="lang-tabs" role="tablist" aria-label="Target Indic or Indian English Language">
           <button type="button" role="tab" aria-selected="true" class="lang-btn active" data-lang="sa" disabled>
             <span>Sanskrit</span><span class="lang-native" data-native="sa"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="en" disabled>
+            <span>English</span><span class="lang-native" data-native="en"></span>
           </button>
           <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="kn" disabled>
             <span>Kannada</span><span class="lang-native" data-native="kn"></span>
           </button>
           <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="hi" disabled>
             <span>Hindi</span><span class="lang-native" data-native="hi"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="mr" disabled>
+            <span>Marathi</span><span class="lang-native" data-native="mr"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="bn" disabled>
+            <span>Bengali</span><span class="lang-native" data-native="bn"></span>
           </button>
           <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="ta" disabled>
             <span>Tamil</span><span class="lang-native" data-native="ta"></span>
@@ -895,6 +909,15 @@
           </button>
           <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="ml" disabled>
             <span>Malayalam</span><span class="lang-native" data-native="ml"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="gu" disabled>
+            <span>Gujarati</span><span class="lang-native" data-native="gu"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="pa" disabled>
+            <span>Punjabi</span><span class="lang-native" data-native="pa"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="or" disabled>
+            <span>Odia</span><span class="lang-native" data-native="or"></span>
           </button>
         </div>
 
@@ -1032,7 +1055,7 @@
       <div class="panel">
         <div class="panel-header">
           <h2 class="panel-title">05 / Streaming Architecture Blueprint</h2>
-          <span class="pill-stat">24 KHZ NATIVE STUDIO VITS · 6 SPECIALISTS</span>
+          <span class="pill-stat">24 KHZ NATIVE STUDIO VITS · 24 SPECIALISTS</span>
         </div>
         <img src="./flow-diagram.svg" alt="Ninada Streaming Pan-Indic Neural TTS Architecture Diagram" class="blueprint-img" />
       </div>
@@ -1040,15 +1063,21 @@
   </div>
 
   <script type="module">
-    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=4.0.3';
+    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.0.0';
 
     const NATIVE_NAMES = {
       sa: '\u0938\u0902\u0938\u094d\u0915\u0943\u0924\u092e\u094d',
+      en: 'IN',
       kn: '\u0c95\u0ca8\u0ccd\u0ca8\u0ca1',
       hi: '\u0939\u093f\u0928\u094d\u0926\u0940',
+      mr: '\u092e\u0930\u093e\u0920\u0940',
+      bn: '\u09ac\u09be\u0982\u09b2\u09be',
       ta: '\u0ba4\u0bae\u0bbf\u0bb4\u0bcd',
       te: '\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41',
       ml: '\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02',
+      gu: '\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0',
+      pa: '\u0a2a\u0a70\u0a1c\u0a3e\u0a2c\u0a40',
+      or: '\u0b13\u0b21\u0b3c\u0b3f\u0b06',
     };
 
     document.getElementById('devTitle').textContent = '\u0928\u093f\u0928\u093e\u0926';
@@ -1058,11 +1087,17 @@
 
     const LANG_META = {
       sa: { name: 'sanskrit', label: 'Sanskrit' },
+      en: { name: 'english', label: 'Indian English' },
       kn: { name: 'kannada', label: 'Kannada' },
       hi: { name: 'hindi', label: 'Hindi' },
+      mr: { name: 'marathi', label: 'Marathi' },
+      bn: { name: 'bengali', label: 'Bengali' },
       ta: { name: 'tamil', label: 'Tamil' },
       te: { name: 'telugu', label: 'Telugu' },
       ml: { name: 'malayalam', label: 'Malayalam' },
+      gu: { name: 'gujarati', label: 'Gujarati' },
+      pa: { name: 'punjabi', label: 'Punjabi' },
+      or: { name: 'odia', label: 'Odia' },
     };
 
     const CODE_TAB_META = {
@@ -1230,6 +1265,36 @@
         { label: 'Malayalam \u00b7 Studio', lang: 'ml', text: '\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02 \u0d2d\u0d3e\u0d37\u0d3e \u0d36\u0d2c\u0d4d\u0d26 \u0d38\u0d02\u0d2f\u0d4b\u0d1c\u0d28 \u0d2a\u0d30\u0d40\u0d15\u0d4d\u0d37\u0d23\u0d36\u0d3e\u0d32\u0d2f\u0d3f\u0d32\u0d47\u0d15\u0d4d\u0d15\u0d4d \u0d38\u0d4d\u0d35\u0d3e\u0d17\u0d24\u0d02. \u0d28\u0d3f\u0d28\u0d3e\u0d26\u0d02 \u0d38\u0d4d\u0d35\u0d3e\u0d2d\u0d3e\u0d35\u0d3f\u0d15\u0d2e\u0d3e\u0d2f \u0d36\u0d2c\u0d4d\u0d26\u0d02 \u0d28\u0d7d\u0d15\u0d41\u0d28\u0d4d\u0d28\u0d41.' },
         { label: 'Malayalam \u00b7 Sahitya', lang: 'ml', text: '\u0d2e\u0d32\u0d2f\u0d3e\u0d33 \u0d2d\u0d3e\u0d37\u0d2f\u0d41\u0d1f\u0d46 \u0d05\u0d15\u0d4d\u0d37\u0d30\u0d38\u0d4d\u0d2b\u0d41\u0d1f\u0d24\u0d2f\u0d41\u0d02 \u0d24\u0d3e\u0d33\u0d2c\u0d4b\u0d27\u0d35\u0d41\u0d02 \u0d05\u0d24\u0d40\u0d35 \u0d38\u0d41\u0d28\u0d4d\u0d26\u0d30\u0d2e\u0d3e\u0d23\u0d4d.' },
         { label: 'Malayalam \u00b7 Streaming Passage', lang: 'ml', text: '\u0d15\u0d47\u0d30\u0d33\u0d24\u0d4d\u0d24\u0d3f\u0d28\u0d4d\u0d31\u0d46 \u0d38\u0d3e\u0d39\u0d3f\u0d24\u0d4d\u0d2f \u0d2a\u0d3e\u0d30\u0d2e\u0d4d\u0d2a\u0d30\u0d4d\u0d2f\u0d35\u0d41\u0d02 \u0d38\u0d02\u0d38\u0d4d\u0d15\u0d43\u0d24 \u0d38\u0d4d\u0d35\u0d3e\u0d27\u0d40\u0d28\u0d35\u0d41\u0d02 \u0d2e\u0d32\u0d2f\u0d3e\u0d33 \u0d2d\u0d3e\u0d37\u0d2f\u0d46 \u0d38\u0d2e\u0d4d\u0d2a\u0d28\u0d4d\u0d28\u0d2e\u0d3e\u0d15\u0d4d\u0d15\u0d41\u0d28\u0d4d\u0d28\u0d41. \u0d08 \u0d36\u0d2c\u0d4d\u0d26 \u0d38\u0d02\u0d35\u0d3f\u0d27\u0d3e\u0d28\u0d02 \u0d2c\u0d4d\u0d30\u0d57\u0d38\u0d31\u0d3f\u0d7d \u0d28\u0d47\u0d30\u0d3f\u0d1f\u0d4d\u0d1f\u0d4d \u0d2a\u0d4d\u0d30\u0d35\u0d7c\u0d24\u0d4d\u0d24\u0d3f\u0d15\u0d4d\u0d15\u0d41\u0d28\u0d4d\u0d28\u0d41.' },
+      ],
+      en: [
+        { label: 'English \u00b7 Studio', lang: 'en', text: 'Welcome to Ninada, a real-time studio voice engine for Indian English and eleven Indian languages running privately in your browser.' },
+        { label: 'English \u00b7 Science & Computing', lang: 'en', text: 'Sub-clause latent streaming synthesizes the opening phrase in milliseconds while the AudioWorklet ring buffer maintains glitch-free twenty-four kilohertz playback.' },
+        { label: 'English \u00b7 Streaming Passage', lang: 'en', text: 'Indian linguistic heritage spans classical Sanskrit, Dravidian, and Indo-Aryan traditions with remarkable phonetic precision. Ninada pairs compact twenty-eight megabyte neural specialists with offline browser caching so speech synthesis stays instant, expressive, and completely private.' },
+      ],
+      mr: [
+        { label: 'Marathi \u00b7 Studio', lang: 'mr', text: '\u0928\u092e\u0938\u094d\u0915\u093e\u0930, \u0928\u093f\u0928\u093e\u0926 \u092e\u0930\u093e\u0920\u0940 \u0927\u094d\u0935\u0928\u0940 \u0938\u0902\u0936\u094d\u0932\u0947\u0937\u0923 \u092a\u094d\u0930\u0923\u093e\u0932\u0940\u092e\u0927\u094d\u092f\u0947 \u0906\u092a\u0932\u0947 \u092e\u0928\u0903\u092a\u0942\u0930\u094d\u0935\u0915 \u0938\u094d\u0935\u093e\u0917\u0924 \u0906\u0939\u0947.' },
+        { label: 'Marathi \u00b7 Sant Dnyaneshwar', lang: 'mr', text: '\u092e\u093e\u091d\u093e \u092e\u0930\u0939\u093e\u091f\u093e\u091a\u093f\u092c\u094b\u0932\u0941 \u0915\u094c\u0924\u0941\u0915\u0947 \u0964 \u092a\u0930\u093f \u0905\u092e\u0943\u0924\u093e\u0924\u0947\u0939\u093f \u092a\u0948\u091c\u093e \u091c\u093f\u0902\u0915\u0947 \u0965' },
+        { label: 'Marathi \u00b7 Streaming Passage', lang: 'mr', text: '\u092e\u0930\u093e\u0920\u0940 \u092d\u093e\u0937\u0947\u091a\u0940 \u0938\u093e\u0939\u093f\u0924\u094d\u092f \u0906\u0923\u093f \u0938\u0902\u0917\u0940\u0924 \u092a\u0930\u0902\u092a\u0930\u093e \u0905\u0924\u094d\u092f\u0902\u0924 \u0938\u092e\u0943\u0926\u094d\u0927 \u0906\u0939\u0947. \u0939\u0947 \u0924\u0902\u0924\u094d\u0930\u091c\u094d\u091e\u093e\u0928 \u0925\u0947\u091f \u0924\u0941\u092e\u091a\u094d\u092f\u093e \u092c\u094d\u0930\u093e\u0909\u091d\u0930\u092e\u0927\u094d\u092f\u0947 \u0928\u0948\u0938\u0930\u094d\u0917\u093f\u0915 \u0906\u0923\u093f \u0938\u094d\u092a\u0937\u094d\u091f \u0906\u0935\u093e\u091c \u0928\u093f\u0930\u094d\u092e\u093e\u0923 \u0915\u0930\u0924\u0947.' },
+      ],
+      bn: [
+        { label: 'Bengali \u00b7 Studio', lang: 'bn', text: '\u09a8\u09ae\u09b8\u09cd\u0995\u09be\u09b0, \u09a8\u09bf\u09a8\u09be\u09a6 \u09ac\u09be\u0982\u09b2\u09be \u09a7\u09cd\u09ac\u09a8\u09bf \u09b8\u0982\u09b6\u09cd\u09b2\u09c7\u09b7\u09a3 \u09aa\u09cd\u09b0\u09af\u09c1\u0995\u09cd\u09a4\u09bf\u09a4\u09c7 \u0986\u09aa\u09a8\u09be\u0995\u09c7 \u09b8\u09cd\u09ac\u09be\u0997\u09a4 \u099c\u09be\u09a8\u09be\u0987\u0964' },
+        { label: 'Bengali \u00b7 Sahitya', lang: 'bn', text: '\u0986\u09b2\u09cb \u0986\u09ae\u09be\u09b0 \u0986\u09b2\u09cb \u0993\u0997\u09cb, \u0986\u09b2\u09cb \u09ad\u09c1\u09ac\u09a8 \u09ad\u09b0\u09be\u0964' },
+        { label: 'Bengali \u00b7 Streaming Passage', lang: 'bn', text: '\u09ac\u09be\u0982\u09b2\u09be \u09ad\u09be\u09b7\u09be\u09b0 \u09a7\u09cd\u09ac\u09a8\u09bf\u09ae\u09be\u09a7\u09c1\u09b0\u09cd\u09af \u098f\u09ac\u0982 \u09b8\u09be\u09b9\u09bf\u09a4\u09cd\u09af \u0990\u09a4\u09bf\u09b9\u09cd\u09af \u09ac\u09bf\u09b6\u09cd\u09ac\u099c\u09c1\u09dc\u09c7 \u09b8\u09ae\u09be\u09a6\u09c3\u09a4\u0964 \u098f\u0987 \u09aa\u09cd\u09b0\u09af\u09c1\u0995\u09cd\u09a4\u09bf \u09b8\u09b0\u09be\u09b8\u09b0\u09bf \u09ac\u09cd\u09b0\u09be\u0989\u099c\u09be\u09b0\u09c7 \u09b8\u09cd\u09ac\u09be\u09ad\u09be\u09ac\u09bf\u0995 \u0995\u09a3\u09cd\u09a0\u09b8\u09cd\u09ac\u09b0 \u09a4\u09c8\u09b0\u09bf \u0995\u09b0\u09c7\u0964' },
+      ],
+      gu: [
+        { label: 'Gujarati \u00b7 Studio', lang: 'gu', text: '\u0aa8\u0aae\u0ab8\u0acd\u0aa4\u0ac7, \u0aa8\u0abf\u0aa8\u0abe\u0aa6 \u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0 \u0aa7\u0acd\u0ab5\u0aa8\u0abf \u0ab8\u0a82\u0ab6\u0acd\u0ab2\u0ac7\u0ab7\u0aa3 \u0aaa\u0acd\u0ab0\u0aa3\u0abe\u0ab2\u0ac0\u0aae\u0abe\u0a82 \u0a86\u0aaa\u0aa8\u0ac1\u0a82 \u0ab9\u0abe\u0ab0\u0acd\u0aa6\u0abf\u0a95 \u0ab8\u0acd\u0ab5\u0abe\u0a97\u0aa4 \u0a9b\u0ac7.' },
+        { label: 'Gujarati \u00b7 Narsinh Mehta', lang: 'gu', text: '\u0ab5\u0ac8\u0ab7\u0acd\u0aa3\u0ab5 \u0a9c\u0aa8 \u0aa4\u0acb \u0aa4\u0ac7\u0aa8\u0ac7 \u0a95\u0ab9\u0abf\u0a8f, \u0a9c\u0ac7 \u0aaa\u0ac0\u0aa1 \u0aaa\u0ab0\u0abe\u0aaf\u0ac0 \u0a9c\u0abe\u0aa3\u0ac7 \u0ab0\u0ac7.' },
+        { label: 'Gujarati \u00b7 Streaming Passage', lang: 'gu', text: '\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0 \u0aad\u0abe\u0ab7\u0abe\u0aa8\u0ac0 \u0ab8\u0abe\u0ab9\u0abf\u0aa4\u0acd\u0aaf\u0abf\u0a95 \u0aaa\u0ab0\u0a82\u0aaa\u0ab0\u0abe \u0a85\u0aa8\u0ac7 \u0ab2\u0aaf\u0aac\u0aa6\u0acd\u0aa7 \u0a89\u0a9a\u0acd\u0a9a\u0abe\u0ab0\u0aa3 \u0a85\u0aa4\u0acd\u0aaf\u0a82\u0aa4 \u0ab8\u0ac1\u0a82\u0aa6\u0ab0 \u0a9b\u0ac7. \u0a86 \u0aa4\u0a82\u0aa4\u0acd\u0ab0\u0a9c\u0acd\u0a9e\u0abe\u0aa8 \u0aac\u0acd\u0ab0\u0abe\u0a89\u0a9d\u0ab0\u0aae\u0abe\u0a82 \u0aa4\u0aa4\u0acd\u0a95\u0abe\u0ab3 \u0a95\u0ac1\u0aa6\u0ab0\u0aa4\u0ac0 \u0a85\u0ab5\u0abe\u0a9c \u0aaa\u0ac0\u0ab0\u0ab8\u0ac7 \u0a9b\u0ac7.' },
+      ],
+      pa: [
+        { label: 'Punjabi \u00b7 Studio', lang: 'pa', text: '\u0a38\u0a24\u0a3f \u0a38\u0a4d\u0a30\u0a40 \u0a05\u0a15\u0a3e\u0a32, \u0a28\u0a3f\u0a28\u0a3e\u0a26 \u0a2a\u0a70\u0a1c\u0a3e\u0a2c\u0a40 \u0a27\u0a41\u0a28\u0a40 \u0a2a\u0a4d\u0a30\u0a23\u0a3e\u0a32\u0a40 \u0a35\u0a3f\u0a71\u0a1a \u0a24\u0a41\u0a39\u0a3e\u0a21\u0a3e \u0a28\u0a3f\u0a71\u0a18\u0a3e \u0a38\u0a4d\u0a35\u0a3e\u0a17\u0a24 \u0a39\u0a48\u0964' },
+        { label: 'Punjabi \u00b7 Sahitya', lang: 'pa', text: '\u0a05\u0a35\u0a32\u0a3f \u0a05\u0a32\u0a39 \u0a28\u0a42\u0a30\u0a41 \u0a09\u0a2a\u0a3e\u0a07\u0a06, \u0a15\u0a41\u0a26\u0a30\u0a24\u0a3f \u0a15\u0a47 \u0a38\u0a2d \u0a2c\u0a70\u0a26\u0a47\u0964' },
+        { label: 'Punjabi \u00b7 Streaming Passage', lang: 'pa', text: '\u0a2a\u0a70\u0a1c\u0a3e\u0a2c\u0a40 \u0a2d\u0a3e\u0a38\u0a3c\u0a3e \u0a26\u0a40 \u0a2e\u0a3f\u0a20\u0a3e\u0a38 \u0a05\u0a24\u0a47 \u0a32\u0a4b\u0a15 \u0a38\u0a3e\u0a39\u0a3f\u0a24 \u0a2c\u0a39\u0a41\u0a24 \u0a05\u0a2e\u0a40\u0a30 \u0a39\u0a28\u0964 \u0a07\u0a39 \u0a24\u0a15\u0a28\u0a40\u0a15 \u0a2c\u0a3f\u0a28\u0a3e\u0a02 \u0a15\u0a3f\u0a38\u0a47 \u0a2c\u0a3e\u0a39\u0a30\u0a40 \u0a38\u0a30\u0a35\u0a30 \u0a26\u0a47 \u0a38\u0a3f\u0a71\u0a27\u0a3e \u0a2c\u0a4d\u0a30\u0a3e\u0a0a\u0a1c\u0a3c\u0a30 \u0a35\u0a3f\u0a71\u0a1a \u0a15\u0a41\u0a26\u0a30\u0a24\u0a40 \u0a06\u0a35\u0a3e\u0a1c\u0a3c \u0a2a\u0a48\u0a26\u0a3e \u0a15\u0a30\u0a26\u0a40 \u0a39\u0a48\u0964' },
+      ],
+      or: [
+        { label: 'Odia \u00b7 Studio', lang: 'or', text: '\u0b28\u0b2e\u0b38\u0b4d\u0b15\u0b3e\u0b30, \u0b28\u0b3f\u0b28\u0b3e\u0b26 \u0b13\u0b21\u0b3c\u0b3f\u0b06 \u0b27\u0b4d\u0b2c\u0b28\u0b3f \u0b38\u0b02\u0b36\u0b4d\u0b33\u0b47\u0b37\u0b23 \u0b2a\u0b4d\u0b30\u0b23\u0b3e\u0b33\u0b40\u0b15\u0b41 \u0b06\u0b2a\u0b23\u0b19\u0b4d\u0b15\u0b41 \u0b38\u0b4d\u0b2c\u0b3e\u0b17\u0b24\u0964' },
+        { label: 'Odia \u00b7 Sahitya', lang: 'or', text: '\u0b2c\u0b28\u0b4d\u0b26\u0b47 \u0b09\u0b24\u0b4d\u0b15\u0b33 \u0b1c\u0b28\u0b28\u0b40, \u0b1a\u0b3e\u0b30\u0b41 \u0b39\u0b3e\u0b38\u0b4d\u0b5f\u0b2e\u0b5f\u0b40 \u0b1a\u0b3e\u0b30\u0b41 \u0b2d\u0b3e\u0b37\u0b2e\u0b5f\u0b40\u0964' },
+        { label: 'Odia \u00b7 Streaming Passage', lang: 'or', text: '\u0b36\u0b3e\u0b38\u0b4d\u0b24\u0b4d\u0b30\u0b40\u0b5f \u0b13\u0b21\u0b3c\u0b3f\u0b06 \u0b2d\u0b3e\u0b37\u0b3e\u0b30 \u0b38\u0b3e\u0b39\u0b3f\u0b24\u0b4d\u0b5f \u0b13 \u0b38\u0b02\u0b38\u0b4d\u0b15\u0b43\u0b24\u0b3f \u0b05\u0b24\u0b4d\u0b5f\u0b28\u0b4d\u0b24 \u0b38\u0b2e\u0b43\u0b26\u0b4d\u0b27\u0964 \u0b0f\u0b39\u0b3f \u0b2a\u0b4d\u0b30\u0b2f\u0b41\u0b15\u0b4d\u0b24\u0b3f \u0b38\u0b3f\u0b27\u0b3e\u0b38\u0b33\u0b16 \u0b2c\u0b4d\u0b30\u0b3e\u0b09\u0b1c\u0b30\u0b30\u0b47 \u0b38\u0b4d\u0b2a\u0b37\u0b4d\u0b1f \u0b0f\u0b2c\u0b02 \u0b38\u0b4d\u0b2c\u0b3e\u0b2d\u0b3e\u0b2c\u0b3f\u0b15 \u0b38\u0b4d\u0b2c\u0b30 \u0b38\u0b43\u0b37\u0b4d\u0b1f\u0b3f \u0b15\u0b30\u0b47\u0964' },
       ],
     };
 
@@ -1477,7 +1542,7 @@
         if (!audioWorkletModulePromise) {
           audioWorkletModulePromise = (async () => {
             try {
-              await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js?v=4.0.3');
+              await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js?v=5.0.0');
               workletNode = new AudioWorkletNode(audioCtx, 'ninada-stream-processor', {
                 numberOfInputs: 0,
                 numberOfOutputs: 1,
@@ -1578,7 +1643,7 @@
                 estTotalSec - trailingPauseSec - interPauseSec
               );
               const lastChunkSec = 0.54;
-              const marginSec = clauseCount > 1 ? 0.52 : 0.18;
+              const marginSec = clauseCount > 1 ? 0.56 : 0.18;
               const wNextSec =
                 effRtf <= 0.97 ? Math.min(1.25, vocRtf * nextWinSec + 0.06) : c0Sec;
               const wTotalSec =
@@ -1666,6 +1731,7 @@
 
     function setActiveLang(langCode, { loadDefaultPreset = true } = {}) {
       activeLang = PRESETS_BY_LANG[langCode] ? langCode : 'sa';
+      textInput.classList.toggle('latin-script', activeLang === 'en');
       for (const b of langBtns) {
         const isMatch = b.dataset.lang === activeLang;
         b.classList.toggle('active', isMatch);
@@ -1847,9 +1913,33 @@
         title: '03 / Malayalam Vrttam Prosody (Guru / Laghu) & Akshara Durations',
         badge: '\u0d35\u0d43\u0d24\u0d4d\u0d24\u0d02 \u00b7 \u0d17\u0d41\u0d30\u0d41 (G) \u00b7 \u0d32\u0d18\u0d41 (L) \u00b7 \u0d1a\u0d3f\u0d32\u0d4d\u0d32\u0d4d (C)',
       },
+      en: {
+        title: '03 / Indian English Syllable Stress & Acoustic Durations',
+        badge: 'ENGLISH \u00b7 HEAVY (G) \u00b7 LIGHT (L) \u00b7 24 KHZ',
+      },
+      mr: {
+        title: '03 / Marathi Vrutta Prosody (Guru / Laghu) & Akshara Durations',
+        badge: '\u0935\u0943\u0924\u094d\u0924 \u00b7 \u0917\u0941\u0930\u0941 (G) \u00b7 \u0932\u0918\u0941 (L) \u00b7 \u092a\u093e\u092f\u092e\u094b\u0921 (C)',
+      },
+      bn: {
+        title: '03 / Bengali Chhanda Prosody (Guru / Laghu) & Akshara Durations',
+        badge: '\u099b\u09a8\u09cd\u09a6 \u00b7 \u0997\u09c1\u09b0\u09c1 (G) \u00b7 \u09b2\u0998\u09c1 (L) \u09b9\u09b8\u09a8\u09cd\u09a4 (C)',
+      },
+      gu: {
+        title: '03 / Gujarati Chhand Prosody (Guru / Laghu) & Akshara Durations',
+        badge: '\u0a9b\u0a82\u0aa6 \u00b7 \u0a97\u0ac1\u0ab0\u0ac1 (G) \u00b7 \u0ab2\u0a98\u0ac1 (L) \u00b7 \u0ab9\u0ab2\u0aa8\u0acd\u0aa4 (C)',
+      },
+      pa: {
+        title: '03 / Punjabi Chhand Prosody (Guru / Laghu) & Gurmukhi Akshara Durations',
+        badge: '\u0a1b\u0a70\u0a26 \u00b7 \u0a17\u0a41\u0a30\u0a42 (G) \u00b7 \u0a32\u0a18\u0a42 (L) \u00b7 \u0a39\u0a32\u0a70\u0a24 (C)',
+      },
+      or: {
+        title: '03 / Odia Chhanda Prosody (Guru / Laghu) & Akshara Durations',
+        badge: '\u0b1b\u0b28\u0b4d\u0b26 \u00b7 \u0b17\u0b41\u0b30\u0b41 (G) \u0b32\u0b18\u0b41 (L) \u00b7 \u0b39\u0b33\u0b28\u0b4d\u0b24 (C)',
+      },
     };
 
-    const BRAHMIC_BLOCK_BASES = [0x0900, 0x0b80, 0x0c00, 0x0c80, 0x0d00];
+    const BRAHMIC_BLOCK_BASES = [0x0900, 0x0980, 0x0a00, 0x0a80, 0x0b00, 0x0b80, 0x0c00, 0x0c80, 0x0d00];
     const LONG_VOWEL_OFFS = new Set([0x06, 0x08, 0x0a, 0x0f, 0x10, 0x13, 0x14, 0x60, 0x61]);
     const LONG_MATRA_OFFS = new Set([0x3e, 0x40, 0x42, 0x44, 0x47, 0x48, 0x4b, 0x4c, 0x55, 0x56, 0x57, 0x63]);
     const ML_ZWJ_CHILLUS = [
@@ -1864,19 +1954,21 @@
     function classifyBrahmicChar(ch) {
       if (!ch) return null;
       const cp = ch.codePointAt(0);
-      if (cp >= 0x0d7a && cp <= 0x0d7f) return { kind: 'chillu' };
+      if ((cp >= 0x0d7a && cp <= 0x0d7f) || cp === 0x09ce) return { kind: 'chillu' };
       if (cp === 0x0951 || cp === 0x0952) return { kind: 'svara' };
       for (const base of BRAHMIC_BLOCK_BASES) {
         if (cp >= base && cp <= base + 0x7f) {
           const off = cp - base;
           if (off === 0x4d) return { kind: 'virama', base, off };
           if (off === 0x3c) return { kind: 'nukta', base, off };
-          if (off === 0x02 || off === 0x03) return { kind: 'modifier', heavy: true, base, off };
+          if (off === 0x02 || off === 0x03 || (base === 0x0a00 && (off === 0x70 || off === 0x71))) {
+            return { kind: 'modifier', heavy: true, base, off };
+          }
           if (off === 0x00 || off === 0x01 || off === 0x04) return { kind: 'modifier', heavy: false, base, off };
-          if ((off >= 0x05 && off <= 0x14) || off === 0x60 || off === 0x61) {
+          if ((off >= 0x05 && off <= 0x14) || off === 0x60 || off === 0x61 || (base === 0x0a00 && (off === 0x72 || off === 0x73))) {
             return { kind: 'vowel', long: LONG_VOWEL_OFFS.has(off), base, off };
           }
-          if ((off >= 0x15 && off <= 0x39) || (off >= 0x58 && off <= 0x5f)) {
+          if ((off >= 0x15 && off <= 0x39) || (off >= 0x58 && off <= 0x5f) || (base === 0x0b00 && off === 0x71)) {
             return { kind: 'consonant', base, off };
           }
           if ((off >= 0x3e && off <= 0x4c) || off === 0x55 || off === 0x56 || off === 0x57 || off === 0x62 || off === 0x63) {
@@ -1889,6 +1981,9 @@
     }
 
     function segmentNativeAksharas(rawText, info, lang) {
+      if (lang === 'en') {
+        return info.aksharas || [];
+      }
       let src = String(rawText || '');
       if (info.script === 'iast' || info.script === 'latin') {
         src = lang === 'sa' ? (info.normalizedDevanagari || src) : (info.nativeText || info.normalizedDevanagari || src);
@@ -2263,7 +2358,7 @@
     await ensureCrossOriginIsolation();
 
     // Dedicated off-main-thread Web Worker for ONNX Runtime WASM SIMD
-    const synthWorker = new Worker('./synth-worker.mjs?v=4.0.3', { type: 'module' });
+    const synthWorker = new Worker('./synth-worker.mjs?v=5.0.0', { type: 'module' });
     let nextReqSeq = 1;
     let currentPendingReq = null;
 

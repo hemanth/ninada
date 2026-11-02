@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOCS_DIR = path.join(__dirname, "docs");
 const JS_DIST_DIR = path.join(__dirname, "js", "dist");
-const ARTIFACTS_ONNX_DIR = path.join(__dirname, "artifacts", "ninada_v4", "onnx");
+const ARTIFACTS_V5_ONNX_DIR = path.join(__dirname, "artifacts", "ninada_v5", "onnx");
+const ARTIFACTS_V4_ONNX_DIR = path.join(__dirname, "artifacts", "ninada_v4", "onnx");
 const PORT = Number(process.env.PORT || 4179);
 const gzipCache = new Map();
 
@@ -33,17 +34,23 @@ const server = http.createServer((req, res) => {
   if (pathname.startsWith("/dist/")) {
     filePath = path.join(JS_DIST_DIR, pathname.slice(6));
   } else if (pathname.startsWith("/onnx/")) {
-    filePath = path.join(ARTIFACTS_ONNX_DIR, pathname.slice(6));
+    const rel = pathname.slice(6);
+    const c5 = path.join(ARTIFACTS_V5_ONNX_DIR, rel);
+    filePath = fs.existsSync(c5) ? c5 : path.join(ARTIFACTS_V4_ONNX_DIR, rel);
   } else if (pathname.startsWith("/models/") && !fs.existsSync(filePath)) {
-    const candidate = path.join(ARTIFACTS_ONNX_DIR, pathname.slice(8));
-    if (fs.existsSync(candidate)) filePath = candidate;
+    const rel = pathname.slice(8);
+    const c5 = path.join(ARTIFACTS_V5_ONNX_DIR, rel);
+    const c4 = path.join(ARTIFACTS_V4_ONNX_DIR, rel);
+    if (fs.existsSync(c5)) filePath = c5;
+    else if (fs.existsSync(c4)) filePath = c4;
   }
 
   const resolved = path.resolve(filePath);
   if (
     !resolved.startsWith(DOCS_DIR) &&
     !resolved.startsWith(JS_DIST_DIR) &&
-    !resolved.startsWith(ARTIFACTS_ONNX_DIR)
+    !resolved.startsWith(ARTIFACTS_V5_ONNX_DIR) &&
+    !resolved.startsWith(ARTIFACTS_V4_ONNX_DIR)
   ) {
     res.writeHead(403);
     res.end("Forbidden");

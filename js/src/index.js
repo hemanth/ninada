@@ -1,13 +1,14 @@
 /**
- * ninada v4.0 — Streaming 24 kHz Native Per-Language Studio VITS Neural TTS
- * (6 Dedicated Native 24,000 Hz Studio VITS Specialists + Zero-Dep Klatt Fallback for Browser WASM SIMD & Node.js)
+ * ninada v5.0 — Streaming 24 kHz Native Per-Language Studio VITS Neural TTS
+ * (24 Dedicated Male & Female Native 24,000 Hz Studio VITS Specialists across 12 Languages
+ *  + Zero-Dep Klatt Fallback for Browser WASM SIMD & Node.js)
  *
  * Streaming quick start:
  *   import ninada from 'ninada';
- *   const voice = await ninada('kannada', {
- *     models: { kn: './models/kn.onnx', sa: './models/sa.onnx' },
+ *   const voice = await ninada('english', {
+ *     models: { en: './models/en.onnx', kn: './models/kn.onnx', sa: './models/sa.onnx' },
  *   });
- *   for await (const chunk of voice.stream('ನಮಸ್ಕಾರ, ಇಂದು ಬೆಂಗಳೂರಿನಲ್ಲಿ ಹವಾಮಾನ ತುಂಬಾ ಚೆನ್ನಾಗಿದೆ.')) {
+ *   for await (const chunk of voice.stream('Hello from Bengaluru, welcome to Ninada Studio.')) {
  *     // chunk.pcm (Float32Array @ 24kHz), chunk.ttfaMs
  *   }
  */
@@ -44,8 +45,9 @@ const VOICE_BANK_FLOATS = 510 * 256;
 const VOICE_BANK_BYTES = VOICE_BANK_FLOATS * 4;
 const DEFAULT_HF_REPO = 'gnumanth/ninada';
 const ALL_SPECIALIST_KEYS = [
-  'sa', 'kn', 'hi', 'ta', 'te', 'ml',
+  'sa', 'kn', 'hi', 'ta', 'te', 'ml', 'en', 'mr', 'bn', 'gu', 'pa', 'or',
   'sa_female', 'kn_female', 'hi_female', 'ta_female', 'te_female', 'ml_female',
+  'en_female', 'mr_female', 'bn_female', 'gu_female', 'pa_female', 'or_female',
 ];
 
 const LANG_ALIASES = {
@@ -55,6 +57,12 @@ const LANG_ALIASES = {
   ta: 'ta', tamil: 'ta',
   te: 'te', telugu: 'te',
   ml: 'ml', malayalam: 'ml',
+  en: 'en', english: 'en', 'indian-english': 'en', 'en-in': 'en',
+  mr: 'mr', marathi: 'mr',
+  bn: 'bn', bengali: 'bn', bangla: 'bn',
+  gu: 'gu', gujarati: 'gu',
+  pa: 'pa', punjabi: 'pa', gurmukhi: 'pa',
+  or: 'or', odia: 'or', oriya: 'or',
 };
 
 function resolveLang(val) {
@@ -124,7 +132,7 @@ function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
       if (words.length >= 2) {
         let splitIdx = words[0].length >= 16 ? 1 : Math.max(2, Math.floor(words.length / 2));
         for (let i = 2; i < words.length - 1; i++) {
-          if (/^(ಮತ್ತು|और|तथा|மற்றும்|మరియు|കൂടാതെ|च)$/.test(words[i])) {
+          if (/^(ಮತ್ತು|और|तथा|மற்றும்|మరియు|കൂടാതെ|च|and|आणि|এবং|અને|ਅਤੇ|ଏବଂ)$/i.test(words[i])) {
             splitIdx = i;
             break;
           }
@@ -268,7 +276,7 @@ async function resolveOrt(explicitOrt, webmlKit = null) {
   return null;
 }
 
-const BROWSER_MODEL_CACHE = 'ninada-onnx-v4.0.0';
+const BROWSER_MODEL_CACHE = 'ninada-onnx-v5.0.0';
 
 async function fetchBrowserCachedBytes(url, useCache = true, validator = null) {
   const absUrl =
@@ -1361,18 +1369,20 @@ export default async function ninada(input = 'sa', opts = {}) {
                 } else if (isFinalClause && remFrames <= 54) {
                   stepF = remFrames;
                 } else if (chunkIndex === 0 && fBounds.length === 1) {
-                  stepF = 120;
+                  stepF = 124;
                 } else if (!isFinalClause) {
                   stepF = 124;
                 } else {
                   stepF = 98;
                 }
               } else if (fBounds.length === 1) {
-                stepF = 38;
+                stepF = 40;
               } else if (fBounds.length === 2) {
-                stepF = 68;
+                stepF = 56;
+              } else if (fBounds.length === 3) {
+                stepF = 72;
               } else {
-                stepF = 116;
+                stepF = 96;
               }
               let fNext = Math.min(totalLatentFrames, fCur + stepF);
               if (totalLatentFrames - fNext < 20) fNext = totalLatentFrames;

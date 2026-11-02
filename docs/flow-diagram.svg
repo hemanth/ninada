@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 340" width="980" height="340" role="img" aria-label="Ninada v4.0 24 kHz Native Studio VITS Pan-Indic and Classical Sanskrit Architecture Blueprint">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 340" width="980" height="340" role="img" aria-label="Ninada v5.0 24 kHz Native Studio VITS Indian English, Sanskrit, and Pan-Indic Architecture Blueprint">
   <defs>
     <style>
       .canvas { fill: #ffffff; }
@@ -22,15 +22,15 @@
   <rect class="canvas" x="0" y="0" width="980" height="340" rx="10" />
   <rect class="frame" x="14" y="14" width="952" height="312" rx="8" />
 
-  <text class="kicker" x="32" y="38">NINADA v4.0 // 24 KHZ NATIVE PER-LANGUAGE STUDIO VITS SPECIALIST ARCHITECTURE (SA · KN · HI · TA · TE · ML)</text>
+  <text class="kicker" x="32" y="38">NINADA v5.0 // 24 KHZ NATIVE PER-LANGUAGE STUDIO VITS SPECIALIST ARCHITECTURE (12 LANGUAGES · 24 VOICES)</text>
   <line x1="32" y1="48" x2="948" y2="48" stroke="#000000" stroke-width="1" stroke-opacity="0.18" />
 
   <!-- Stage 1: Script Input -->
   <rect class="node" x="32" y="88" width="172" height="126" rx="8" />
   <text class="kicker" x="46" y="110">01 / CLAUSE INPUT</text>
-  <text class="title" x="46" y="132">Brahmic &amp; IAST</text>
-  <text class="sub" x="46" y="153">Devanagari · Kannada</text>
-  <text class="sub" x="46" y="170">Tamil · Telugu · Mal.</text>
+  <text class="title" x="46" y="132">Brahmic, Latin &amp; IAST</text>
+  <text class="sub" x="46" y="153">SA · EN · HI · KN · MR · BN</text>
+  <text class="sub" x="46" y="170">TA · TE · ML · GU · PA · OR</text>
   <text class="sub" x="46" y="187">Sentence Pause Anchor</text>
 
   <!-- Arrow 1->2 -->
@@ -40,8 +40,8 @@
   <rect class="node" x="238" y="88" width="190" height="126" rx="8" />
   <text class="kicker" x="252" y="110">02 / NATIVE SCRIPT G2P</text>
   <text class="title" x="252" y="132">Zero-Dep Tokenizer</text>
-  <text class="sub" x="252" y="153">Native Unicode Vocabs</text>
-  <text class="sub" x="252" y="170">TA +0x0100 Isomorphism</text>
+  <text class="sub" x="252" y="153">12 Native Vocab Tables</text>
+  <text class="sub" x="252" y="170">TA/PA/OR Isomorphism</text>
   <text class="sub" x="252" y="187">ML Chillu Decomposition</text>
 
   <!-- Arrow 2->3 (Tier 1) -->
@@ -52,11 +52,11 @@
   <!-- Stage 3: Signature Inverted Solid-Black Focal Node -->
   <rect class="focal" x="466" y="72" width="256" height="136" rx="8" />
   <text class="focal-sub" x="482" y="94">03 / NATIVE STUDIO SPECIALISTS</text>
-  <text class="focal-title" x="482" y="117">12x Native Studio VITS (ONNX)</text>
-  <text class="focal-sub" x="482" y="139">6 Languages × Male &amp; Female</text>
+  <text class="focal-title" x="482" y="117">24x Native Studio VITS (ONNX)</text>
+  <text class="focal-sub" x="482" y="139">12 Languages × Male &amp; Female</text>
   <text class="focal-sub" x="482" y="157">Stochastic Duration + Flow</text>
   <text class="focal-sub" x="482" y="175">27.9 MB W8A32+FP16 per Lang</text>
-  <text class="focal-sub" x="482" y="193">MCD 3.39 dB · CacheStorage</text>
+  <text class="focal-sub" x="482" y="193">MCD 3.27 dB · CacheStorage</text>
 
   <!-- Stage 3B: Tier 2 Zero-Dep Klatt -->
   <rect class="node" x="466" y="232" width="256" height="72" rx="8" />

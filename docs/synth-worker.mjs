@@ -1,15 +1,22 @@
 import * as ortNs from './ort/ort.wasm.min.mjs';
-import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=4.0.3';
+import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.0';
 
 const ort = ortNs?.default?.InferenceSession ? ortNs.default : ortNs;
 
 const HF_REPO = 'gnumanth/ninada';
-const SUPPORTED_LANGS = ['sa', 'kn', 'hi', 'ta', 'te', 'ml'];
+const SUPPORTED_LANGS = ['sa', 'kn', 'hi', 'ta', 'te', 'ml', 'en', 'mr', 'bn', 'gu', 'pa', 'or'];
+const LOCAL_BUNDLED_LANGS = new Set(['sa', 'kn', 'hi', 'ta', 'te', 'ml']);
 
-const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v4.0.2';
+const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v5.0.0';
 const MODEL_CACHE_PREFIX = 'ninada-onnx-';
-const IDB_NAME = 'ninada-onnx-idb-v402';
-const LEGACY_IDB_NAMES = ['ninada-onnx-idb-v3', 'ninada-onnx-idb-v31', 'ninada-onnx-idb-v32', 'ninada-onnx-idb-v40'];
+const IDB_NAME = 'ninada-onnx-idb-v500';
+const LEGACY_IDB_NAMES = [
+  'ninada-onnx-idb-v3',
+  'ninada-onnx-idb-v31',
+  'ninada-onnx-idb-v32',
+  'ninada-onnx-idb-v40',
+  'ninada-onnx-idb-v402',
+];
 const IDB_STORE = 'models';
 
 const DEFAULT_SPECIALIST_BYTES = 29300000;
@@ -39,16 +46,16 @@ function normalizeVoiceKey(voice) {
 }
 
 function buildFallbackLangSpec(lc) {
+  const hfMaleUrl = `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}.onnx`;
+  const localMaleUrl = `./models/${lc}.onnx`;
+  const maleUrls = LOCAL_BUNDLED_LANGS.has(lc) ? [localMaleUrl, hfMaleUrl] : [hfMaleUrl, localMaleUrl];
   return {
     lang: lc,
-    cacheKey: `ninada_v402_${lc}_24k_q8f16.onnx`,
+    cacheKey: `ninada_v500_${lc}_24k_q8f16.onnx`,
     expectedBytes: 0,
     totalMB: 27.93,
-    urls: [
-      `./models/${lc}.onnx`,
-      `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}.onnx`,
-    ],
-    femaleCacheKey: `ninada_v402_${lc}_female_24k_q8f16.onnx`,
+    urls: maleUrls,
+    femaleCacheKey: `ninada_v500_${lc}_female_24k_q8f16.onnx`,
     femaleExpectedBytes: 0,
     femaleTotalMB: 27.93,
     femaleUrls: [
@@ -66,7 +73,7 @@ async function getModelsManifest() {
       fallbackLanguages[lc] = buildFallbackLangSpec(lc);
     }
     try {
-      const res = await fetch('./models_manifest.json?v=4.0.2', { cache: 'no-cache' });
+      const res = await fetch('./models_manifest.json?v=5.0.0', { cache: 'no-cache' });
       if (res.ok) {
         const json = await res.json();
         if (json?.cacheName) {
@@ -81,7 +88,7 @@ async function getModelsManifest() {
           }
         }
         return {
-          version: json?.version || '4.0.0',
+          version: json?.version || '5.0.0',
           cacheName: activeCacheName,
           languages: mergedLangs,
         };
@@ -90,7 +97,7 @@ async function getModelsManifest() {
       // Fallback to built-in specialist URL map
     }
     return {
-      version: '4.0.0',
+      version: '5.0.0',
       cacheName: activeCacheName,
       languages: fallbackLanguages,
     };
@@ -305,6 +312,13 @@ async function warmupSpecialistSession(session) {
     warmScales.dispose?.();
     out.waveform?.dispose?.();
     out.durations?.dispose?.();
+    const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
+    if (isCoi && !IS_MOBILE_OR_LOW_MEM && session?.isSplitStudioVits && session.vocoderSession && session.latentName) {
+      const warmLatent = new ort.Tensor('float32', new Float32Array(192 * 64), [1, 192, 64]);
+      const vocOut = await session.vocoderSession.run({ [session.latentName]: warmLatent });
+      warmLatent.dispose?.();
+      vocOut[session.wav3dName]?.dispose?.();
+    }
   } catch {
     // Non-fatal JIT warmup
   }

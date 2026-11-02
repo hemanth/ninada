@@ -28,6 +28,12 @@ export const PAD_TOKEN_ID = {
   ta: 4,
   te: 45,
   ml: 43,
+  en: 0,
+  mr: 33,
+  bn: 0,
+  gu: 0,
+  pa: 0,
+  or: 0,
 };
 export const VIRAMA_TOKEN_IDS = {
   sa: 15,  // ್ (\u0ccd)
@@ -36,6 +42,12 @@ export const VIRAMA_TOKEN_IDS = {
   ta: 18,  // ் (\u0bcd)
   te: 48,  // ్ (\u0c4d)
   ml: 36,  // ് (\u0d4d)
+  en: -1,
+  mr: 53,  // ् (\u094d)
+  bn: 56,  // ् (\u09cd)
+  gu: 60,  // ् (\u0acd)
+  pa: 53,  // ् (\u0a4d)
+  or: 58,  // ् (\u0b4d)
 };
 
 export const LANGUAGE_IDS = {
@@ -45,6 +57,12 @@ export const LANGUAGE_IDS = {
   ta: 3,
   te: 4,
   ml: 5,
+  en: 6,
+  mr: 7,
+  bn: 8,
+  gu: 9,
+  pa: 10,
+  or: 11,
 };
 
 function makeNativeVocab(tokens, donorChars = []) {
@@ -108,6 +126,27 @@ export const NATIVE_VOCABS = {
     'ഐ', "'", 'q', 'ശ', '<unk>',
   ], ['\u0d1d']),
 };
+
+function buildRangeVocab(lo, hi) {
+  const letters = [];
+  for (let cp = lo; cp < hi; cp++) {
+    const ch = String.fromCodePoint(cp);
+    if (/[\p{L}\p{M}]/u.test(ch)) letters.push(ch);
+  }
+  letters.sort();
+  return ['_', ...[..." ',.-?"], ...letters, '<unk>'];
+}
+
+NATIVE_VOCABS.en = ['_', ...[..." abcdefghijklmnopqrstuvwxyz'-,.?!"], '<unk>'];
+NATIVE_VOCABS.mr = [...NATIVE_VOCABS.hi.slice(0, -1), '\u0933', '<unk>'];
+NATIVE_VOCABS.bn = buildRangeVocab(0x0981, 0x09fa);
+NATIVE_VOCABS.gu = buildRangeVocab(0x0a81, 0x0af2);
+NATIVE_VOCABS.pa = buildRangeVocab(0x0a01, 0x0a76);
+NATIVE_VOCABS.or = buildRangeVocab(0x0b01, 0x0b73);
+for (const [lc, vir] of [['bn', '\u09cd'], ['gu', '\u0acd'], ['pa', '\u0a4d'], ['or', '\u0b4d']]) {
+  const idx = NATIVE_VOCABS[lc].indexOf(vir);
+  if (idx >= 0) VIRAMA_TOKEN_IDS[lc] = idx;
+}
 
 export const NATIVE_TOKEN_TO_ID = Object.fromEntries(
   Object.entries(NATIVE_VOCABS).map(([lc, toks]) => [lc, Object.fromEntries(toks.map((t, i) => [t, i]))])
@@ -238,7 +277,16 @@ export function detectScriptAndLang(text, defaultLang = 'sa') {
   }
   entries.sort((a, b) => b[1] - a[1]);
   const dom = entries[0][0];
-  const map = { kannada: 'kn', tamil: 'ta', telugu: 'te', malayalam: 'ml' };
+  const map = {
+    kannada: 'kn',
+    tamil: 'ta',
+    telugu: 'te',
+    malayalam: 'ml',
+    bengali: 'bn',
+    gurmukhi: 'pa',
+    gujarati: 'gu',
+    odia: 'or',
+  };
   return [dom, map[dom] || defaultLang];
 }
 
@@ -325,12 +373,161 @@ export function iastToDevanagari(text) {
   return out.join('');
 }
 
+const EN_DIGIT_DEV = {
+  '0': 'जीरो', '1': 'वन', '2': 'टू', '3': 'थ्री', '4': 'फोर',
+  '5': 'फाइव', '6': 'सिक्स', '7': 'सेवन', '8': 'एट', '9': 'नाइन',
+};
+
+function englishToDevanagari(text) {
+  let s = String(text).normalize('NFC').trim().toLowerCase();
+  for (const [d, w] of Object.entries(EN_DIGIT_DEV)) {
+    s = s.replace(new RegExp(`\\b${d}\\b`, 'g'), ` ${w} `);
+  }
+  s = s
+    .replaceAll('tion', 'shan')
+    .replaceAll('sion', 'zhan')
+    .replaceAll('qu', 'kw')
+    .replaceAll('ck', 'k')
+    .replaceAll('wh', 'w');
+  const enVows = [
+    ['oo', '\u090a', '\u0942'],
+    ['ee', '\u0908', '\u0940'],
+    ['ea', '\u0908', '\u0940'],
+    ['ai', '\u090f', '\u0947'],
+    ['ay', '\u090f', '\u0947'],
+    ['ou', '\u0914', '\u094c'],
+    ['ow', '\u0913', '\u094b'],
+    ['oa', '\u0913', '\u094b'],
+    ['oi', '\u0913\u0907', '\u094b\u0907'],
+    ['oy', '\u0913\u0907', '\u094b\u0907'],
+    ['a', '\u0905', ''],
+    ['e', '\u090f', '\u0947'],
+    ['i', '\u0907', '\u093f'],
+    ['o', '\u0913', '\u094b'],
+    ['u', '\u0905', ''],
+  ];
+  const enCons = [
+    ['tch', '\u091a'], ['sh', '\u0936'], ['ch', '\u091a'], ['th', '\u0925'],
+    ['ph', '\u092b'], ['gh', '\u0917'], ['ng', '\u0919'], ['zh', '\u091d'],
+    ['kh', '\u0916'], ['bh', '\u092d'], ['dh', '\u0927'],
+    ['b', '\u092c'], ['d', '\u0921'], ['f', '\u092b'], ['g', '\u0917'],
+    ['h', '\u0939'], ['j', '\u091c'], ['k', '\u0915'], ['l', '\u0932'],
+    ['m', '\u092e'], ['n', '\u0928'], ['p', '\u092a'], ['q', '\u0915'],
+    ['r', '\u0930'], ['s', '\u0938'], ['t', '\u091f'], ['v', '\u0935'],
+    ['w', '\u0935'], ['x', '\u0915\u094d\u0938'], ['z', '\u091c'],
+  ];
+  const out = [];
+  let i = 0;
+  const n = s.length;
+  let prevC = false;
+  while (i < n) {
+    const ch = s[i];
+    if (/\s/.test(ch)) {
+      if (prevC) { out.push(VIRAMA); prevC = false; }
+      out.push(' ');
+      i += 1;
+      continue;
+    }
+    if (EN_DIGIT_DEV[ch]) {
+      if (prevC) { out.push(VIRAMA); prevC = false; }
+      out.push(EN_DIGIT_DEV[ch]);
+      i += 1;
+      continue;
+    }
+    if (ch === 'c') {
+      const nxt = i + 1 < n ? s[i + 1] : '';
+      if (prevC) out.push(VIRAMA);
+      out.push(nxt === 'e' || nxt === 'i' || nxt === 'y' ? '\u0938' : '\u0915');
+      prevC = true;
+      i += 1;
+      continue;
+    }
+    if (ch === 'y') {
+      const nxt = i + 1 < n ? s[i + 1] : '';
+      if (nxt && 'aeiou'.includes(nxt)) {
+        if (prevC) out.push(VIRAMA);
+        out.push('\u092f');
+        prevC = true;
+      } else {
+        out.push(prevC ? '\u0940' : '\u0908');
+        prevC = false;
+      }
+      i += 1;
+      continue;
+    }
+    let mv = false;
+    for (const [rom, indep, matra] of enVows) {
+      if (s.startsWith(rom, i)) {
+        if (rom === 'e' && i + 1 === n && prevC && out.length >= 2) {
+          out.push(VIRAMA);
+          prevC = false;
+          i += 1;
+          mv = true;
+          break;
+        }
+        if (prevC) {
+          if (matra) out.push(matra);
+        } else {
+          out.push(indep);
+        }
+        prevC = false;
+        i += rom.length;
+        mv = true;
+        break;
+      }
+    }
+    if (mv) continue;
+    let mc = false;
+    for (const [rom, dev] of enCons) {
+      if (s.startsWith(rom, i)) {
+        if (prevC) out.push(VIRAMA);
+        out.push(dev);
+        prevC = true;
+        i += rom.length;
+        mc = true;
+        break;
+      }
+    }
+    if (mc) continue;
+    if (prevC && ch !== "'" && ch !== '\u2019') {
+      out.push(VIRAMA);
+      prevC = false;
+    }
+    i += 1;
+  }
+  if (prevC) out.push(VIRAMA);
+  return out.join('');
+}
+
 export function brahmicToDevanagari(text) {
   let norm = String(text).normalize('NFC');
   for (const [zwjSeq, atomic] of MALAYALAM_ZWJ_CHILLU) {
     norm = norm.split(zwjSeq).join(atomic);
   }
-  norm = norm.replace(/\u0d4c/g, '\u0d57');
+  norm = norm
+    .replace(/\u0d4c/g, '\u0d57')
+    .replaceAll('\u0a74', '\u0907\u0915 \u0913\u0902\u0915\u093e\u0930')
+    .replaceAll('\u09af\u09bc', '\u09df')
+    .replaceAll('\u0a71', '');
+  const specialCp = {
+    0x09ce: '\u0924\u094d',
+    0x09d7: '\u094c',
+    0x09dc: '\u0921\u093c',
+    0x09dd: '\u0922\u093c',
+    0x09df: '\u092f',
+    0x09f0: '\u0930',
+    0x09f1: '\u0935',
+    0x0a5c: '\u0921\u093c',
+    0x0a70: '\u0902',
+    0x0a72: '\u0907',
+    0x0a73: '\u0909',
+    0x0b56: '\u0948',
+    0x0b57: '\u094c',
+    0x0b5c: '\u0921\u093c',
+    0x0b5d: '\u0922\u093c',
+    0x0b5f: '\u092f',
+    0x0b71: '\u0935',
+  };
   const out = [];
   for (const ch of norm) {
     const cp = ch.codePointAt(0);
@@ -342,6 +539,10 @@ export function brahmicToDevanagari(text) {
       out.push('\u094c');
       continue;
     }
+    if (specialCp[cp]) {
+      out.push(specialCp[cp]);
+      continue;
+    }
     if (cp >= 0x0900 && cp <= 0x097F) {
       out.push(ch);
       continue;
@@ -351,7 +552,7 @@ export function brahmicToDevanagari(text) {
       const [lo, hi] = BRAHMIC_BASES[b];
       if (cp >= lo && cp <= hi) {
         const offset = cp - lo;
-        if ((offset >= 0x01 && offset <= 0x4D) || offset === 0x60 || offset === 0x62 || offset === 0x63) {
+        if ((offset >= 0x01 && offset <= 0x4D) || offset === 0x50 || offset === 0x60 || offset === 0x62 || offset === 0x63) {
           out.push(String.fromCodePoint(0x0900 + offset));
         } else if (offset >= 0x66 && offset <= 0x6F) {
           out.push(String(offset - 0x66));
@@ -533,7 +734,7 @@ export function applyPhonologicalRules(devText, lang = 'sa') {
   }
   s = dOut.join('');
 
-  if (lang === 'hi') {
+  if (lang === 'hi' || lang === 'mr' || lang === 'gu' || lang === 'pa') {
     s = deleteHindiSchwa(s);
   } else if (lang === 'sa') {
     const chars = [...s];
@@ -576,12 +777,49 @@ const TA_FOLD = {
 };
 
 function devanagariToTargetScript(devText, targetLang) {
-  if (targetLang === 'hi') {
+  if (targetLang === 'hi' || targetLang === 'mr') {
     return devText.replace(/[\u0964\u0965]/g, ' ');
   }
-  const baseMap = { sa: 0x0C80, kn: 0x0C80, ta: 0x0B80, te: 0x0C00, ml: 0x0D00 };
+  if (targetLang === 'en') {
+    const revMap = {
+      '\u0905': 'a', '\u0906': 'aa', '\u0907': 'i', '\u0908': 'ee', '\u0909': 'u', '\u090a': 'oo',
+      '\u090f': 'e', '\u0910': 'ai', '\u0913': 'o', '\u0914': 'au',
+      '\u093e': 'aa', '\u093f': 'i', '\u0940': 'ee', '\u0941': 'u', '\u0942': 'oo',
+      '\u0947': 'e', '\u0948': 'ai', '\u094b': 'o', '\u094c': 'au',
+      '\u0902': 'm', '\u0901': 'n', '\u0903': 'h',
+      '\u0915': 'k', '\u0916': 'kh', '\u0917': 'g', '\u0918': 'gh', '\u0919': 'ng',
+      '\u091a': 'ch', '\u091b': 'chh', '\u091c': 'j', '\u091d': 'jh', '\u091e': 'ny',
+      '\u091f': 't', '\u0920': 'th', '\u0921': 'd', '\u0922': 'dh', '\u0923': 'n',
+      '\u0924': 't', '\u0925': 'th', '\u0926': 'd', '\u0927': 'dh', '\u0928': 'n',
+      '\u092a': 'p', '\u092b': 'f', '\u092c': 'b', '\u092d': 'bh', '\u092e': 'm',
+      '\u092f': 'y', '\u0930': 'r', '\u0932': 'l', '\u0933': 'l', '\u0935': 'v',
+      '\u0936': 'sh', '\u0937': 'sh', '\u0938': 's', '\u0939': 'h',
+    };
+    const chars = [...devText];
+    const romOut = [];
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      if (ch === '\u094d' || ch === '\u093c') continue;
+      if (ch === '\u0964' || ch === '\u0965') { romOut.push(' '); continue; }
+      romOut.push(revMap[ch] !== undefined ? revMap[ch] : ch);
+      if (isDevConsonant(ch)) {
+        const nxt = i + 1 < chars.length ? chars[i + 1] : '';
+        if (!isDevMatra(nxt) && nxt !== VIRAMA) romOut.push('a');
+      }
+    }
+    return romOut.join('').toLowerCase();
+  }
+  const baseMap = {
+    sa: 0x0C80, kn: 0x0C80, ta: 0x0B80, te: 0x0C00, ml: 0x0D00,
+    bn: 0x0980, pa: 0x0A00, gu: 0x0A80, or: 0x0B00,
+  };
   const targetBase = baseMap[targetLang] ?? 0x0C80;
   let s = devText.replace(/\u0901/g, '\u0902');
+  if (targetLang === 'bn' || targetLang === 'or') {
+    s = s.replaceAll('\u0935', '\u092c');
+  } else if (targetLang === 'pa') {
+    s = s.replaceAll('\u0937', '\u0936').replaceAll('\u090b', '\u0930\u093f').replaceAll('\u0943', '\u0930\u093f');
+  }
   if (targetLang === 'ta') {
     s = [...s].map((c) => (TA_FOLD[c] !== undefined ? TA_FOLD[c] : c)).join('');
   }
@@ -592,9 +830,15 @@ function devanagariToTargetScript(devText, targetLang) {
       continue;
     }
     const cp = ch.codePointAt(0);
-    if (cp === 0x093C) continue;
+    if (cp === 0x093C) {
+      if (targetLang === 'bn' || targetLang === 'pa' || targetLang === 'or') {
+        out.push(String.fromCodePoint(targetBase + 0x3C));
+      }
+      continue;
+    }
     if (cp >= 0x0901 && cp <= 0x0963) {
-      out.push(String.fromCodePoint(targetBase + (cp - 0x0900)));
+      const targetCh = String.fromCodePoint(targetBase + (cp - 0x0900));
+      if (/[\p{L}\p{M}]/u.test(targetCh)) out.push(targetCh);
     } else {
       out.push(ch);
     }
@@ -604,12 +848,21 @@ function devanagariToTargetScript(devText, targetLang) {
 
 export function toNativeModelText(text, lang, detectedScript, phonemicDev) {
   const sRaw = String(text).normalize('NFC');
-  const scriptForLang = { kn: 'kannada', hi: 'devanagari', ta: 'tamil', te: 'telugu', ml: 'malayalam' };
+  const scriptForLang = {
+    kn: 'kannada', hi: 'devanagari', mr: 'devanagari', ta: 'tamil', te: 'telugu',
+    ml: 'malayalam', en: 'latin', bn: 'bengali', gu: 'gujarati', pa: 'gurmukhi', or: 'odia',
+  };
   let native;
 
   if (lang === 'sa') {
     // Preserve homorganic nasal+stop clusters (ಙ್, ಞ್, ಣ್, ನ್, ಮ್) for accurate Sanskrit articulation
     native = devanagariToTargetScript(phonemicDev, 'sa');
+  } else if (lang === 'en') {
+    if (detectedScript === 'latin' || detectedScript === 'iast') {
+      native = sRaw.toLowerCase();
+    } else {
+      native = devanagariToTargetScript(phonemicDev, 'en');
+    }
   } else if (detectedScript === scriptForLang[lang]) {
     native = sRaw;
     if (lang === 'hi') {
@@ -629,8 +882,8 @@ export function toNativeModelText(text, lang, detectedScript, phonemicDev) {
         .replace(/\u0c19/g, '\u0c02');
     } else if (lang === 'ta') {
       native = native.toLowerCase().replace(/\u0b83/g, '\u0bb9\u0bcd');
-    } else if (lang === 'kn') {
-      // Preserve ಙ
+    } else if (lang === 'pa') {
+      native = native.replaceAll('\u0a74', '\u0a07\u0a71\u0a15 \u0a13\u0a05\u0a70\u0a15\u0a3e\u0a30');
     }
   } else {
     native = devanagariToTargetScript(phonemicDev, lang);
@@ -767,7 +1020,9 @@ export function textToIds(
 ) {
   const [detectedScript, detectedLang] = detectScriptAndLang(text, lang || 'sa');
   const activeLang = lang && LANGUAGE_IDS[lang] !== undefined ? lang : detectedLang;
-  const dev = (detectedScript === 'iast' || detectedScript === 'latin')
+  const dev = activeLang === 'en' && detectedScript === 'latin'
+    ? englishToDevanagari(text)
+    : (detectedScript === 'iast' || detectedScript === 'latin')
     ? iastToDevanagari(text)
     : brahmicToDevanagari(text);
   const aksharas = segmentAksharas(dev);
@@ -794,7 +1049,10 @@ export function textToIds(
     }
   }
   if (rawIds.length === 0) {
-    const fb = { sa: '\u0c85', kn: '\u0c85', hi: '\u0905', ta: '\u0b85', te: '\u0c05', ml: '\u0d05' }[activeLang];
+    const fb = {
+      sa: '\u0c85', kn: '\u0c85', hi: '\u0905', mr: '\u0905', ta: '\u0b85',
+      te: '\u0c05', ml: '\u0d05', en: 'a', bn: '\u0985', gu: '\u0a85', pa: '\u0a05', or: '\u0b05',
+    }[activeLang];
     rawIds.push(langMap[fb]);
     nativeTokens.push(fb);
   }
@@ -838,14 +1096,19 @@ export function textToIds(
     sa: '\u0ccd',
     kn: '\u0ccd',
     hi: '\u094d',
+    mr: '\u094d',
     ta: '\u0bcd',
     te: '\u0c4d',
     ml: '\u0d4d',
-  }[activeLang] ?? '\u0ccd';
-  const viramaId = langMap[viramaTok] ?? -1;
+    bn: '\u09cd',
+    gu: '\u0acd',
+    pa: '\u0a4d',
+    or: '\u0b4d',
+  }[activeLang] ?? '';
+  const viramaId = viramaTok ? (langMap[viramaTok] ?? -1) : -1;
   const isVirama = inputIds.map((tid) => (tid === viramaId ? 1 : 0));
 
-  const ipa = textToIpa(text, activeLang, phonemic);
+  const ipa = textToIpa(text, activeLang, activeLang !== 'en' ? dev : null);
   const ipaIds = ipaToIds(ipa);
 
   return {
