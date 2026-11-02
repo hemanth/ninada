@@ -81,27 +81,10 @@ async function main() {
       switchLangs: [],
       revisitCached: [],
     };
-    const binBuckets = {
-      phase1: [],
-      reload: [],
-      switchLangs: [],
-      revisitCached: [],
-    };
 
     await context.route("**/*.onnx*", async (route) => {
       const u = route.request().url();
       onnxBuckets[activeBucket].push(u);
-      if (holdNextAssetMs > 0) {
-        const delay = holdNextAssetMs;
-        holdNextAssetMs = 0;
-        await new Promise((r) => setTimeout(r, delay));
-      }
-      await route.continue();
-    });
-
-    await context.route("**/*.bin*", async (route) => {
-      const u = route.request().url();
-      binBuckets[activeBucket].push(u);
       if (holdNextAssetMs > 0) {
         const delay = holdNextAssetMs;
         holdNextAssetMs = 0;
@@ -209,16 +192,13 @@ async function main() {
     assert.equal(postLoadState.synthDisabled, false);
     assert.equal(postLoadState.langAnyDisabled, false);
     assert.equal(postLoadState.downloadDisabled, false);
-    assert.ok(
-      onnxBuckets.phase1.length >= 1,
-      `Expected >=1 ONNX fetch on cold load, got ${onnxBuckets.phase1.length}`
-    );
-    assert.ok(
-      binBuckets.phase1.length >= 1,
-      `Expected >=1 voice .bin fetch on cold load, got ${binBuckets.phase1.length}`
+    assert.equal(
+      onnxBuckets.phase1.length,
+      1,
+      `Expected 1 native SA ONNX fetch on cold load, got ${onnxBuckets.phase1.length}: ${onnxBuckets.phase1.join(", ")}`
     );
 
-    // 2. Reload page in same browser context — verify immediate COI + 0 network ONNX/.bin requests (100% browser cache hit!)
+    // 2. Reload page in same browser context — verify immediate COI + 0 network ONNX requests (100% browser cache hit!)
     activeBucket = "reload";
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(
@@ -240,18 +220,12 @@ async function main() {
     console.log("Reload Browser Cache Verification:", {
       ...reloadCacheState,
       onnxNetworkRequestsOnReload: onnxBuckets.reload.length,
-      voiceNetworkRequestsOnReload: binBuckets.reload.length,
     });
     assert.equal(reloadCacheState.crossOriginIsolated, true);
     assert.equal(
       onnxBuckets.reload.length,
       0,
       `Expected 0 ONNX network requests on reload (cached), got ${onnxBuckets.reload.length}: ${onnxBuckets.reload.join(", ")}`
-    );
-    assert.equal(
-      binBuckets.reload.length,
-      0,
-      `Expected 0 voice .bin network requests on reload (cached), got ${binBuckets.reload.length}: ${binBuckets.reload.join(", ")}`
     );
     assert.equal(reloadCacheState.cacheHit, true, "Expected window.__ninadaCacheHit === true on reload");
     assert.equal(reloadCacheState.controlsLocked, false);
@@ -337,11 +311,11 @@ async function main() {
 
     assert.equal(
       onnxBuckets.switchLangs.length,
-      0,
-      `Expected 0 ONNX downloads when switching languages on unified 24kHz session, got ${onnxBuckets.switchLangs.length}`
+      5,
+      `Expected exactly 5 native specialist ONNX downloads (kn, hi, ta, te, ml) when visiting all 6 tabs, got ${onnxBuckets.switchLangs.length}: ${onnxBuckets.switchLangs.join(", ")}`
     );
 
-    // 4. Revisit cached Kannada (`kn`) — verify 0 network ONNX/.bin requests + Real-Time AudioWorklet Multi-Sentence Smoothness!
+    // 4. Revisit cached Kannada (`kn`) — verify 0 network ONNX requests + Real-Time AudioWorklet Multi-Sentence Smoothness!
     activeBucket = "revisitCached";
     await page.locator('.lang-btn[data-lang="kn"]').click();
     await page.waitForFunction(
@@ -353,11 +327,6 @@ async function main() {
       onnxBuckets.revisitCached.length,
       0,
       `Expected 0 ONNX network requests when switching back to cached KN, got ${onnxBuckets.revisitCached.length}`
-    );
-    assert.equal(
-      binBuckets.revisitCached.length,
-      0,
-      `Expected 0 voice .bin network requests when switching back to cached KN, got ${binBuckets.revisitCached.length}`
     );
 
     await page.locator(".preset-chip", { hasText: "Streaming Passage" }).click();
@@ -425,11 +394,6 @@ async function main() {
       0,
       `Expected 0 ONNX network requests when switching back to cached TA, got ${onnxBuckets.revisitCached.length}`
     );
-    assert.equal(
-      binBuckets.revisitCached.length,
-      0,
-      `Expected 0 voice .bin network requests when switching back to cached TA, got ${binBuckets.revisitCached.length}`
-    );
     await page.locator(".preset-chip", { hasText: "Streaming Passage" }).click();
     await page.evaluate(() => {
       window.__ninadaLastResult = null;
@@ -457,6 +421,47 @@ async function main() {
       taStream.stats.underrunCount,
       0,
       `Expected ZERO audio buffer underruns during TA stream, got ${taStream.stats.underrunCount}!`
+    );
+
+    // 5b. Test cached Malayalam (`ml`) multi-sentence real-time AudioWorklet streaming (0 network ONNX requests, 0 underruns!)
+    await page.locator('.lang-btn[data-lang="ml"]').click();
+    await page.waitForFunction(
+      () => window.__ninadaReady === true && window.__ninadaLoadedLang === "ml" && !window.__ninadaControlsLocked,
+      null,
+      { timeout: 90000 }
+    );
+    assert.equal(
+      onnxBuckets.revisitCached.length,
+      0,
+      `Expected 0 ONNX network requests when switching back to cached ML, got ${onnxBuckets.revisitCached.length}`
+    );
+    await page.locator(".preset-chip", { hasText: "Streaming Passage" }).click();
+    await page.evaluate(() => {
+      window.__ninadaLastResult = null;
+    });
+    await page.locator("#synthBtn").click();
+    await page.waitForFunction(
+      () =>
+        window.__ninadaLastResult &&
+        window.__ninadaLastResult.lang === "ml" &&
+        window.__ninadaLastResult.tier === "neural_onnx",
+      null,
+      { timeout: 45000 }
+    );
+    const mlStream = await page.evaluate(async () => {
+      const statsAfterDrain = await window.__ninadaWaitForPlayback();
+      return {
+        result: window.__ninadaLastResult,
+        stats: { ...statsAfterDrain },
+      };
+    });
+    console.log("Malayalam Multi-Sentence Real-Time AudioWorklet Stream:", mlStream);
+    assert.equal(mlStream.result.lang, "ml");
+    assert.ok(mlStream.result.rms > 0.02);
+    assert.equal(
+      mlStream.stats.underrunCount,
+      0,
+      `Expected ZERO audio buffer underruns during ML stream, got ${mlStream.stats.underrunCount}!`
     );
 
     // 6. Check mobile viewport responsiveness
@@ -521,7 +526,7 @@ async function main() {
 
     assert.equal(errors.length, 0, `Browser errors detected: ${errors.join(" | ")}`);
     await browser.close();
-    console.log(`ALL NINADA v3.0 24KHZ STUDIO STREAMING & CACHE BROWSER CHECKS PASSED ON ${TARGET_URL} WITH ZERO UNDERRUNS & ZERO ERRORS!`);
+    console.log(`ALL NINADA v4.0 24KHZ NATIVE STUDIO SPECIALIST STREAMING & CACHE BROWSER CHECKS PASSED ON ${TARGET_URL} WITH ZERO UNDERRUNS & ZERO ERRORS!`);
   } finally {
     if (server) {
       server.kill("SIGTERM");

@@ -1,68 +1,55 @@
 import * as ortNs from './ort/ort.wasm.min.mjs';
-import ninada, { SAMPLE_RATE } from './ninada.mjs';
+import ninada, { SAMPLE_RATE } from './ninada.mjs?v=4.0.2';
 
 const ort = ortNs?.default?.InferenceSession ? ortNs.default : ortNs;
 
 const HF_REPO = 'gnumanth/ninada';
 const SUPPORTED_LANGS = ['sa', 'kn', 'hi', 'ta', 'te', 'ml'];
 
-const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v3.2.0';
+const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v4.0.2';
 const MODEL_CACHE_PREFIX = 'ninada-onnx-';
-const IDB_NAME = 'ninada-onnx-idb-v32';
-const LEGACY_IDB_NAMES = ['ninada-onnx-idb-v3', 'ninada-onnx-idb-v31'];
+const IDB_NAME = 'ninada-onnx-idb-v402';
+const LEGACY_IDB_NAMES = ['ninada-onnx-idb-v3', 'ninada-onnx-idb-v31', 'ninada-onnx-idb-v32', 'ninada-onnx-idb-v40'];
 const IDB_STORE = 'models';
 
-const DEFAULT_MODEL_BYTES = 82746000;
-const VOICE_BANK_BYTES = 510 * 256 * 4; // 522,240 bytes
+const DEFAULT_SPECIALIST_BYTES = 29300000;
+const MAX_WARM_SESSIONS = 3;
 
 let activeCacheName = DEFAULT_MODEL_CACHE_NAME;
 let manifestPromise = null;
 let cachesPruned = false;
 let ortConfigured = false;
 
-let sharedSession = null;
-let sharedModelMB = 0;
-let sharedModelFromCache = false;
-let sharedModelBackend = null;
+// Active WASM InferenceSession LRU keyed by `${lang}:${voiceKey}` (`sa:male`, `kn:male`, `kn:female`, ...)
+const warmSessions = new Map();
 let voiceEngine = null;
-const loadedVoiceLangs = new Set();
 let currentLoadedLang = null;
+let currentLoadedVoice = 'male';
 let lastReadyPayload = null;
 let activeAbort = null;
 let activeReqId = 0;
 let runQueue = Promise.resolve();
 
+function normalizeVoiceKey(voice) {
+  return typeof voice === 'string' && voice.trim().toLowerCase() === 'female' ? 'female' : 'male';
+}
+
 function buildFallbackLangSpec(lc) {
   return {
     lang: lc,
-    voiceBytes: VOICE_BANK_BYTES,
-    voiceCacheKey: `ninada_v32_voice_${lc}_${VOICE_BANK_BYTES}.bin`,
-    voiceUrls: [
-      `./voices/${lc}.bin`,
-      `https://huggingface.co/${HF_REPO}/resolve/main/voices/${lc}.bin`,
-    ],
-  };
-}
-
-function buildFallbackFemaleSpec() {
-  return {
-    voiceBytes: VOICE_BANK_BYTES,
-    voiceCacheKey: `ninada_v32_voice_female_${VOICE_BANK_BYTES}.bin`,
-    voiceUrls: [
-      './voices/female.bin',
-      `https://huggingface.co/${HF_REPO}/resolve/main/voices/female.bin`,
-    ],
-  };
-}
-
-function buildFallbackUnifiedSpec() {
-  return {
-    cacheKey: 'ninada_v32_24k_q8f16.onnx',
+    cacheKey: `ninada_v402_${lc}_24k_q8f16.onnx`,
     expectedBytes: 0,
-    totalMB: 78.91,
+    totalMB: 27.93,
     urls: [
-      './ninada_24k_q8f16.onnx',
-      `https://huggingface.co/${HF_REPO}/resolve/main/onnx/ninada_24k_q8f16.onnx`,
+      `./models/${lc}.onnx`,
+      `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}.onnx`,
+    ],
+    femaleCacheKey: `ninada_v402_${lc}_female_24k_q8f16.onnx`,
+    femaleExpectedBytes: 0,
+    femaleTotalMB: 27.93,
+    femaleUrls: [
+      `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}_female.onnx`,
+      `./models/${lc}_female.onnx`,
     ],
   };
 }
@@ -74,10 +61,8 @@ async function getModelsManifest() {
     for (const lc of SUPPORTED_LANGS) {
       fallbackLanguages[lc] = buildFallbackLangSpec(lc);
     }
-    const fallbackUnified = buildFallbackUnifiedSpec();
-    const fallbackFemale = buildFallbackFemaleSpec();
     try {
-      const res = await fetch('./models_manifest.json', { cache: 'no-cache' });
+      const res = await fetch('./models_manifest.json?v=4.0.2', { cache: 'no-cache' });
       if (res.ok) {
         const json = await res.json();
         if (json?.cacheName) {
@@ -91,28 +76,18 @@ async function getModelsManifest() {
             }
           }
         }
-        const unifiedModel = json?.unifiedModel
-          ? { ...fallbackUnified, ...json.unifiedModel }
-          : fallbackUnified;
-        const femaleVoice = json?.femaleVoice
-          ? { ...fallbackFemale, ...json.femaleVoice }
-          : fallbackFemale;
         return {
-          version: json?.version || '3.1.0',
+          version: json?.version || '4.0.0',
           cacheName: activeCacheName,
-          unifiedModel,
-          femaleVoice,
           languages: mergedLangs,
         };
       }
     } catch {
-      // Fallback to built-in URL map
+      // Fallback to built-in specialist URL map
     }
     return {
-      version: '3.1.0',
+      version: '4.0.0',
       cacheName: activeCacheName,
-      unifiedModel: fallbackUnified,
-      femaleVoice: fallbackFemale,
       languages: fallbackLanguages,
     };
   })();
@@ -123,11 +98,6 @@ function isValidOnnxBuffer(arr, expectedBytes) {
   if (!arr || arr.byteLength < 10000000 || arr[0] !== 0x08) return false;
   if (expectedBytes && expectedBytes > 0 && arr.byteLength !== expectedBytes) return false;
   return true;
-}
-
-function isValidVoiceBuffer(arr, expectedBytes = VOICE_BANK_BYTES) {
-  if (!arr) return false;
-  return arr.byteLength === (expectedBytes || VOICE_BANK_BYTES);
 }
 
 async function pruneStaleModelCaches() {
@@ -319,23 +289,16 @@ function buildSessionOpts() {
   };
 }
 
-async function warmupUnifiedSession(session, styleSlice = null) {
+async function warmupSpecialistSession(session) {
   try {
-    const warmIds = new ort.Tensor('int64', BigInt64Array.from([0n, 86n, 4n, 0n]), [1, 4]);
-    const warmStyle = new ort.Tensor(
-      'float32',
-      styleSlice ? new Float32Array(styleSlice.subarray(0, 256)) : new Float32Array(256),
-      [1, 256]
-    );
-    const warmSpeed = new ort.Tensor('float32', Float32Array.from([1.0]), [1]);
+    const warmIds = new ort.Tensor('int64', BigInt64Array.from([0n, 3n, 0n, 4n, 0n]), [1, 5]);
+    const warmScales = new ort.Tensor('float32', Float32Array.from([1.0, 0.60, 0.0]), [3]);
     const out = await session.run({
       input_ids: warmIds,
-      style: warmStyle,
-      speed: warmSpeed,
+      scales: warmScales,
     });
     warmIds.dispose?.();
-    warmStyle.dispose?.();
-    warmSpeed.dispose?.();
+    warmScales.dispose?.();
     out.waveform?.dispose?.();
     out.durations?.dispose?.();
   } catch {
@@ -343,35 +306,123 @@ async function warmupUnifiedSession(session, styleSlice = null) {
   }
 }
 
-async function ensureLangReady(rawLang = 'sa', { emitReady = true } = {}) {
-  const lc = SUPPORTED_LANGS.includes(rawLang) ? rawLang : 'sa';
+async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true } = {}) {
+  const normVoice = normalizeVoiceKey(voiceKey);
+  const slotKey = `${lc}:${normVoice}`;
 
-  if (voiceEngine && sharedSession && loadedVoiceLangs.has(lc)) {
-    currentLoadedLang = lc;
-    const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
-    const activeThreads = ort?.env?.wasm?.numThreads || 1;
-    lastReadyPayload = {
-      type: 'ready',
-      lang: lc,
-      isNeural: true,
-      isStreamingNeural: true,
-      totalMB: sharedModelMB + VOICE_BANK_BYTES / 1048576,
+  if (warmSessions.has(slotKey)) {
+    const hit = warmSessions.get(slotKey);
+    warmSessions.delete(slotKey);
+    warmSessions.set(slotKey, hit);
+    return {
+      ...hit,
       fromCache: true,
       cachedPersisted: true,
-      cacheBackend: sharedModelBackend || 'cache_storage',
-      threads: activeThreads,
-      crossOriginIsolated: isCoi,
     };
-    if (emitReady) self.postMessage(lastReadyPayload);
-    return voiceEngine;
   }
+
+  const manifest = await getModelsManifest();
+  await pruneStaleModelCaches();
+  const langSpec = manifest.languages[lc] || buildFallbackLangSpec(lc);
+
+  const isFemale = normVoice === 'female';
+  const cacheKey = isFemale ? langSpec.femaleCacheKey : langSpec.cacheKey;
+  const urls = isFemale ? langSpec.femaleUrls : langSpec.urls;
+  const expectedBytes = Number(isFemale ? langSpec.femaleExpectedBytes : langSpec.expectedBytes) || 0;
+  const expectedTotal = expectedBytes || DEFAULT_SPECIALIST_BYTES;
+
+  let loadedBytes = 0;
+  const reportProgress = emitProgress
+    ? (delta, fromCache = false) => {
+        loadedBytes += delta;
+        const loadedMB = loadedBytes / 1048576;
+        const totalMB = expectedTotal / 1048576;
+        const pct = Math.min(93, Math.round((loadedBytes / Math.max(1, expectedTotal)) * 100));
+        self.postMessage({
+          type: 'progress',
+          lang: lc,
+          voice: normVoice,
+          phase: fromCache ? 'cache' : 'download',
+          loadedMB,
+          totalMB,
+          pct,
+          fromCache,
+        });
+      }
+    : null;
+
+  let modelRes = await fetchOrLoadAsset(
+    cacheKey,
+    urls,
+    expectedBytes,
+    (arr) => isValidOnnxBuffer(arr, expectedBytes),
+    reportProgress
+  );
+
+  // If female specialist is offline/unreachable, fall back cleanly to the native Male specialist for this language
+  if ((!modelRes || !modelRes.bytes) && isFemale) {
+    return loadOrGetWarmSession(lc, 'male', { emitProgress });
+  }
+  if (!modelRes || !modelRes.bytes) {
+    throw new Error(`24 kHz ${lc.toUpperCase()} Native Studio ONNX specialist not found`);
+  }
+
+  const totalMB = modelRes.bytes.byteLength / 1048576;
+  const fromCache = Boolean(modelRes.fromCache);
+  const cacheBackend = modelRes.cacheBackend;
+
+  if (emitProgress) {
+    self.postMessage({
+      type: 'progress',
+      lang: lc,
+      voice: normVoice,
+      phase: 'compile',
+      loadedMB: totalMB,
+      totalMB,
+      pct: 95,
+      fromCache,
+    });
+  }
+
+  // Evict oldest warm WASM session if at LRU capacity (ONNX bytes stay persisted in CacheStorage)
+  while (warmSessions.size >= MAX_WARM_SESSIONS) {
+    const oldestKey = warmSessions.keys().next().value;
+    const evicted = warmSessions.get(oldestKey);
+    warmSessions.delete(oldestKey);
+    try {
+      await evicted?.session?.release?.();
+    } catch {}
+  }
+
+  const sessionOpts = buildSessionOpts();
+  const session = await ort.InferenceSession.create(modelRes.bytes, sessionOpts);
+  modelRes.bytes = null;
+  modelRes = null;
+  await warmupSpecialistSession(session);
+
+  const entry = {
+    session,
+    totalMB,
+    fromCache,
+    cachedPersisted: Boolean(fromCache || cacheBackend),
+    cacheBackend: cacheBackend || 'cache_storage',
+  };
+  warmSessions.set(slotKey, entry);
+  return entry;
+}
+
+async function ensureLangReady(rawLang = 'sa', { voice = 'male', emitReady = true } = {}) {
+  const lc = SUPPORTED_LANGS.includes(rawLang) ? rawLang : 'sa';
+  const normVoice = normalizeVoiceKey(voice);
 
   if (!ort || !ort.InferenceSession) {
     if (!voiceEngine) voiceEngine = await ninada(lc);
     currentLoadedLang = lc;
+    currentLoadedVoice = normVoice;
     lastReadyPayload = {
       type: 'ready',
       lang: lc,
+      voice: normVoice,
       isNeural: false,
       isStreamingNeural: false,
       totalMB: 0,
@@ -394,120 +445,34 @@ async function ensureLangReady(rawLang = 'sa', { emitReady = true } = {}) {
       : 1;
   }
   const activeThreads = ort.env.wasm.numThreads || 1;
-  const sessionOpts = buildSessionOpts();
-
-  const manifest = await getModelsManifest();
-  await pruneStaleModelCaches();
-
-  const unifiedSpec = manifest.unifiedModel;
-  const langSpec = manifest.languages[lc] || buildFallbackLangSpec(lc);
-  const needUnifiedLoad = !sharedSession;
-  const expectedModelBytes = Number(unifiedSpec.expectedBytes) || DEFAULT_MODEL_BYTES;
-  const expectedVoiceBytes = Number(langSpec.voiceBytes) || VOICE_BANK_BYTES;
-  const expectedTotal = (needUnifiedLoad ? expectedModelBytes : 0) + expectedVoiceBytes;
-
-  let loadedBytes = 0;
-  const reportProgress = (delta, fromCache = false) => {
-    loadedBytes += delta;
-    const loadedMB = loadedBytes / 1048576;
-    const totalMB = expectedTotal / 1048576;
-    const pct = Math.min(96, Math.round((loadedBytes / Math.max(1, expectedTotal)) * 100));
-    self.postMessage({
-      type: 'progress',
-      lang: lc,
-      phase: fromCache ? 'cache' : 'download',
-      loadedMB,
-      totalMB,
-      pct,
-      fromCache,
-    });
-  };
 
   try {
-    let modelJustLoadedFromCache = true;
-    if (!sharedSession) {
-      let modelRes = await fetchOrLoadAsset(
-        unifiedSpec.cacheKey,
-        unifiedSpec.urls,
-        Number(unifiedSpec.expectedBytes) || 0,
-        (arr) => isValidOnnxBuffer(arr, Number(unifiedSpec.expectedBytes) || 0),
-        reportProgress
-      );
-      if (!modelRes || !modelRes.bytes) {
-        throw new Error('24 kHz ONNX model asset not found');
-      }
-      sharedModelMB = modelRes.bytes.byteLength / 1048576;
-      sharedModelFromCache = Boolean(modelRes.fromCache);
-      sharedModelBackend = modelRes.cacheBackend;
-      modelJustLoadedFromCache = Boolean(modelRes.fromCache);
-
-      self.postMessage({
-        type: 'progress',
-        lang: lc,
-        phase: 'compile',
-        loadedMB: sharedModelMB,
-        totalMB: sharedModelMB + expectedVoiceBytes / 1048576,
-        pct: 94,
-        fromCache: sharedModelFromCache,
-      });
-
-      sharedSession = await ort.InferenceSession.create(modelRes.bytes, sessionOpts);
-      modelRes.bytes = null;
-      modelRes = null;
-      await new Promise((r) => setTimeout(r, 4));
-    }
-
-    let voiceRes = await fetchOrLoadAsset(
-      langSpec.voiceCacheKey,
-      langSpec.voiceUrls,
-      expectedVoiceBytes,
-      (arr) => isValidVoiceBuffer(arr, expectedVoiceBytes),
-      reportProgress
-    );
-    if (!voiceRes || !voiceRes.bytes) {
-      throw new Error(`Voice bank ${lc}.bin not found`);
-    }
-
-    const voiceFloats = new Float32Array(
-      voiceRes.bytes.buffer,
-      voiceRes.bytes.byteOffset,
-      VOICE_BANK_BYTES / 4
-    ).slice();
-    const voiceFromCache = Boolean(voiceRes.fromCache);
-    const voiceBackend = voiceRes.cacheBackend;
-    voiceRes.bytes = null;
-    voiceRes = null;
+    const entry = await loadOrGetWarmSession(lc, normVoice, { emitReady, emitProgress: emitReady });
 
     if (!voiceEngine) {
-      await warmupUnifiedSession(sharedSession, voiceFloats);
       voiceEngine = await ninada(lc, {
-        session: sharedSession,
-        voiceBank: voiceFloats,
         ort,
+        getSession: async (reqLc, reqVoice) => {
+          const targetLc = SUPPORTED_LANGS.includes(reqLc) ? reqLc : lc;
+          const sEntry = await loadOrGetWarmSession(targetLc, reqVoice || 'male', { emitProgress: false });
+          return sEntry.session;
+        },
       });
-    } else {
-      voiceEngine.setVoiceBank(lc, voiceFloats);
     }
 
-    loadedVoiceLangs.add(lc);
     currentLoadedLang = lc;
-
-    const allFromCache = needUnifiedLoad
-      ? Boolean(modelJustLoadedFromCache && voiceFromCache)
-      : Boolean(voiceFromCache);
-    const cachedPersisted = Boolean(
-      (sharedModelFromCache || sharedModelBackend) && (voiceFromCache || voiceBackend)
-    );
+    currentLoadedVoice = normVoice;
 
     lastReadyPayload = {
       type: 'ready',
       lang: lc,
+      voice: normVoice,
       isNeural: voiceEngine.isNeural,
       isStreamingNeural: voiceEngine.isStreamingNeural,
-      totalMB: sharedModelMB + expectedVoiceBytes / 1048576,
-      fromCache: allFromCache,
-      cachedPersisted,
-      cacheBackend: voiceBackend || sharedModelBackend || null,
+      totalMB: entry.totalMB,
+      fromCache: Boolean(entry.fromCache),
+      cachedPersisted: Boolean(entry.cachedPersisted),
+      cacheBackend: entry.cacheBackend || null,
       threads: activeThreads,
       crossOriginIsolated: isCoi,
     };
@@ -518,11 +483,13 @@ async function ensureLangReady(rawLang = 'sa', { emitReady = true } = {}) {
       voiceEngine = await ninada(lc);
     }
     currentLoadedLang = lc;
+    currentLoadedVoice = normVoice;
     lastReadyPayload = {
       type: 'ready',
       lang: lc,
-      isNeural: Boolean(sharedSession),
-      isStreamingNeural: Boolean(sharedSession),
+      voice: normVoice,
+      isNeural: warmSessions.size > 0,
+      isStreamingNeural: warmSessions.size > 0,
       totalMB: 0,
       fromCache: false,
       cachedPersisted: false,
@@ -538,11 +505,12 @@ self.addEventListener('message', (ev) => {
   const msg = ev.data || {};
   if (msg.type === 'init' || msg.type === 'load_lang') {
     const targetLang = msg.lang || 'sa';
+    const targetVoice = normalizeVoiceKey(msg.voice);
     if (activeAbort) {
       activeAbort.abort();
     }
     runQueue = runQueue
-      .then(() => ensureLangReady(targetLang, { emitReady: true }))
+      .then(() => ensureLangReady(targetLang, { voice: targetVoice, emitReady: true }))
       .catch((err) => {
         self.postMessage({ type: 'error', reqId: 0, message: err?.message || String(err) });
       });
@@ -559,6 +527,7 @@ self.addEventListener('message', (ev) => {
   if (msg.type === 'stream') {
     const reqId = Number(msg.reqId || Date.now());
     const targetLang = SUPPORTED_LANGS.includes(msg.lang) ? msg.lang : 'sa';
+    const targetVoice = normalizeVoiceKey(msg.voice);
     const tier = msg.tier || 'auto';
     if (activeAbort) {
       activeAbort.abort();
@@ -574,8 +543,9 @@ self.addEventListener('message', (ev) => {
         if (tier === 'klatt' && voiceEngine) {
           engine = voiceEngine;
         } else {
-          const needsLoad = !loadedVoiceLangs.has(targetLang) || !voiceEngine;
-          engine = await ensureLangReady(targetLang, { emitReady: needsLoad });
+          const slotKey = `${targetLang}:${targetVoice}`;
+          const needsLoad = !warmSessions.has(slotKey) || !voiceEngine;
+          engine = await ensureLangReady(targetLang, { voice: targetVoice, emitReady: needsLoad });
         }
         if (controller.signal.aborted) return;
 
@@ -590,35 +560,12 @@ self.addEventListener('message', (ev) => {
         const defaultChunkFrames = workerIsCoi ? 64 : 96;
         const defaultFirstFrames = workerIsCoi ? 40 : 56;
 
-        if (msg.voice === 'female' && engine && !loadedVoiceLangs.has('female')) {
-          try {
-            const manifest = await getModelsManifest();
-            const fSpec = manifest.femaleVoice || buildFallbackFemaleSpec();
-            const fBytes = Number(fSpec.voiceBytes) || VOICE_BANK_BYTES;
-            const fRes = await fetchOrLoadAsset(
-              fSpec.voiceCacheKey,
-              fSpec.voiceUrls,
-              fBytes,
-              (arr) => isValidVoiceBuffer(arr, fBytes)
-            );
-            if (fRes && fRes.bytes) {
-              const fFloats = new Float32Array(
-                fRes.bytes.buffer,
-                fRes.bytes.byteOffset,
-                VOICE_BANK_BYTES / 4
-              ).slice();
-              engine.setVoiceBank('female', fFloats);
-              loadedVoiceLangs.add('female');
-            }
-          } catch {}
-        }
-
         for await (const ch of engine.stream(msg.text || '', {
           lang: targetLang,
-          voice: msg.voice || 'male',
+          voice: targetVoice,
           rate: Number(msg.rate ?? 1.0),
-          noise: Number(msg.noise ?? 0.667),
-          noiseDuration: Number(msg.noiseDuration ?? msg.noise_duration ?? 0.8),
+          noise: Number(msg.noise ?? 0.60),
+          noiseDuration: Number(msg.noiseDuration ?? msg.noise_duration ?? 0.0),
           tier,
           firstChunkFrames: Number(msg.firstChunkFrames || defaultFirstFrames),
           chunkFrames: Number(msg.chunkFrames || defaultChunkFrames),

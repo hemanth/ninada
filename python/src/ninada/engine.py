@@ -1,4 +1,4 @@
-"""Streaming 24 kHz Studio Neural ONNX (StyleTTS2 + PL-BERT + iSTFTNet) + Zero-Dep Klatt Runtime Engine for Ninada v3.0."""
+"""Streaming 24 kHz Native Studio VITS Specialists ONNX + Zero-Dep Klatt Runtime Engine for Ninada v4.0."""
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .g2p import LANGUAGE_IDS, text_to_ids
+from .studio_g2p import STUDIO_HOP_LENGTH, studio_text_to_ids
 
 SAMPLE_RATE = 24000
 HOP_LENGTH = 600
@@ -303,7 +304,7 @@ def _make_ort_cpu_session(onnx_path: Path) -> Any:
 
 
 class Ninada:
-    """Ninada (निनाद) v3.0: Streaming 24 kHz Studio Pan-Indic & Classical Sanskrit TTS (StyleTTS2 + PL-BERT + iSTFTNet ONNX)."""
+    """Ninada (निनाद) v4.0: Streaming 24 kHz Native Per-Language Studio VITS Specialists (ONNX) + Zero-Dep Klatt."""
 
     def __init__(
         self,
@@ -319,18 +320,28 @@ class Ninada:
         self.voc_session: Any = None
         self.model_path: Path | None = None
         self._explicit_override = bool(model_path or encoder_path or vocoder_path)
+        self._studio_v4_sessions: dict[str, Any] = {}
         self._lang_sessions: dict[str, tuple[Any, Any]] = {}
         self._voice_banks: dict[str, Any] = {}
         self._repo_root = Path(__file__).resolve().parents[3]
         self._voice_dir = Path(voice_dir) if voice_dir is not None else None
+        self._onnx_base_dir: Path | None = None
 
         if model_path is not None and Path(model_path).is_dir():
             d = Path(model_path)
-            if (d / "ninada_24k_q8f16.onnx").exists():
+            if (
+                (d / f"{self.default_lang}.onnx").exists()
+                or (d / "models" / f"{self.default_lang}.onnx").exists()
+                or (d / "onnx" / f"{self.default_lang}.onnx").exists()
+            ):
+                self._onnx_base_dir = d
+                self._explicit_override = False
+                model_path = None
+            elif (d / "ninada_24k_q8f16.onnx").exists():
                 model_path = d / "ninada_24k_q8f16.onnx"
                 if self._voice_dir is None and (d / "voices").is_dir():
                     self._voice_dir = d / "voices"
-                self._onnx_base_dir: Path | None = d
+                self._onnx_base_dir = d
             elif (d / "onnx" / "ninada_24k_q8f16.onnx").exists():
                 model_path = d / "onnx" / "ninada_24k_q8f16.onnx"
                 if self._voice_dir is None and (d / "voices").is_dir():
@@ -343,19 +354,11 @@ class Ninada:
                 encoder_path = d / "encoder_flow_quantized.onnx"
                 vocoder_path = d / "vocoder_quantized.onnx"
                 model_path = None
-                self._onnx_base_dir = None
             elif (d / "model_quantized.onnx").exists():
                 model_path = d / "model_quantized.onnx"
-                self._onnx_base_dir = None
-            else:
-                self._onnx_base_dir = None
-        else:
-            self._onnx_base_dir = None
 
         if self._explicit_override:
             try:
-                import onnxruntime as ort
-
                 if encoder_path and vocoder_path and Path(encoder_path).exists() and Path(vocoder_path).exists():
                     self.enc_session = _make_ort_cpu_session(Path(encoder_path))
                     self.voc_session = _make_ort_cpu_session(Path(vocoder_path))
@@ -372,13 +375,85 @@ class Ninada:
                 self.enc_session = None
                 self.voc_session = None
         else:
-            sess_24k = self._discover_unified_24k_session()
-            if sess_24k is not None:
-                self.session = sess_24k
+            sess_v4 = self._get_v4_studio_session(self.default_lang)
+            if sess_v4 is not None:
+                self.session = sess_v4
             else:
-                pair = self._get_specialist_sessions(self.default_lang)
-                if pair is not None:
-                    self.enc_session, self.voc_session = pair
+                sess_24k = self._discover_unified_24k_session()
+                if sess_24k is not None:
+                    self.session = sess_24k
+                else:
+                    pair = self._get_specialist_sessions(self.default_lang)
+                    if pair is not None:
+                        self.enc_session, self.voc_session = pair
+
+    @staticmethod
+    def _is_v4_studio_session(sess: Any) -> bool:
+        if sess is None:
+            return False
+        in_names = {i.name for i in sess.get_inputs()}
+        return in_names == {"input_ids", "scales"}
+
+    def _get_v4_studio_session(self, lang: str, voice: str | None = None) -> Any:
+        lc = lang if lang in LANGUAGE_IDS else "sa"
+        v_norm = (voice or "").strip().lower()
+        is_fem = v_norm == "female"
+        cache_key = f"{lc}:female" if is_fem else lc
+
+        if self._explicit_override:
+            if self._is_v4_studio_session(self.session):
+                return self.session
+            return None
+
+        if cache_key in self._studio_v4_sessions:
+            return self._studio_v4_sessions[cache_key]
+
+        fname = f"{lc}_female.onnx" if is_fem else f"{lc}.onnx"
+        candidates: list[Path] = []
+        if self._onnx_base_dir is not None:
+            candidates.extend(
+                [
+                    self._onnx_base_dir / fname,
+                    self._onnx_base_dir / "models" / fname,
+                    self._onnx_base_dir / "onnx" / fname,
+                ]
+            )
+        candidates.extend(
+            [
+                self._repo_root / "docs" / "models" / fname,
+                self._repo_root / "artifacts" / "ninada_v4" / "onnx" / fname,
+                self._repo_root / "docs" / fname,
+            ]
+        )
+
+        onnx_path: Path | None = None
+        for p in candidates:
+            if p.exists():
+                onnx_path = p
+                break
+
+        if onnx_path is None:
+            try:
+                from huggingface_hub import hf_hub_download
+
+                onnx_path = Path(hf_hub_download(repo_id="gnumanth/ninada", filename=f"onnx/{fname}"))
+            except Exception:
+                onnx_path = None
+
+        if onnx_path is not None and onnx_path.exists():
+            try:
+                sess = _make_ort_cpu_session(onnx_path)
+                if self._is_v4_studio_session(sess):
+                    self._studio_v4_sessions[cache_key] = sess
+                    if self.model_path is None:
+                        self.model_path = onnx_path
+                    return sess
+            except Exception:
+                pass
+
+        if is_fem:
+            return self._get_v4_studio_session(lc, voice=None)
+        return None
 
     def _discover_unified_24k_session(self) -> Any:
         if self.session is not None:
@@ -400,16 +475,6 @@ class Ninada:
             if p.exists():
                 onnx_path = p
                 break
-
-        if onnx_path is None:
-            try:
-                from huggingface_hub import hf_hub_download
-
-                onnx_path = Path(
-                    hf_hub_download(repo_id="gnumanth/ninada", filename="onnx/ninada_24k_q8f16.onnx")
-                )
-            except Exception:
-                onnx_path = None
 
         if onnx_path is not None and onnx_path.exists():
             try:
@@ -445,15 +510,6 @@ class Ninada:
                 if p.exists() and p.stat().st_size == 510 * 256 * 4:
                     bin_path = p
                     break
-            if bin_path is None:
-                try:
-                    from huggingface_hub import hf_hub_download
-
-                    dl = Path(hf_hub_download(repo_id="gnumanth/ninada", filename=f"voices/{key}.bin"))
-                    if dl.exists() and dl.stat().st_size == 510 * 256 * 4:
-                        bin_path = dl
-                except Exception:
-                    bin_path = None
             if bin_path is None and key == "female":
                 return self._get_voice_style(lang, num_ipa_tokens, voice=None)
             if bin_path is not None:
@@ -506,17 +562,20 @@ class Ninada:
     @property
     def is_neural(self) -> bool:
         return (
-            (self.session is not None)
+            bool(self._studio_v4_sessions)
+            or (self.session is not None)
             or bool(self._lang_sessions)
             or (self.enc_session is not None and self.voc_session is not None)
         )
 
     @property
     def is_24k_studio(self) -> bool:
+        if self._studio_v4_sessions:
+            return True
         if self.session is None:
             return False
         in_names = {i.name for i in self.session.get_inputs()}
-        return "style" in in_names and "speed" in in_names
+        return in_names == {"input_ids", "scales"} or ("style" in in_names and "speed" in in_names)
 
     def with_lang(self, lang: str) -> "Ninada":
         if lang in LANGUAGE_IDS:
@@ -528,15 +587,15 @@ class Ninada:
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.667,
-        noise_duration: float = 0.80,
+        noise: float = 0.60,
+        noise_duration: float = 0.0,
         tier: str = "auto",
         chunk_frames: int = 64,
         halo_frames: int = 12,
         crossfade_samples: int = 256,
         voice: str | None = None,
     ) -> Iterator[dict[str, Any]]:
-        """Stream 24 kHz studio neural audio chunks (StyleTTS2 + PL-BERT + iSTFTNet ONNX) or Tier-2 Klatt fallback."""
+        """Stream 24 kHz native studio neural audio chunks (Native Studio VITS ONNX) or Tier-2 Klatt fallback."""
         use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
         eff_rate = max(0.45, min(2.5, float(rate)))
         clauses = split_prosodic_clauses(text)
@@ -544,8 +603,138 @@ class Ninada:
         ttfa_ms: float | None = None
         chunk_idx = 0
 
-        # Path 1: Primary 24 kHz Unified Studio ONNX (`input_ids`, `style`, `speed`)
-        if tier != "klatt" and self.is_24k_studio:
+        # Path 0: Primary v4.0 Per-Language Native 24,000 Hz Studio VITS Specialist (`input_ids`, `scales`)
+        v4_sess = self._get_v4_studio_session(use_lang, voice=voice) if tier != "klatt" else None
+        if v4_sess is not None:
+            import numpy as np
+
+            if not clauses:
+                silent = generate_room_tone(num_samples=int(0.10 * SAMPLE_RATE), seed=1337)
+                ttfa_ms = (time.perf_counter() - t_start) * 1000.0
+                yield {
+                    "pcm": silent,
+                    "wav": encode_wav_bytes(silent, sr=SAMPLE_RATE),
+                    "sample_rate": SAMPLE_RATE,
+                    "index": 0,
+                    "clause_index": 0,
+                    "clause_count": 1,
+                    "is_final": True,
+                    "duration_sec": len(silent) / SAMPLE_RATE,
+                    "latency_ms": ttfa_ms,
+                    "ttfa_ms": ttfa_ms,
+                    "lang": use_lang,
+                    "tier": "neural_onnx",
+                    "aksharas": [],
+                    "durations": [],
+                }
+                return
+
+            chunk_f = max(24, int(chunk_frames))
+            chunk_samples = chunk_f * HOP_LENGTH
+            min_tail_samples = 16 * STUDIO_HOP_LENGTH
+            filter_state: tuple[float, float] = (0.0, 0.0)
+            eff_noise = max(0.0, min(1.2, float(noise)))
+            eff_noise_dp = 0.0 if noise_duration is None else max(0.0, min(1.2, float(noise_duration)))
+            scales_vec = np.asarray([1.0 / eff_rate, eff_noise, eff_noise_dp], dtype=np.float32)
+
+            for c_idx, clause in enumerate(clauses):
+                t_c = time.perf_counter()
+                parsed = text_to_ids(clause, lang=use_lang)
+
+                if not _has_pronounceable_content(parsed):
+                    silent = generate_room_tone(num_samples=int(0.10 * SAMPLE_RATE), seed=1337 + c_idx)
+                    now_ms = (time.perf_counter() - t_start) * 1000.0
+                    if ttfa_ms is None:
+                        ttfa_ms = now_ms
+                    yield {
+                        "pcm": silent,
+                        "wav": encode_wav_bytes(silent, sr=SAMPLE_RATE),
+                        "sample_rate": SAMPLE_RATE,
+                        "index": chunk_idx,
+                        "clause_index": c_idx,
+                        "clause_count": len(clauses),
+                        "is_final": c_idx == len(clauses) - 1,
+                        "duration_sec": len(silent) / SAMPLE_RATE,
+                        "latency_ms": (time.perf_counter() - t_c) * 1000.0,
+                        "ttfa_ms": ttfa_ms,
+                        "lang": parsed["lang"],
+                        "tier": "neural_onnx",
+                        "aksharas": parsed["aksharas"],
+                        "durations": [],
+                    }
+                    chunk_idx += 1
+                    continue
+
+                studio_ids, resolved_lc, _ = studio_text_to_ids(clause, lang=parsed["lang"])
+                active_sess = self._get_v4_studio_session(resolved_lc, voice=voice) or v4_sess
+                wav_out, durs_out = active_sess.run(
+                    None,
+                    {
+                        "input_ids": np.asarray([studio_ids], dtype=np.int64),
+                        "scales": scales_vec,
+                    },
+                )
+                clause_pcm = np.asarray(wav_out, dtype=np.float32).reshape(-1).copy()
+                durs_list = np.asarray(durs_out, dtype=np.int64).reshape(-1).tolist()
+
+                clause_pcm, filter_state = apply_dc_blocker_1pole(clause_pcm, r=0.9965, state=filter_state)
+                clause_pcm = (clause_pcm - float(np.mean(clause_pcm))).astype(np.float32)
+                if len(clause_pcm) > 192:
+                    r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 192.0))
+                    clause_pcm[:192] *= r_in
+                if len(clause_pcm) > 256:
+                    r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 256.0))
+                    clause_pcm[-256:] *= r_out
+                pause_sec = 0.052 if c_idx < len(clauses) - 1 else 0.480
+                pause_samples = int((pause_sec / eff_rate) * SAMPLE_RATE)
+                if pause_samples > 0:
+                    silence = np.zeros(pause_samples, dtype=np.float32)
+                    clause_pcm = np.concatenate([clause_pcm, silence])
+
+                peak = float(np.max(np.abs(clause_pcm))) if len(clause_pcm) > 0 else 0.0
+                if peak > 0.96:
+                    clause_pcm = (0.92 * (clause_pcm / peak)).astype(np.float32)
+
+                total_s = len(clause_pcm)
+                bounds: list[tuple[int, int]] = []
+                cur = 0
+                while cur < total_s:
+                    nxt = min(total_s, cur + chunk_samples)
+                    if total_s - nxt < min_tail_samples:
+                        nxt = total_s
+                    bounds.append((cur, nxt))
+                    cur = nxt
+                if not bounds:
+                    bounds = [(0, total_s)]
+
+                clause_elapsed_ms = (time.perf_counter() - t_c) * 1000.0
+                for sub_i, (st_s, ed_s) in enumerate(bounds):
+                    sub_pcm = clause_pcm[st_s:ed_s]
+                    is_last_sub = sub_i == len(bounds) - 1
+                    now_ms = (time.perf_counter() - t_start) * 1000.0
+                    if ttfa_ms is None:
+                        ttfa_ms = now_ms
+                    yield {
+                        "pcm": sub_pcm,
+                        "wav": encode_wav_bytes(sub_pcm, sr=SAMPLE_RATE),
+                        "sample_rate": SAMPLE_RATE,
+                        "index": chunk_idx,
+                        "clause_index": c_idx,
+                        "clause_count": len(clauses),
+                        "is_final": (c_idx == len(clauses) - 1) and is_last_sub,
+                        "duration_sec": len(sub_pcm) / SAMPLE_RATE,
+                        "latency_ms": clause_elapsed_ms if sub_i == 0 else 0.05,
+                        "ttfa_ms": ttfa_ms,
+                        "lang": resolved_lc,
+                        "tier": "neural_onnx",
+                        "aksharas": parsed["aksharas"] if sub_i == 0 else [],
+                        "durations": durs_list if sub_i == 0 else [],
+                    }
+                    chunk_idx += 1
+            return
+
+        # Path 1: Legacy Unified 24 kHz ONNX (`input_ids`, `style`, `speed`)
+        if tier != "klatt" and self.session is not None and "style" in {i.name for i in self.session.get_inputs()}:
             import numpy as np
 
             if not clauses:
@@ -572,12 +761,11 @@ class Ninada:
             chunk_f = max(24, int(chunk_frames))
             chunk_samples = chunk_f * HOP_LENGTH
             min_tail_samples = 16 * HOP_LENGTH
-            filter_state: tuple[float, float] = (0.0, 0.0)
+            filter_state_leg: tuple[float, float] = (0.0, 0.0)
 
             for c_idx, clause in enumerate(clauses):
                 t_c = time.perf_counter()
                 parsed = text_to_ids(clause, lang=use_lang)
-
                 if not _has_pronounceable_content(parsed):
                     silent = generate_room_tone(num_samples=int(0.10 * SAMPLE_RATE), seed=1337 + c_idx)
                     now_ms = (time.perf_counter() - t_start) * 1000.0
@@ -613,7 +801,7 @@ class Ninada:
                 clause_pcm = np.asarray(wav_out, dtype=np.float32).reshape(-1).copy()
                 durs_list = np.asarray(durs_out, dtype=np.int64).reshape(-1).tolist()
 
-                clause_pcm, filter_state = apply_dc_blocker_1pole(clause_pcm, r=0.9965, state=filter_state)
+                clause_pcm, filter_state_leg = apply_dc_blocker_1pole(clause_pcm, r=0.9965, state=filter_state_leg)
                 if len(clause_pcm) > 192:
                     r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 192.0))
                     clause_pcm[:192] *= r_in
@@ -629,9 +817,8 @@ class Ninada:
                 if peak > 0.96:
                     clause_pcm = (0.92 * (clause_pcm / peak)).astype(np.float32)
 
-                # Slice long clause PCM into contiguous frame-aligned sub-chunks for steady ring-buffer pacing
                 total_s = len(clause_pcm)
-                bounds: list[tuple[int, int]] = []
+                bounds = []
                 cur = 0
                 while cur < total_s:
                     nxt = min(total_s, cur + chunk_samples)
@@ -731,7 +918,7 @@ class Ninada:
 
                 num_sub = max(1, len(bounds))
                 prev_tail: np.ndarray | None = None
-                filter_state = (0.0, 0.0)
+                filter_state_enc = (0.0, 0.0)
 
                 for sub_i, (st, ed) in enumerate(bounds):
                     is_last_sub = sub_i == num_sub - 1
@@ -759,7 +946,7 @@ class Ninada:
                         prev_tail = None
                         pcm = seg[: crop_r - crop_l]
 
-                    pcm, filter_state = apply_dc_blocker_1pole(pcm, r=0.995, state=filter_state)
+                    pcm, filter_state_enc = apply_dc_blocker_1pole(pcm, r=0.995, state=filter_state_enc)
                     if sub_i == 0 and len(pcm) > 192:
                         r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 192.0))
                         pcm[:192] *= r_in
@@ -789,8 +976,8 @@ class Ninada:
                     chunk_idx += 1
             return
 
-        # Path 3: Legacy monolithic VITS ONNX (if explicitly configured)
-        if tier != "klatt" and self.session is not None:
+        # Path 3: Legacy monolithic VITS ONNX with attention_mask (if explicitly configured)
+        if tier != "klatt" and self.session is not None and "attention_mask" in {i.name for i in self.session.get_inputs()}:
             import numpy as np
 
             in_names = {i.name for i in self.session.get_inputs()}
@@ -881,8 +1068,8 @@ class Ninada:
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.667,
-        noise_duration: float = 0.80,
+        noise: float = 0.60,
+        noise_duration: float = 0.0,
         tier: str = "auto",
         voice: str | None = None,
     ) -> bytes:
@@ -903,8 +1090,8 @@ class Ninada:
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.667,
-        noise_duration: float = 0.80,
+        noise: float = 0.60,
+        noise_duration: float = 0.0,
         tier: str = "auto",
         voice: str | None = None,
     ) -> tuple[Any, dict[str, Any]]:
@@ -912,7 +1099,12 @@ class Ninada:
         use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
         parsed = text_to_ids(text, lang=use_lang)
 
-        if tier != "klatt" and (self.is_neural or self._get_specialist_sessions(use_lang) is not None):
+        has_neural = (
+            self.is_neural
+            or self._get_v4_studio_session(use_lang, voice=voice) is not None
+            or self._get_specialist_sessions(use_lang) is not None
+        )
+        if tier != "klatt" and has_neural:
             import numpy as np
 
             pieces: list[np.ndarray] = []
@@ -932,10 +1124,11 @@ class Ninada:
                     all_durs.extend(ch["durations"])
                 ttfa_ms = float(ch["ttfa_ms"])
             waveform = np.concatenate(pieces, axis=0) if pieces else np.zeros(2400, dtype=np.float32)
-            waveform = (waveform - np.mean(waveform)).astype(np.float32)
+            waveform = (waveform - float(np.mean(waveform))).astype(np.float32)
             peak = float(np.max(np.abs(waveform))) if len(waveform) > 0 else 0.0
             if peak > 0.02:
                 waveform = 0.88 * (waveform / max(1.0, peak))
+                waveform = (waveform - float(np.mean(waveform))).astype(np.float32)
             parsed["tier"] = "neural_onnx"
             parsed["durations"] = all_durs
             parsed["ttfa_ms"] = ttfa_ms
@@ -950,8 +1143,8 @@ def speak(
     text: str,
     lang: str = "sa",
     rate: float = 1.0,
-    noise: float = 0.667,
-    noise_duration: float = 0.80,
+    noise: float = 0.60,
+    noise_duration: float = 0.0,
     tier: str = "auto",
     voice: str | None = None,
 ) -> bytes:
@@ -971,8 +1164,8 @@ def stream(
     text: str,
     lang: str = "sa",
     rate: float = 1.0,
-    noise: float = 0.667,
-    noise_duration: float = 0.80,
+    noise: float = 0.60,
+    noise_duration: float = 0.0,
     tier: str = "auto",
     chunk_frames: int = 64,
     voice: str | None = None,

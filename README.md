@@ -1,6 +1,6 @@
 # ninada
 
-Stream 24,000 Hz studio speech for Classical Sanskrit and five Indian languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser, Node.js, and Python from a single `78.9 MB` ONNX model with Studio Male and Studio Female voice banks.
+Stream 24,000 Hz studio speech for Classical Sanskrit and five Indian languages (`sa`, `kn`, `hi`, `ta`, `te`, `ml`) in the browser, Node.js, and Python using `27.9 MB` native per-language VITS ONNX specialists (Male & Female) with zero cross-language accent bleed.
 
 ```bash
 npm install ninada onnxruntime-web
@@ -16,20 +16,22 @@ pip install ninada
 import ninada from 'ninada';
 
 const voice = await ninada('kannada', {
-  model: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ninada_24k_q8f16.onnx',
-  voiceUrl: 'https://huggingface.co/gnumanth/ninada/resolve/main/voices/kn.bin',
-  cacheModels: true,
+  models: {
+    kn: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/kn.onnx',
+    sa: 'https://huggingface.co/gnumanth/ninada/resolve/main/onnx/sa.onnx',
+  },
+  cache: true,
 });
 
 for await (const chunk of voice.stream('ನಮಸ್ಕಾರ, ಇಂದು ಬೆಂಗಳೂರಿನಲ್ಲಿ ಹವಾಮಾನ ತುಂಬಾ ಚೆನ್ನಾಗಿದೆ.')) {
   playPcm24k(chunk.pcm, chunk.sampleRate); // Float32Array @ 24,000 Hz
 }
 
-const wav = await voice.speak('ಕನ್ನಡವೇ ಸತ್ಯ ಕನ್ನಡವೇ ನಿತ್ಯ', { lang: 'kn' });
+const wav = await voice.speak('ಕನ್ನಡವೇ ಸತ್ಯ ಕನ್ನಡವೇ ನಿತ್ಯ', { lang: 'kn', voice: 'female' });
 await voice.dispose();
 ```
 
-`voice.stream()` yields `24,000 Hz` PCM clauses as they synthesize with `0` `AudioWorklet` underruns and `CacheStorage` persistence (`0` refetches on reload). `voice.speak()` returns a complete `24 kHz` RIFF WAV buffer.
+`voice.stream()` yields `24,000 Hz` PCM clauses as they synthesize with `0` `AudioWorklet` underruns and `CacheStorage` + `IndexedDB` persistence (`0` refetches on reload). `voice.speak()` returns a complete `24 kHz` RIFF WAV buffer.
 
 ## Python
 
@@ -38,13 +40,13 @@ from ninada import Ninada
 
 tts = Ninada(lang="sa")
 for chunk in tts.stream("प्रज्ञापूर्वकव्यापारवत्त्वं जीवत्वम् । यथार्थज्ञानं प्रमाणम् ॥"):
-    play(chunk["pcm"], chunk["sample_rate"])  # float32 @ 24,000 Hz (~0.09x CPU RTF)
+    play(chunk["pcm"], chunk["sample_rate"])  # float32 @ 24,000 Hz (~0.197x CPU RTF)
 
-wav_bytes = tts.speak("सत्यमेव जयते नानृतम्", lang="sa")
+wav_bytes = tts.speak("सत्यमेव जयते नानृतम्", lang="sa", voice="female")
 open("satyam.wav", "wb").write(wav_bytes)
 ```
 
-`Ninada` auto-downloads the unified `78.9 MB` W8A32+FP16 ONNX model (`ninada_24k_q8f16.onnx`) and `510 KB` studio voice banks (`voices/{sa,hi,kn,ta,te,ml,female}.bin`), switching languages and male/female studio timbres (`voice="female"`) without recompiling the ONNX session.
+`Ninada` loads dedicated `27.9 MB` W8A32+FP16 ONNX specialists (`onnx/{sa,kn,hi,ta,te,ml}.onnx` and `onnx/{sa,kn,hi,ta,te,ml}_female.onnx`), each trained exclusively on its own language's `ai4bharat/Rasa` single-speaker `24 kHz` studio recordings and native Unicode orthography.
 
 ## CLI
 
@@ -55,40 +57,39 @@ ninada "सत्यमेव जयते नानृतम्" -l sa -o satya
 
 Runs `24 kHz` neural synthesis when ONNX weights are available and falls back automatically to a `0.0 MB` zero-dependency Cascade Klatt-Akṣara synthesizer offline.
 
-## Pan-Indic IPA G2P & 24 kHz Harmonic Vocoder
+## Native Script Orthography & Prosody
 
 ```js
-import { textToIpa, textToIds } from 'ninada';
+import { studioTextToIds, textToIds } from 'ninada';
 
-const ipa = textToIpa('धर्मक्षेत्रे कुरुक्षेत्रे समवेता युयुत्सवः ।', 'sa');
-// => "dʰˈəɾməkʂeːtɾeː kʊɾˈʊkʂeːtɾeː səməʋˈeːtɑː jʊjˈʊtsəʋəhᵊ ;"
-const { aksharas } = textToIds('प्रज्ञापूर्वकव्यापारवत्त्वं जीवत्वम् ।', 'sa');
+const { studioIds, lang } = studioTextToIds('ವಾಙ್ಮಯ ತಪಸ್ಸು ಮತ್ತು ಜ್ಞಾನ ವಿಕಾಸ ಅತ್ಯಂತ ಮುಖ್ಯವಾದವು.', 'kn');
+const { aksharas } = textToIds('धर्मक्षेत्रे कुरुक्षेत्रे समवेता युयुत्सवः ।', 'sa');
 ```
 
-`textToIpa()` preserves Classical/Vedic Sanskrit vocalic `ṛ`/`ṝ`, homorganic nasal sandhi, visarga breathing, *pūrvarūpa avagraha* (`ऽ`), Hindi medial/final schwa deletion, Tamil intervocalic stop lenition, Malayalam atomic chillus (`ൽ, ർ, ൺ, ൻ, ൾ`), and dedicated phoneme slot `79` (`ɭ`) for Vedic and Dravidian retroflex laterals (`ळ / ಳ / ள / ళ / ള`) feeding a `24 kHz` `StyleTTS2 + PL-BERT + Harmonic-Source iSTFTNet` Fourier vocoder.
+`studioTextToIds()` tokenizes directly in each language's native Unicode character table (`sa` 144 tokens, `kn` 85, `hi` 120, `ta` 61, `te` 110, `ml` 101) — preserving Classical Sanskrit vocalic `ṛ`/`ṝ`/`ḷ`, visarga sandhi, Kannada `ಙ`/`ಃ` allophony, Tamil `ழ`/`ற`/`ன`, and Malayalam atomic chillus (`ൺ ൻ ർ ൽ ൾ ൿ`) feeding a `24 kHz` `RelativePositionTransformer + StochasticDurationPredictor + HiFi-GAN v1` studio generator.
 
 ## Benchmarks (`N = 240` Held-Out 24 kHz Studio Utterances, `B = 1,000` Bootstrap 95% CIs)
 
 | System | Rate | Footprint (↓) | Coverage (↑) | TTFA p50 (↓) | MCD 0–8 kHz (dB, ↓) | 8–12 kHz HF Err (dB, ↓) | Dur MAE (↓) |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Base `facebook/mms-tts-hin` | 16 kHz | 138.8 MB | 35.0% | 1.1 ms* | `7.97 [7.69, 8.23]` | 66.35 dB | 3.26s |
-| Meta MMS 5-Specialist Fleet (`5x` VITS) | 16 kHz | 694.0 MB | 100.0% | 184.9 ms | `5.09 [5.03, 5.16]` | 65.90 dB | 1.27s |
-| `ninada` v3.0 Untuned Prior (`alpha=0`) | 24 kHz | 312.7 MB | 100.0% | 84.6 ms | `5.24 [5.18, 5.29]` | 17.69 dB | 1.77s |
-| **`ninada` v3.0 Studio FP32** | **24 kHz** | 312.7 MB | **100.0%** | **33.3 ms** | **`4.61 [4.56, 4.65]`** | **10.10 dB** | **1.18s** |
-| **`ninada` v3.0 Unified Q8F16 ONNX** | **24 kHz** | **79.4 MB** | **100.0%** | **1215.7 ms** | **`4.61 [4.57, 4.65]`** | **10.11 dB** | **1.17s** |
-| `ninada` Tier-2 Klatt Fallback | 24 kHz | **0.0 MB** | **100.0%** | **104.9 ms** | `10.38 [10.26, 10.50]` | 41.94 dB | 0.98s |
+| Base `facebook/mms-tts-hin` | 16 kHz | 138.8 MB | 35.0% | 1.0 ms* | `7.97 [7.69, 8.24]` | 66.24 dB | 3.21s |
+| Meta MMS 5-Specialist Fleet (`5x` VITS) | 16 kHz | 694.0 MB | 100.0% | 60.2 ms | `5.09 [5.03, 5.15]` | 65.90 dB | 1.34s |
+| `ninada` v4.0 Untuned Warm-Start (`step=0`) | 24 kHz | 112.0 MB | 100.0% | 189.2 ms | `4.60 [4.54, 4.65]` | 11.01 dB | 0.95s |
+| **`ninada` v4.0 Native Studio FP32** | **24 kHz** | 112.0 MB | **100.0%** | **45.3 ms** | **`3.40 [3.37, 3.43]`** | **6.34 dB** | **0.57s** |
+| **`ninada` v4.0 Native Browser ONNX** | **24 kHz** | **27.9 MB** | **100.0%** | **372.7 ms** | **`3.39 [3.36, 3.43]`** | **6.37 dB** | **0.56s** |
+| `ninada` Tier-2 Klatt Fallback | 24 kHz | **0.0 MB** | **100.0%** | **104.0 ms** | `10.38 [10.26, 10.50]` | 41.94 dB | 0.98s |
 
-Per-language held-out `MCD 0–8 kHz (dB, ↓)`: Sanskrit **`4.88`** (`4.88` ONNX vs `5.31` MMS), Hindi **`4.41`** (`4.42` ONNX vs `4.84` MMS), Kannada **`4.59`** (`4.59` ONNX vs `5.07` MMS), Tamil **`4.34`** (`4.35` ONNX vs `4.86` MMS), Telugu **`4.68`** (`4.69` ONNX vs `5.61` MMS), Malayalam **`4.72`** (`4.73` ONNX vs `4.87` MMS). Full bootstrap CIs and parity telemetry in [`bench/SCIENCE_REPORT.md`](./bench/SCIENCE_REPORT.md) and [`bench/results.json`](./bench/results.json).
+Per-language held-out `MCD 0–8 kHz (dB, ↓)`: Sanskrit **`3.51`** (vs `5.32` MMS), Hindi **`3.37`** (vs `4.85` MMS), Kannada **`3.35`** (vs `5.04` MMS), Tamil **`3.21`** (vs `4.87` MMS), Telugu **`3.59`** (vs `5.57` MMS), Malayalam **`3.34`** (vs `4.88` MMS). Full bootstrap CIs and parity telemetry (`0.61 dB` parity MCD, `r = 0.9999`) in [`bench/SCIENCE_REPORT.md`](./bench/SCIENCE_REPORT.md) and [`bench/results.json`](./bench/results.json).
 
 ## Reproduce & Verify
 
 ```bash
-PYTHONPATH=python/src:. python training/train_gcp_24k.py --work-dir data/v3 --out-dir artifacts/ninada_v3 --epochs 2
-PYTHONPATH=python/src:. python bench/run_bench.py --artifact-dir artifacts/ninada_v3
+PYTHONPATH=python/src:. python training/train_native_specialists_gcp.py --work-dir data/v4 --out-dir artifacts/ninada_v4
+PYTHONPATH=python/src:. python bench/check_bench_thresholds.py
 pytest -q && node verify-browser.mjs
 ```
 
-Runs 24 kHz Viterbi studio alignment + Cloud GPU adaptation, evaluates all `240` held-out studio clips, and verifies `0` `AudioWorklet` underruns and `0` cached network refetches in headless Chromium.
+Trains all 12 native `24 kHz` Male/Female studio VITS specialists, evaluates `240` held-out studio clips, and verifies `0` `AudioWorklet` underruns and `0` cached network refetches in headless Chromium.
 
 ## Links
 

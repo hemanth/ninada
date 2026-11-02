@@ -638,8 +638,8 @@
             <input id="rateSlider" type="range" min="0.65" max="1.45" step="0.05" value="1.00" disabled />
           </div>
           <div class="control-field">
-            <label for="noiseSlider"><span>EXPRESSIVENESS</span><span id="noiseVal">0.66</span></label>
-            <input id="noiseSlider" type="range" min="0.00" max="0.85" step="0.02" value="0.66" disabled />
+            <label for="noiseSlider"><span>EXPRESSIVENESS</span><span id="noiseVal">0.60</span></label>
+            <input id="noiseSlider" type="range" min="0.00" max="0.85" step="0.02" value="0.60" disabled />
           </div>
         </div>
 
@@ -709,7 +709,7 @@
       <div class="panel">
         <div class="panel-header">
           <h2 class="panel-title">04 / Streaming Architecture Blueprint</h2>
-          <span class="pill-stat">24 KHZ STYLETTS2 + PL-BERT + ISTFTNET</span>
+          <span class="pill-stat">24 KHZ NATIVE STUDIO VITS · 6 SPECIALISTS</span>
         </div>
         <img src="./flow-diagram.svg" alt="Ninada Streaming Pan-Indic Neural TTS Architecture Diagram" class="blueprint-img" />
       </div>
@@ -725,7 +725,7 @@
   </div>
 
   <script type="module">
-    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs';
+    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=4.0.2';
 
     const NATIVE_NAMES = {
       sa: '\u0938\u0902\u0938\u094d\u0915\u0943\u0924\u092e\u094d',
@@ -742,17 +742,16 @@
     }
 
     document.getElementById('sdkSnippet').textContent = [
-      "// JavaScript / Browser / Node.js (24 kHz Studio Streaming)",
+      "// JavaScript / Browser / Node.js (24 kHz Native Studio Specialists)",
       "import ninada from 'ninada';",
       "const voice = await ninada('kannada', {",
-      "  model: './ninada_24k_q8f16.onnx',",
-      "  voice: './voices/kn.bin',",
+      "  models: { kn: './models/kn.onnx', sa: './models/sa.onnx' },",
       "});",
       "for await (const chunk of voice.stream(text)) {",
-      "  playPcm24k(chunk.pcm); // 24 kHz studio PCM!",
+      "  playPcm24k(chunk.pcm); // 24 kHz native Kannada studio voice!",
       "}",
       "",
-      "# Python 3.10+ (24 kHz Studio Streaming)",
+      "# Python 3.10+ (24 kHz Native Studio Specialists)",
       "from ninada import Ninada",
       'for chunk in Ninada(lang="sa").stream(shloka):',
       '    play(chunk["pcm"], chunk["sample_rate"])',
@@ -824,6 +823,7 @@
 
     let activeLang = 'sa';
     let loadedWorkerLang = null;
+    let loadedWorkerVoice = 'male';
     let activePresetIdx = 0;
     let lastPcm = null;
     let currentBlobUrl = null;
@@ -1176,15 +1176,16 @@
       refreshInspection();
     }
 
-    function lockAndLoadWorkerLang(targetLang) {
+    function lockAndLoadWorkerLang(targetLang, targetVoice = null) {
+      const effVoice = targetVoice || (voiceSelect ? voiceSelect.value : 'male');
       window.__ninadaReady = false;
       modelDot.classList.remove('ready');
       modelDot.classList.add('loading');
       loaderFill.style.width = '8%';
-      loaderLabel.textContent = `Loading ${targetLang.toUpperCase()} voice model...`;
+      loaderLabel.textContent = `Loading ${targetLang.toUpperCase()} native studio voice...`;
       activeTierBadge.textContent = `LOADING \u00b7 ${targetLang.toUpperCase()}`;
       setStudioControlsLocked(true);
-      synthWorker.postMessage({ type: 'load_lang', lang: targetLang });
+      synthWorker.postMessage({ type: 'load_lang', lang: targetLang, voice: effVoice });
     }
 
     langBtns.forEach((b) => {
@@ -1192,17 +1193,30 @@
         if (!isModelReady) return;
         cancelActiveSynthesis();
         setActiveLang(b.dataset.lang, { loadDefaultPreset: true });
-        if (!workerFailed && tierSelect.value !== 'klatt' && loadedWorkerLang !== activeLang) {
-          lockAndLoadWorkerLang(activeLang);
+        const curVoice = voiceSelect ? voiceSelect.value : 'male';
+        if (!workerFailed && tierSelect.value !== 'klatt' && (loadedWorkerLang !== activeLang || loadedWorkerVoice !== curVoice)) {
+          lockAndLoadWorkerLang(activeLang, curVoice);
         }
       });
     });
 
+    if (voiceSelect) {
+      voiceSelect.addEventListener('change', () => {
+        if (!isModelReady) return;
+        const curVoice = voiceSelect.value || 'male';
+        if (!workerFailed && tierSelect.value !== 'klatt' && (loadedWorkerLang !== activeLang || loadedWorkerVoice !== curVoice)) {
+          cancelActiveSynthesis();
+          lockAndLoadWorkerLang(activeLang, curVoice);
+        }
+      });
+    }
+
     tierSelect.addEventListener('change', () => {
       if (!isModelReady) return;
-      if (!workerFailed && tierSelect.value !== 'klatt' && loadedWorkerLang !== activeLang) {
+      const curVoice = voiceSelect ? voiceSelect.value : 'male';
+      if (!workerFailed && tierSelect.value !== 'klatt' && (loadedWorkerLang !== activeLang || loadedWorkerVoice !== curVoice)) {
         cancelActiveSynthesis();
-        lockAndLoadWorkerLang(activeLang);
+        lockAndLoadWorkerLang(activeLang, curVoice);
       }
     });
 
@@ -1231,7 +1245,7 @@
       const maxCards = 96;
       const totalWeight = aks.reduce((acc, a) => acc + (a.weight === 'G' ? 1.55 : a.weight === 'C' ? 0.60 : 1.0), 0) || 1;
       const totalSpeechMs = durations && durations.length > 2
-        ? durations.slice(1, -1).reduce((s, d) => s + Number(d || 0), 0) * 25
+        ? (durations.slice(1, -1).reduce((s, d) => s + Number(d || 0), 0) * 256000) / SAMPLE_RATE
         : 0;
       aks.slice(0, maxCards).forEach((ak) => {
         const card = document.createElement('div');
@@ -1447,7 +1461,7 @@
     await ensureCrossOriginIsolation();
 
     // Dedicated off-main-thread Web Worker for ONNX Runtime WASM SIMD
-    const synthWorker = new Worker('./synth-worker.mjs', { type: 'module' });
+    const synthWorker = new Worker('./synth-worker.mjs?v=4.0.2', { type: 'module' });
     let nextReqSeq = 1;
     let currentPendingReq = null;
 
@@ -1492,6 +1506,7 @@
       if (msg.type === 'ready') {
         workerReadyInfo = msg;
         loadedWorkerLang = msg.lang || activeLang;
+        loadedWorkerVoice = msg.voice || (voiceSelect ? voiceSelect.value : 'male');
         streamStats.threads = Number(msg.threads || 1);
         streamStats.crossOriginIsolated = Boolean(window.crossOriginIsolated);
         window.__ninadaLoadedLang = loadedWorkerLang;

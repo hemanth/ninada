@@ -93,12 +93,19 @@ test('Tier-1 24kHz Studio Neural ONNX streaming produces low-TTFA chunks and 24k
   const fs = await import('node:fs');
   const path = await import('node:path');
   const docsDir = path.resolve(import.meta.dirname, '../../docs');
+  const v4SaPath = path.join(docsDir, 'models', 'sa.onnx');
+  const v4KnPath = path.join(docsDir, 'models', 'kn.onnx');
   const studioPath = path.join(docsDir, 'ninada_24k_q8f16.onnx');
   const encPath = path.join(docsDir, 'encoder_flow_quantized.onnx');
   const vocPath = path.join(docsDir, 'vocoder_quantized.onnx');
 
   let voice;
-  if (fs.existsSync(studioPath)) {
+  if (fs.existsSync(v4SaPath) && fs.existsSync(v4KnPath)) {
+    voice = await ninada('sanskrit', {
+      models: { sa: v4SaPath, kn: v4KnPath },
+    });
+    assert.equal(voice.isStreamingNeural, true);
+  } else if (fs.existsSync(studioPath)) {
     voice = await ninada('sanskrit', {
       model: studioPath,
       voice: path.join(docsDir, 'voices', 'sa.bin'),

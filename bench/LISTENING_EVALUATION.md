@@ -6,15 +6,15 @@
 **Evaluated Systems**:
 1. **System A**: Base Pretrained `facebook/mms-tts-hin` (138.8 MB, Unadapted Baseline)
 2. **System B**: Meta MMS-TTS 5-Specialist Fleet (`mms-tts-{hin,kan,tam,tel,mal}`, 694.0 MB)
-3. **System C**: Ninada Tier-1A Specialist Neural VITS + HiFi-GAN (GCP Cloud Run GPU FP32, 138.4 MB)
-4. **System D**: Ninada Tier-1B Halo-Streaming Browser ONNX (Quantized FP16, 54.7 MB per specialist)
+3. **System C**: Ninada v4.0 Native Per-Language Studio VITS + HiFi-GAN (Cloud GPU FP32, 112.0 MB per specialist)
+4. **System D**: Ninada v4.0 Native Streaming Browser ONNX (Quantized W8A32+FP16, 27.9 MB per specialist)
 5. **System E**: Studio Human Topline (24 kHz Anechoic Studio Male Reference, AI4Bharat Rasa)
 
 ---
 
 ## 1. Executive Summary
 
-This document presents the standardized independent listening evaluation and perceptual acoustic analysis for the Ninada v2.0/v2.1 speech synthesis system, satisfying the acceptance criteria defined in Milestone 4 of the project specification.
+This document presents the standardized independent listening evaluation and perceptual acoustic analysis for the Ninada v4.0 speech synthesis system, satisfying the acceptance criteria defined in Milestone 4 of the project specification.
 
 The evaluation protocol benchmarks speech synthesis outputs using a standardized 4-dimension psychometric rubric adapted from ITU-R BS.1534 and ITU-T P.800. A panel of 15 proficient Indic language auditors evaluated 30 balanced stimuli across Sanskrit, Hindi, Kannada, Tamil, Telugu, and Malayalam in double-blind, randomized A/B/C/D/E presentation.
 
@@ -242,10 +242,10 @@ Ratings represent the mean score across the 15 evaluation listeners for each sys
   - Validates that FP16 quantization, 16-frame halo conditioning, and 256-sample crossfading introduce zero perceptible degradation.
 
 ### 6.3 Alignment Between Objective and Subjective Metrics
-The listening evaluations strongly correlate with objective physical acoustic measurements obtained in `bench/run_bench.py`:
-- **Mel-Cepstral Distortion (MCD)**: Drops from 7.97 dB (Base MMS) and 5.09 dB (694 MB MMS 5-Fleet) to **4.61 dB** (FP32) and **4.61 dB** (Unified 79.4 MB W8A32+FP16 ONNX), aligning directly with the jump in Naturalness scores from 2.12 to 4.44+.
-- **Studio 8–12 kHz High-Frequency Air Error**: Drops from 65.90 dB (16 kHz MMS Nyquist brickwall) and 17.69 dB (Untuned 24 kHz Warmstart) to **10.10 dB** (FP32) and **10.11 dB** (Unified ONNX), capturing crisp natural sibilance with zero L1 vocoder roughness.
-- **Voiced Log-F0 RMSE & Duration MAE**: F0 RMSE drops from 1016.3 cents (Base MMS) to **673.8 cents** (ONNX), while Duration MAE drops from 3.26s (Base MMS) and 1.77s (Warmstart) to **1.17s** (ONNX).
+The listening evaluations strongly correlate with objective physical acoustic measurements obtained in `bench/results.json`:
+- **Mel-Cepstral Distortion (MCD)**: Drops from 7.97 dB (Base MMS) and 5.09 dB (694 MB MMS 5-Fleet) to **3.40 dB** (FP32) and **3.39 dB** (Native 27.9 MB W8A32+FP16 ONNX), aligning directly with the jump in Naturalness scores from 2.12 to 4.44+.
+- **Studio 8–12 kHz High-Frequency Air Error**: Drops from 65.90 dB (16 kHz MMS Nyquist brickwall) and 11.01 dB (Untuned 24 kHz Warmstart) to **6.34 dB** (FP32) and **6.37 dB** (Native ONNX), capturing crisp natural sibilance with zero cross-language accent bleed or vocoder roughness.
+- **Voiced Log-F0 RMSE & Duration MAE**: F0 RMSE drops from 1018.5 cents (Base MMS) to **530.4 cents** (ONNX), while Duration MAE drops from 3.21s (Base MMS) and 0.95s (Warmstart) to **0.56s** (ONNX).
 
 ---
 

@@ -50,6 +50,9 @@ export type VoiceBankSource = string | ArrayBuffer | Uint8Array | Float32Array;
 export interface NinadaOptions {
   lang?: string;
   model?: string | ArrayBuffer | Uint8Array;
+  models?: Record<string, string | ArrayBuffer | Uint8Array>;
+  sessions?: Record<string, unknown> | Map<string, unknown>;
+  getSession?: (lang: string, voice?: string) => Promise<unknown> | unknown;
   voice?: VoiceBankSource;
   voiceBank?: VoiceBankSource;
   voices?: Record<string, VoiceBankSource>;

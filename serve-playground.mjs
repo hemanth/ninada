@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOCS_DIR = path.join(__dirname, "docs");
 const JS_DIST_DIR = path.join(__dirname, "js", "dist");
-const ARTIFACTS_ONNX_DIR = path.join(__dirname, "artifacts", "ninada", "onnx");
+const ARTIFACTS_ONNX_DIR = path.join(__dirname, "artifacts", "ninada_v4", "onnx");
 const PORT = Number(process.env.PORT || 4179);
 const gzipCache = new Map();
 
@@ -34,6 +34,9 @@ const server = http.createServer((req, res) => {
     filePath = path.join(JS_DIST_DIR, pathname.slice(6));
   } else if (pathname.startsWith("/onnx/")) {
     filePath = path.join(ARTIFACTS_ONNX_DIR, pathname.slice(6));
+  } else if (pathname.startsWith("/models/") && !fs.existsSync(filePath)) {
+    const candidate = path.join(ARTIFACTS_ONNX_DIR, pathname.slice(8));
+    if (fs.existsSync(candidate)) filePath = candidate;
   }
 
   const resolved = path.resolve(filePath);
@@ -83,10 +86,14 @@ const server = http.createServer((req, res) => {
 
   const acceptEnc = String(req.headers["accept-encoding"] || "");
   if (ext === ".onnx" && acceptEnc.includes("gzip")) {
-    let gz = gzipCache.get(resolved);
+    const gzKey = `${resolved}:${stat.mtimeMs}:${stat.size}`;
+    let gz = gzipCache.get(gzKey);
     if (!gz) {
+      for (const k of gzipCache.keys()) {
+        if (k.startsWith(`${resolved}:`)) gzipCache.delete(k);
+      }
       gz = zlib.gzipSync(fs.readFileSync(resolved), { level: 1 });
-      gzipCache.set(resolved, gz);
+      gzipCache.set(gzKey, gz);
     }
     res.writeHead(200, {
       "Content-Encoding": "gzip",

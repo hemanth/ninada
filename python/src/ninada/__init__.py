@@ -31,12 +31,23 @@ from .g2p import (
     text_to_ipa,
 )
 
-__version__ = "3.0.0"
+from .studio_g2p import (
+    STUDIO_HOP_LENGTH,
+    STUDIO_VOCABS,
+    clean_studio_text,
+    studio_text_to_ids,
+)
+
+__version__ = "4.0.0"
 
 __all__ = [
     "__version__",
     "SAMPLE_RATE",
     "HOP_LENGTH",
+    "STUDIO_HOP_LENGTH",
+    "STUDIO_VOCABS",
+    "clean_studio_text",
+    "studio_text_to_ids",
     "Ninada",
     "speak",
     "stream",

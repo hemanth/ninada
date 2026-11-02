@@ -1,15 +1,14 @@
 /**
- * ninada v3.0 — Streaming 24 kHz Studio Pan-Indic & Classical Sanskrit Neural TTS
- * (StyleTTS2 + PL-BERT + Harmonic-Source iSTFTNet ONNX for Browser WASM SIMD & Node.js)
+ * ninada v4.0 — Streaming 24 kHz Native Per-Language Studio VITS Neural TTS
+ * (6 Dedicated Native 24,000 Hz Studio VITS Specialists + Zero-Dep Klatt Fallback for Browser WASM SIMD & Node.js)
  *
  * Streaming quick start:
  *   import ninada from 'ninada';
- *   const voice = await ninada('sanskrit', {
- *     model: './ninada_24k_q8f16.onnx',
- *     voice: './voices/sa.bin',
+ *   const voice = await ninada('kannada', {
+ *     models: { kn: './models/kn.onnx', sa: './models/sa.onnx' },
  *   });
- *   for await (const chunk of voice.stream('प्रज्ञापूर्वकव्यापारवत्त्वं जीवत्वम् ।')) {
- *     // chunk.pcm (Float32Array @ 24kHz), chunk.ttfaMs (<250ms!)
+ *   for await (const chunk of voice.stream('ನಮಸ್ಕಾರ, ಇಂದು ಬೆಂಗಳೂರಿನಲ್ಲಿ ಹವಾಮಾನ ತುಂಬಾ ಚೆನ್ನಾಗಿದೆ.')) {
+ *     // chunk.pcm (Float32Array @ 24kHz), chunk.ttfaMs
  *   }
  */
 import {
@@ -32,6 +31,12 @@ import {
   ipaToIds,
   textToIds,
 } from './g2p.js';
+import {
+  STUDIO_HOP_LENGTH,
+  STUDIO_VOCABS,
+  cleanStudioText,
+  studioTextToIds,
+} from './studio_g2p.js';
 import { SAMPLE_RATE, synthesizeKlattPcm, encodeWavBuffer } from './klatt.js';
 
 const HOP_LENGTH = 600;
@@ -98,7 +103,6 @@ function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
   }
   const result = merged.length > 0 ? merged : [{ text: cleaned, sentenceEnd: true }];
 
-  // Sub-clause breath split ONLY ONCE on Clause 0 (>34 chars) for sub-second TTFA while preventing orphan tails
   if (fastFirstClause && result.length > 0 && result[0].text.length > 34) {
     const first = result[0];
     const subParts = first.text.split(/(?<=[,;—–:])\s+/g).filter((s) => s && s.trim());
@@ -212,7 +216,7 @@ async function resolveOrt(explicitOrt) {
   return null;
 }
 
-const BROWSER_MODEL_CACHE = 'ninada-onnx-v3.2.0';
+const BROWSER_MODEL_CACHE = 'ninada-onnx-v4.0.0';
 
 async function fetchBrowserCachedBytes(url, useCache = true, validator = null) {
   const absUrl =
@@ -329,6 +333,12 @@ async function createOrtSession(ort, source, providers, useCache = true) {
   });
 }
 
+function isV4StudioSession(sess) {
+  if (!sess) return false;
+  const names = Array.isArray(sess.inputNames) ? sess.inputNames : [];
+  return names.length === 2 && names.includes('input_ids') && names.includes('scales');
+}
+
 function nowMs() {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
@@ -361,9 +371,33 @@ export default async function ninada(input = 'sa', opts = {}) {
   let session = opts.session || null;
   let encSession = opts.encoderSession || null;
   let vocSession = opts.vocoderSession || null;
+  const getSessionHook = typeof opts.getSession === 'function' ? opts.getSession : null;
 
-  const needOrt = !session && !encSession && Boolean(modelSource || (encSource && vocSource));
-  const ort = needOrt || session || encSession ? await resolveOrt(opts.ort) : null;
+  const sessionsMap = new Map();
+  if (opts.sessions) {
+    const entries = opts.sessions instanceof Map ? opts.sessions.entries() : Object.entries(opts.sessions);
+    for (const [k, s] of entries) {
+      if (s) sessionsMap.set(String(k).trim().toLowerCase(), s);
+    }
+  }
+
+  const modelSourcesMap = new Map();
+  if (opts.models && typeof opts.models === 'object') {
+    for (const [k, v] of Object.entries(opts.models)) {
+      if (v) modelSourcesMap.set(String(k).trim().toLowerCase(), v);
+    }
+  }
+
+  const hasNeuralConfig = Boolean(
+    session ||
+    encSession ||
+    getSessionHook ||
+    sessionsMap.size > 0 ||
+    modelSourcesMap.size > 0 ||
+    modelSource ||
+    (encSource && vocSource)
+  );
+  const ort = hasNeuralConfig ? await resolveOrt(opts.ort) : null;
 
   const useCache = opts.cache !== false;
   if (!encSession && !vocSession && encSource && vocSource && ort) {
@@ -374,13 +408,55 @@ export default async function ninada(input = 'sa', opts = {}) {
   } else if (!session && modelSource && ort) {
     session = await createOrtSession(ort, modelSource, opts.providers, useCache);
     modelSource = null;
+  } else if (!session && !getSessionHook && modelSourcesMap.has(defaultLang) && ort) {
+    session = await createOrtSession(ort, modelSourcesMap.get(defaultLang), opts.providers, useCache);
+    if (session) sessionsMap.set(defaultLang, session);
   }
 
   modelSource = null;
   encSource = null;
   vocSource = null;
 
-  // Voice banks: Map<lang, Float32Array(510 * 256)>
+  async function resolveV4Session(lang, voiceOverride = null) {
+    const lc = resolveLang(lang);
+    const vNorm = typeof voiceOverride === 'string' ? voiceOverride.trim().toLowerCase() : '';
+    const femKey = `${lc}_female`;
+    const targetKey = vNorm === 'female' ? femKey : lc;
+
+    if (getSessionHook) {
+      const hooked = await getSessionHook(lc, vNorm || 'male');
+      if (isV4StudioSession(hooked)) return hooked;
+    }
+    if (sessionsMap.has(targetKey)) {
+      const hit = sessionsMap.get(targetKey);
+      if (isV4StudioSession(hit)) return hit;
+    }
+    if (modelSourcesMap.has(targetKey) && ort) {
+      try {
+        const loaded = await createOrtSession(ort, modelSourcesMap.get(targetKey), opts.providers, useCache);
+        if (isV4StudioSession(loaded)) {
+          sessionsMap.set(targetKey, loaded);
+          return loaded;
+        }
+      } catch {}
+    }
+    if (vNorm === 'female') {
+      if (sessionsMap.has(lc) && isV4StudioSession(sessionsMap.get(lc))) return sessionsMap.get(lc);
+      if (modelSourcesMap.has(lc) && ort) {
+        try {
+          const loaded = await createOrtSession(ort, modelSourcesMap.get(lc), opts.providers, useCache);
+          if (isV4StudioSession(loaded)) {
+            sessionsMap.set(lc, loaded);
+            return loaded;
+          }
+        } catch {}
+      }
+    }
+    if (isV4StudioSession(session)) return session;
+    return null;
+  }
+
+  // Legacy voice banks: Map<lang, Float32Array(510 * 256)>
   const voiceBanks = new Map();
   const voiceSources = new Map();
   if (opts.voices && typeof opts.voices === 'object') {
@@ -391,7 +467,8 @@ export default async function ninada(input = 'sa', opts = {}) {
       else if (v) voiceSources.set(lc, v);
     }
   }
-  const initialVoice = opts.voiceBank || opts.voice || null;
+  const initialVoice = opts.voiceBank || (opts.voice && typeof opts.voice !== 'string' ? opts.voice : null) ||
+    (typeof opts.voice === 'string' && /\.bin$/i.test(opts.voice) ? opts.voice : null);
   if (initialVoice) {
     const loaded = await loadVoiceBankSource(initialVoice, useCache);
     if (loaded) voiceBanks.set(defaultLang, loaded);
@@ -444,6 +521,15 @@ export default async function ninada(input = 'sa', opts = {}) {
     return names.includes('style') && names.includes('speed');
   }
 
+  function hasV4Neural() {
+    return Boolean(
+      getSessionHook ||
+      isV4StudioSession(session) ||
+      sessionsMap.size > 0 ||
+      modelSourcesMap.size > 0
+    );
+  }
+
   const listeners = new Map();
   const emit = (ev, payload) => {
     const arr = listeners.get(ev);
@@ -455,10 +541,10 @@ export default async function ninada(input = 'sa', opts = {}) {
       return defaultLang;
     },
     get isNeural() {
-      return Boolean((encSession && vocSession) || session);
+      return Boolean(hasV4Neural() || (encSession && vocSession) || session);
     },
     get isStreamingNeural() {
-      return Boolean(isUnified24kSession() || (encSession && vocSession));
+      return Boolean(hasV4Neural() || isUnified24kSession() || (encSession && vocSession));
     },
     setVoiceBank(lang, bank) {
       const kNorm = typeof lang === 'string' && lang.trim().toLowerCase() === 'female' ? 'female' : resolveLang(lang);
@@ -472,9 +558,13 @@ export default async function ninada(input = 'sa', opts = {}) {
       try { await encSession?.release?.(); } catch {}
       try { await vocSession?.release?.(); } catch {}
       try { await session?.release?.(); } catch {}
+      for (const s of sessionsMap.values()) {
+        try { await s?.release?.(); } catch {}
+      }
       encSession = null;
       vocSession = null;
       session = null;
+      sessionsMap.clear();
       voiceBanks.clear();
     },
     on(event, handler) {
@@ -488,8 +578,6 @@ export default async function ninada(input = 'sa', opts = {}) {
     async *stream(text, callOpts = {}) {
       const lang = callOpts.lang ? resolveLang(callOpts.lang) : defaultLang;
       const effRate = Math.max(0.45, Math.min(2.5, Number(callOpts.rate ?? opts.rate ?? 1.0) || 1.0));
-      const noise = callOpts.noise ?? opts.noise ?? 0.667;
-      const noiseDuration = callOpts.noiseDuration ?? callOpts.noise_duration ?? opts.noiseDuration ?? opts.noise_duration ?? 0.80;
       const tier = callOpts.tier || 'auto';
       const firstChunkFrames = Math.max(24, Number(callOpts.firstChunkFrames || 44));
       const chunkFrames = Math.max(24, Number(callOpts.chunkFrames || 72));
@@ -509,19 +597,206 @@ export default async function ninada(input = 'sa', opts = {}) {
         return obj;
       };
 
-      const is24k = tier !== 'klatt' && isUnified24kSession() && Boolean(ort);
+      const v4InitialSess = tier !== 'klatt' && ort ? await resolveV4Session(lang, callOpts.voice || null) : null;
+      const isV4 = Boolean(v4InitialSess && ort);
+      const is24k = !isV4 && tier !== 'klatt' && isUnified24kSession() && Boolean(ort);
       const fastFirst = is24k && callOpts.fastFirstClause !== false;
-      const clauses = buildStreamingClauses(text, callOpts.maxClauseChars || (is24k ? 140 : 180), fastFirst);
+      const clauses = buildStreamingClauses(text, callOpts.maxClauseChars || (isV4 || is24k ? 140 : 180), fastFirst);
       const tStart = nowMs();
       let ttfaMs = null;
       let chunkIndex = 0;
 
-      // Continuous 1-pole high-pass DC blocker across streaming chunks (R = 0.9965, fc ≈ 13.3 Hz @ 24 kHz)
       let dcXPrev = 0.0;
       let dcYPrev = 0.0;
       const dcR = 0.9965;
 
-      // Path 1: Primary 24 kHz Unified Studio Neural Streaming (StyleTTS2 + PL-BERT + iSTFTNet)
+      // Path 0: Primary v4.0 Per-Language Native 24,000 Hz Studio VITS Specialist (`input_ids`, `scales`)
+      if (isV4) {
+        if (clauses.length === 0) {
+          const silent = generateRoomTone(Math.round(0.10 * SAMPLE_RATE), 1337);
+          ttfaMs = nowMs() - tStart;
+          const chunkObj = attachLazyWav(
+            {
+              pcm: silent,
+              sampleRate: SAMPLE_RATE,
+              index: 0,
+              clauseIndex: 0,
+              clauseCount: 1,
+              isFinal: true,
+              durationSec: silent.length / SAMPLE_RATE,
+              latencyMs: ttfaMs,
+              ttfaMs,
+              lang,
+              script: 'devanagari',
+              tier: 'neural_onnx',
+              aksharas: [],
+              durations: [],
+            },
+            silent
+          );
+          emit('chunk', chunkObj);
+          yield chunkObj;
+          return;
+        }
+
+        const effNoise = Math.max(0.0, Math.min(1.2, Number(callOpts.noise ?? opts.noise ?? 0.60)));
+        const effNoiseDp = Math.max(
+          0.0,
+          Math.min(
+            1.2,
+            Number(callOpts.noiseDuration ?? callOpts.noise_duration ?? opts.noiseDuration ?? opts.noise_duration ?? 0.0)
+          )
+        );
+        const chunkSamples = chunkFrames * HOP_LENGTH;
+        const firstChunkSamples = firstChunkFrames * HOP_LENGTH;
+        const minTailSamples = 16 * STUDIO_HOP_LENGTH;
+
+        for (let cIdx = 0; cIdx < clauses.length; cIdx++) {
+          if (signal?.aborted) return;
+          const clauseItem = clauses[cIdx];
+          const tClause = nowMs();
+          const parsed = textToIds(clauseItem.text, { lang });
+
+          if (!hasPronounceableContent(parsed)) {
+            const silent = generateRoomTone(Math.round(0.10 * SAMPLE_RATE), 1337 + cIdx);
+            if (ttfaMs === null) ttfaMs = nowMs() - tStart;
+            const chunkObj = attachLazyWav(
+              {
+                pcm: silent,
+                sampleRate: SAMPLE_RATE,
+                index: chunkIndex++,
+                clauseIndex: cIdx,
+                clauseCount: clauses.length,
+                isFinal: cIdx === clauses.length - 1,
+                durationSec: silent.length / SAMPLE_RATE,
+                latencyMs: nowMs() - tClause,
+                ttfaMs,
+                lang: parsed.lang,
+                script: parsed.script,
+                tier: 'neural_onnx',
+                aksharas: parsed.aksharas,
+                durations: [],
+              },
+              silent
+            );
+            emit('chunk', chunkObj);
+            yield chunkObj;
+            continue;
+          }
+
+          const { studioIds, lang: resolvedLc } = studioTextToIds(clauseItem.text, parsed.lang);
+          const activeSess = (await resolveV4Session(resolvedLc, callOpts.voice || null)) || v4InitialSess;
+          const idTensor = new ort.Tensor('int64', BigInt64Array.from(studioIds.map(BigInt)), [1, studioIds.length]);
+          const scalesTensor = new ort.Tensor('float32', Float32Array.from([1.0 / effRate, effNoise, effNoiseDp]), [3]);
+
+          const out = await activeSess.run({
+            input_ids: idTensor,
+            scales: scalesTensor,
+          });
+          const clauseElapsedMs = nowMs() - tClause;
+          idTensor.dispose?.();
+          scalesTensor.dispose?.();
+
+          if (signal?.aborted) {
+            out.waveform?.dispose?.();
+            out.durations?.dispose?.();
+            return;
+          }
+
+          const rawWav = out.waveform.data;
+          const dursArr = out.durations ? Array.from(out.durations.data, Number) : [];
+          const hasPause = cIdx < clauses.length - 1;
+          const pauseSec = hasPause ? (clauseItem.sentenceEnd ? 0.052 : 0.020) : 0.480;
+          const pauseSamples = Math.round((pauseSec / effRate) * SAMPLE_RATE);
+          const clausePcm = new Float32Array(rawWav.length + pauseSamples);
+
+          let dcMeanSum = 0.0;
+          for (let i = 0; i < rawWav.length; i++) {
+            const x = rawWav[i] || 0;
+            const y = x - dcXPrev + dcR * dcYPrev;
+            dcXPrev = x;
+            dcYPrev = y;
+            clausePcm[i] = y;
+            dcMeanSum += y;
+          }
+          if (Math.abs(dcYPrev) < 1e-15) dcYPrev = 0.0;
+          out.waveform?.dispose?.();
+          out.durations?.dispose?.();
+
+          const dcMean = rawWav.length > 0 ? dcMeanSum / rawWav.length : 0.0;
+          let peak = 1e-5;
+          for (let i = 0; i < rawWav.length; i++) {
+            const v = clausePcm[i] - dcMean;
+            clausePcm[i] = v;
+            const a = Math.abs(v);
+            if (a > peak) peak = a;
+          }
+
+          const gain = peak > 0.96 ? 0.92 / peak : 1.0;
+          if (gain !== 1.0) {
+            for (let i = 0; i < rawWav.length; i++) clausePcm[i] *= gain;
+          }
+          if (rawWav.length > 192) {
+            for (let i = 0; i < 192; i++) {
+              clausePcm[i] *= 0.5 * (1.0 - Math.cos((Math.PI * i) / 192.0));
+            }
+          }
+          if (rawWav.length > 256) {
+            const off = rawWav.length - 256;
+            for (let i = 0; i < 256; i++) {
+              clausePcm[off + i] *= 0.5 * (1.0 + Math.cos((Math.PI * i) / 256.0));
+            }
+          }
+
+          const totalS = clausePcm.length;
+          const bounds = [];
+          for (let cur = 0; cur < totalS; ) {
+            const step = chunkIndex === 0 && bounds.length === 0 ? Math.min(chunkSamples, firstChunkSamples) : chunkSamples;
+            let nxt = Math.min(totalS, cur + step);
+            if (totalS - nxt < minTailSamples) nxt = totalS;
+            bounds.push([cur, nxt]);
+            cur = nxt;
+          }
+          if (bounds.length === 0) bounds.push([0, totalS]);
+
+          for (let subIdx = 0; subIdx < bounds.length; subIdx++) {
+            if (signal?.aborted) return;
+            const [stS, edS] = bounds[subIdx];
+            const pcm = clausePcm.slice(stS, edS);
+            const isLastSub = subIdx === bounds.length - 1;
+            if (ttfaMs === null) ttfaMs = nowMs() - tStart;
+            const chunkObj = attachLazyWav(
+              {
+                pcm,
+                sampleRate: SAMPLE_RATE,
+                index: chunkIndex++,
+                clauseIndex: cIdx,
+                clauseCount: clauses.length,
+                isFinal: cIdx === clauses.length - 1 && isLastSub,
+                durationSec: pcm.length / SAMPLE_RATE,
+                clauseDurationSec: totalS / SAMPLE_RATE,
+                latencyMs: subIdx === 0 ? clauseElapsedMs : 0.05,
+                vocoderMs: subIdx === 0 ? clauseElapsedMs : 0.05,
+                ttfaMs,
+                lang: resolvedLc,
+                script: parsed.script,
+                tier: 'neural_onnx',
+                aksharas: subIdx === 0 ? parsed.aksharas : [],
+                durations: subIdx === 0 ? dursArr : [],
+              },
+              pcm
+            );
+            emit('chunk', chunkObj);
+            yield chunkObj;
+          }
+        }
+        return;
+      }
+
+      const noise = callOpts.noise ?? opts.noise ?? 0.667;
+      const noiseDuration = callOpts.noiseDuration ?? callOpts.noise_duration ?? opts.noiseDuration ?? opts.noise_duration ?? 0.80;
+
+      // Path 1: Legacy Unified 24 kHz Studio Neural Streaming
       if (is24k) {
         if (clauses.length === 0) {
           const silent = generateRoomTone(Math.round(0.10 * SAMPLE_RATE), 1337);
@@ -857,7 +1132,7 @@ export default async function ninada(input = 'sa', opts = {}) {
         return;
       }
 
-      // Path 3: Legacy Monolithic VITS ONNX
+      // Path 3: Legacy Monolithic VITS ONNX with attention_mask
       if (tier !== 'klatt' && session && ort) {
         const sessInNames = Array.isArray(session.inputNames) ? session.inputNames : [];
         const hasLangId = sessInNames.includes('lang_id');
@@ -1020,6 +1295,8 @@ export {
   ninada,
   SAMPLE_RATE,
   HOP_LENGTH,
+  STUDIO_HOP_LENGTH,
+  STUDIO_VOCABS,
   VOCAB_TOKENS,
   TOKEN_TO_ID,
   IPA_VOCAB,
@@ -1039,6 +1316,8 @@ export {
   textToIpa,
   ipaToIds,
   textToIds,
+  cleanStudioText,
+  studioTextToIds,
   synthesizeKlattPcm,
   encodeWavBuffer,
   generateRoomTone,

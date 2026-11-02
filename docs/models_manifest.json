@@ -1,78 +1,108 @@
 {
-  "version": "3.2.0",
-  "cacheName": "ninada-onnx-v3.2.0",
-  "sampleRate": 24000,
-  "defaultLang": "sa",
-  "unifiedModel": {
-    "cacheKey": "ninada_v32_24k_q8f16_82746000.onnx",
-    "expectedBytes": 82746000,
-    "totalMB": 78.91,
-    "urls": [
-      "./ninada_24k_q8f16.onnx",
-      "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ninada_24k_q8f16.onnx"
-    ]
-  },
-  "femaleVoice": {
-    "voiceBytes": 522240,
-    "voiceCacheKey": "ninada_v32_voice_female_522240.bin",
-    "voiceUrls": [
-      "./voices/female.bin",
-      "https://huggingface.co/gnumanth/ninada/resolve/main/voices/female.bin"
-    ]
-  },
+  "version": "4.0.2",
+  "cacheName": "ninada-onnx-v4.0.2",
+  "architecture": "native-studio-vits-24k-specialists",
   "languages": {
     "sa": {
       "lang": "sa",
-      "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v32_voice_sa_522240.bin",
-      "voiceUrls": [
-        "./voices/sa.bin",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/sa.bin"
+      "cacheKey": "ninada_v402_sa_24k_q8f16.onnx",
+      "expectedBytes": 29288386,
+      "totalMB": 27.93,
+      "urls": [
+        "./models/sa.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/sa.onnx"
+      ],
+      "femaleCacheKey": "ninada_v402_sa_female_24k_q8f16.onnx",
+      "femaleExpectedBytes": 29288386,
+      "femaleTotalMB": 27.93,
+      "femaleUrls": [
+        "./models/sa_female.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/sa_female.onnx"
       ]
     },
     "kn": {
       "lang": "kn",
-      "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v32_voice_kn_522240.bin",
-      "voiceUrls": [
-        "./voices/kn.bin",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/kn.bin"
+      "cacheKey": "ninada_v402_kn_24k_q8f16.onnx",
+      "expectedBytes": 29276818,
+      "totalMB": 27.92,
+      "urls": [
+        "./models/kn.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/kn.onnx"
+      ],
+      "femaleCacheKey": "ninada_v402_kn_female_24k_q8f16.onnx",
+      "femaleExpectedBytes": 29276819,
+      "femaleTotalMB": 27.92,
+      "femaleUrls": [
+        "./models/kn_female.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/kn_female.onnx"
       ]
     },
     "hi": {
       "lang": "hi",
-      "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v32_voice_hi_522240.bin",
-      "voiceUrls": [
-        "./voices/hi.bin",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/hi.bin"
+      "cacheKey": "ninada_v402_hi_24k_q8f16.onnx",
+      "expectedBytes": 29283680,
+      "totalMB": 27.93,
+      "urls": [
+        "./models/hi.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/hi.onnx"
+      ],
+      "femaleCacheKey": "ninada_v402_hi_female_24k_q8f16.onnx",
+      "femaleExpectedBytes": 29283680,
+      "femaleTotalMB": 27.93,
+      "femaleUrls": [
+        "./models/hi_female.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/hi_female.onnx"
       ]
     },
     "ta": {
       "lang": "ta",
-      "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v32_voice_ta_522240.bin",
-      "voiceUrls": [
-        "./voices/ta.bin",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/ta.bin"
+      "cacheKey": "ninada_v402_ta_24k_q8f16.onnx",
+      "expectedBytes": 29272114,
+      "totalMB": 27.92,
+      "urls": [
+        "./models/ta.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ta.onnx"
+      ],
+      "femaleCacheKey": "ninada_v402_ta_female_24k_q8f16.onnx",
+      "femaleExpectedBytes": 29272114,
+      "femaleTotalMB": 27.92,
+      "femaleUrls": [
+        "./models/ta_female.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ta_female.onnx"
       ]
     },
     "te": {
       "lang": "te",
-      "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v32_voice_te_522240.bin",
-      "voiceUrls": [
-        "./voices/te.bin",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/te.bin"
+      "cacheKey": "ninada_v402_te_24k_q8f16.onnx",
+      "expectedBytes": 29281720,
+      "totalMB": 27.93,
+      "urls": [
+        "./models/te.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/te.onnx"
+      ],
+      "femaleCacheKey": "ninada_v402_te_female_24k_q8f16.onnx",
+      "femaleExpectedBytes": 29281720,
+      "femaleTotalMB": 27.93,
+      "femaleUrls": [
+        "./models/te_female.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/te_female.onnx"
       ]
     },
     "ml": {
       "lang": "ml",
-      "voiceBytes": 522240,
-      "voiceCacheKey": "ninada_v32_voice_ml_522240.bin",
-      "voiceUrls": [
-        "./voices/ml.bin",
-        "https://huggingface.co/gnumanth/ninada/resolve/main/voices/ml.bin"
+      "cacheKey": "ninada_v402_ml_24k_q8f16.onnx",
+      "expectedBytes": 29279956,
+      "totalMB": 27.92,
+      "urls": [
+        "./models/ml.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ml.onnx"
+      ],
+      "femaleCacheKey": "ninada_v402_ml_female_24k_q8f16.onnx",
+      "femaleExpectedBytes": 29279956,
+      "femaleTotalMB": 27.92,
+      "femaleUrls": [
+        "./models/ml_female.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/ml_female.onnx"
       ]
     }
   }

@@ -1,4 +1,4 @@
-"""Independent verification of benchmark metrics and deployment thresholds for Ninada v3.0 (24,000 Hz Studio Neural TTS)."""
+"""Independent verification of benchmark metrics and deployment thresholds for Ninada v4.0 (24,000 Hz Native Per-Language Studio VITS Specialists)."""
 from __future__ import annotations
 
 import json
@@ -10,7 +10,7 @@ def main() -> None:
     assert results_path.exists(), "bench/results.json not found"
     res = json.loads(results_path.read_text(encoding="utf-8"))
 
-    assert res.get("version") == "3.0.0", f"Expected version 3.0.0, got {res.get('version')}"
+    assert res.get("version") == "4.0.0", f"Expected version 4.0.0, got {res.get('version')}"
     assert res.get("sample_rate_hz") == 24000, f"Expected 24000 Hz, got {res.get('sample_rate_hz')}"
     assert res.get("num_test_utterances") == 240, f"Expected 240 test utterances, got {res.get('num_test_utterances')}"
 
@@ -25,7 +25,7 @@ def main() -> None:
     assert sys_ox["voiced_rate_pct"] == 100.0, f"ONNX voiced rate {sys_ox['voiced_rate_pct']}% < 100%"
     assert sys_ox["sample_rate_hz"] == 24000
 
-    # R2: 24 kHz Studio Acoustic & Prosodic Superiority vs 16 kHz MMS Fleet & Untuned Warmstart
+    # R2: 24 kHz Native Studio Acoustic & Prosodic Superiority vs 16 kHz MMS Fleet & Untuned Warmstart
     pt_mcd = float(sys_pt["mcd_db"]["mean"])
     ox_mcd = float(sys_ox["mcd_db"]["mean"])
     ws_mcd = float(sys_ws["mcd_db"]["mean"])
@@ -66,23 +66,23 @@ def main() -> None:
     assert pt_dur < ws_dur and ox_dur < ws_dur, "Duration MAE did not improve over warmstart"
     assert pt_f0 < raw_f0, f"F0 RMSE {pt_f0:.1f}c did not beat raw baseline {raw_f0:.1f}c"
 
-    # R3: Browser ONNX footprint (< 90 MB unified across all 6 languages), RTF (< 0.25x CPU), & parity
+    # R3: Active per-language Browser ONNX specialist footprint (<= 38 MB), RTF (<= 0.25x CPU), & parity
     size_mb = float(sys_ox["size_mb"])
     rtf_ox = float(sys_ox["rtf_mean"])
     parity_mcd = float(res["onnx_parity"]["pt_vs_onnx_mcd_db"])
     dur_corr = float(res["onnx_parity"]["duration_corr_r"])
     print(
-        f"Unified Q8F16 ONNX + Voice Bank: {size_mb:.2f} MB (<=90.0 MB), "
+        f"Native Studio W8A32+FP16 ONNX Specialist: {size_mb:.2f} MB (<=38.0 MB), "
         f"RTF={rtf_ox:.4f}x, Parity MCD={parity_mcd:.2f} dB, Dur r={dur_corr:.4f}"
     )
-    assert size_mb <= 90.0, f"ONNX model size {size_mb:.2f} MB exceeds 90.0 MB"
+    assert size_mb <= 38.0, f"ONNX specialist size {size_mb:.2f} MB exceeds 38.0 MB"
     assert rtf_ox <= 0.25, f"ONNX CPU RTF {rtf_ox:.4f}x exceeds 0.25x"
     assert parity_mcd <= 3.0, f"PyTorch vs ONNX parity MCD {parity_mcd:.2f} dB exceeds 3.0 dB"
     assert dur_corr >= 0.95, f"Duration correlation {dur_corr:.4f} < 0.95"
 
     listening_path = Path("bench/LISTENING_EVALUATION.md")
     assert listening_path.exists(), "bench/LISTENING_EVALUATION.md not found"
-    print("ALL NINADA v3.0 24KHZ BENCHMARK THRESHOLDS SATISFIED!")
+    print("ALL NINADA v4.0 24KHZ NATIVE STUDIO SPECIALIST BENCHMARK THRESHOLDS SATISFIED!")
 
 
 if __name__ == "__main__":
