@@ -1,13 +1,13 @@
 {
   "name": "ninada",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Stream Classical Sanskrit and 5 Indian languages at 24 kHz studio quality in the browser and Node.js via dedicated ~28 MB Native Studio VITS ONNX specialists or zero-dep Klatt synthesis.",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "src/index.d.ts",
   "bin": {
-    "ninada": "./bin/ninada.mjs"
+    "ninada": "bin/ninada.mjs"
   },
   "exports": {
     ".": {
@@ -60,7 +60,7 @@
   "homepage": "https://hemanth.github.io/ninada/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hemanth/ninada.git"
+    "url": "git+https://github.com/hemanth/ninada.git"
   },
   "bugs": {
     "url": "https://github.com/hemanth/ninada/issues"
