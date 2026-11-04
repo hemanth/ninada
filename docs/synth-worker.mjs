@@ -72,9 +72,15 @@ function configureOrtWasmEnv(ortInstance, { forWebGpuHybrid = false } = {}) {
     // Hybrid mode runs vocoder on WebGPU and compact prior/flow on <=2 WASM threads (avoids mobile little-core contention)
     ortInstance.env.wasm.numThreads = isCoi ? 2 : 1;
   } else {
-    const maxThreads = IS_MOBILE_OR_LOW_MEM ? 3 : 4;
+    const cores = self.navigator?.hardwareConcurrency || 4;
+    // Measured on a Pixel 10 Pro XL (8-core big.LITTLE): vocoder RTF 1 thr = 1.55, 2 thr = 3.6, 3 thr = 2.4,
+    // 6 thr = 1.3. Small thread pools stall on per-op barriers waiting for little cores, so phones use either
+    // a wide pool (8+ cores) or a single thread.
+    const mobileThreads = cores >= 8 ? Math.min(6, cores - 2) : 1;
     ortInstance.env.wasm.numThreads = isCoi
-      ? Math.min(maxThreads, Math.max(2, (self.navigator?.hardwareConcurrency || 4) - 1))
+      ? IS_MOBILE_OR_LOW_MEM
+        ? mobileThreads
+        : Math.min(4, Math.max(2, cores - 1))
       : 1;
   }
 }
