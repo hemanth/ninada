@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Ninada: In-Browser Text to Speech for Indian English &amp; Indian Languages</title>
-  <meta name="description" content="Ninada v5.0.2: Sub-second in-browser 24 kHz streaming text to speech for Classical Sanskrit, Indian English, Hindi, Kannada, Marathi, Bengali, Tamil, Telugu, Malayalam, Gujarati, Punjabi, and Odia, running privately in the browser with offline caching." />
+  <meta name="description" content="Ninada v5.0.3: Sub-second in-browser 24 kHz streaming text to speech for Indian English, Classical Sanskrit, Hindi, Kannada, Marathi, Bengali, Tamil, Telugu, Malayalam, Gujarati, Punjabi, and Odia, running privately in the browser with offline caching." />
   <link rel="canonical" href="https://hemanth.github.io/ninada/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Ninada" />
@@ -25,10 +25,54 @@
   <meta name="twitter:image:alt" content="Ninada 24 kHz In-Browser Streaming TTS Studio across 12 Indian Languages" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23121210'/%3E%3Cpath d='M7 16h3l2.5-7 4 14 3.5-10 2.5 3H25' fill='none' stroke='%23fbfaf7' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="apple-touch-icon" href="https://hemanth.github.io/ninada/icon-512.png" />
+  <script>
+    (function () {
+      try {
+        var q = new URLSearchParams(location.search);
+        if (q.get('coi') === '0' || window.crossOriginIsolated || !window.isSecureContext || !('serviceWorker' in navigator)) return;
+        if (sessionStorage.getItem('ninada_coi_boot') === '1') return;
+        window.__ninadaEarlyCoiPromise = navigator.serviceWorker.register('./coi-sw.js').then(function (reg) {
+          function triggerReload() {
+            try { sessionStorage.setItem('ninada_coi_boot', '1'); } catch (e) {}
+            location.reload();
+          }
+          if (navigator.serviceWorker.controller || reg.active) {
+            triggerReload();
+            return true;
+          }
+          return new Promise(function (resolve) {
+            var done = false;
+            var finish = function (reloaded) {
+              if (done) return;
+              done = true;
+              clearTimeout(t);
+              resolve(reloaded);
+            };
+            var t = setTimeout(function () { finish(false); }, 3500);
+            navigator.serviceWorker.addEventListener('controllerchange', function () {
+              finish(true);
+              triggerReload();
+            }, { once: true });
+            var sw = reg.installing || reg.waiting;
+            if (sw) {
+              sw.addEventListener('statechange', function () {
+                if (sw.state === 'activated') {
+                  finish(true);
+                  triggerReload();
+                } else if (sw.state === 'redundant') {
+                  finish(false);
+                }
+              });
+            }
+          });
+        }).catch(function () { return false; });
+      } catch (e) {}
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-  <link rel="modulepreload" href="./ninada.mjs?v=5.0.2" />
-  <link rel="modulepreload" href="./synth-worker.mjs?v=5.0.2" />
+  <link rel="modulepreload" href="./ninada.mjs?v=5.0.3" />
+  <link rel="modulepreload" href="./synth-worker.mjs?v=5.0.3" />
   <link rel="modulepreload" href="./ort/ort.wasm.min.mjs" />
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" crossorigin="anonymous" />
   <noscript><link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" /></noscript>
@@ -1066,15 +1110,15 @@
       <section class="panel">
         <div class="panel-header">
           <h2 class="panel-title">01 / Script &amp; Streaming Utterance Input</h2>
-          <span id="detectedBadge" class="pill-stat">SCRIPT: DEVANAGARI · SA</span>
+          <span id="detectedBadge" class="pill-stat">SCRIPT: LATIN · EN</span>
         </div>
 
         <div class="lang-tabs" role="tablist" aria-label="Target Indic or Indian English Language">
-          <button type="button" role="tab" aria-selected="true" class="lang-btn active" data-lang="sa" disabled>
-            <span>Sanskrit</span><span class="lang-native" data-native="sa"></span>
-          </button>
-          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="en" disabled>
+          <button type="button" role="tab" aria-selected="true" class="lang-btn active" data-lang="en" disabled>
             <span>English</span><span class="lang-native" data-native="en"></span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="sa" disabled>
+            <span>Sanskrit</span><span class="lang-native" data-native="sa"></span>
           </button>
           <button type="button" role="tab" aria-selected="false" class="lang-btn" data-lang="kn" disabled>
             <span>Kannada</span><span class="lang-native" data-native="kn"></span>
@@ -1192,8 +1236,8 @@
 
     <section class="panel akshara-section">
       <div class="panel-header">
-        <h2 id="aksharaTitle" class="panel-title">03 / Paninian Chandas Prosody (Guru / Laghu) &amp; Akshara Durations</h2>
-        <span id="aksharaLegend" class="pill-stat">CHANDAS · गुरु (G) · लघु (L) · CODA (C)</span>
+        <h2 id="aksharaTitle" class="panel-title">03 / Indian English Syllable Stress &amp; Acoustic Durations</h2>
+        <span id="aksharaLegend" class="pill-stat">ENGLISH · HEAVY (G) · LIGHT (L) · 24 KHZ</span>
       </div>
       <div id="aksharaRibbon" class="akshara-ribbon"></div>
       <div id="phonemicLine" class="phonemic-line"></div>
@@ -1202,7 +1246,7 @@
     <section class="panel code-showcase" aria-label="Ninada Streaming SDK and CLI Code">
       <div class="panel-header">
         <h2 class="panel-title">04 / Developer SDK &amp; CLI: Syntax-Highlighted Recipes</h2>
-        <span id="sdkLangBadge" class="pill-stat">SDK SYNC · SA · STUDIO MALE</span>
+        <span id="sdkLangBadge" class="pill-stat">SDK SYNC · EN · STUDIO MALE</span>
       </div>
 
       <div class="code-toolbar">
@@ -1250,7 +1294,7 @@
   </div>
 
   <script type="module">
-    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.0.2';
+    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.0.3';
     const IS_MOBILE_DEVICE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
     const IS_LOW_MEM_DEVICE = Boolean(
       IS_MOBILE_DEVICE || (navigator.deviceMemory && navigator.deviceMemory <= 4)
@@ -1541,7 +1585,7 @@
         {
           label: 'English \u00b7 In-Browser TTS',
           lang: 'en',
-          text: 'Ninada is an in-browser text to speech engine for Indian English and eleven Indian languages. Audio streams directly on your device in real time with zero server calls.',
+          text: 'Welcome to Ninada. Natural studio speech streams privately inside your browser.',
         },
         {
           label: 'English \u00b7 Private Offline Voice',
@@ -1670,11 +1714,13 @@
     const metricDuration = document.getElementById('metricDuration');
     const metricTokens = document.getElementById('metricTokens');
 
-    let activeLang = 'sa';
+    let activeLang = 'en';
     let loadedWorkerLang = null;
     let loadedWorkerVoice = 'male';
     let activePresetIdx = 0;
     let lastPcm = null;
+    let bootPrestreamCache = null;
+    let mobileLangSwitchCount = 0;
     let currentBlobUrl = null;
     let activeAudioBlobUrl = null;
     let workerReadyInfo = null;
@@ -1892,7 +1938,7 @@
         if (!audioWorkletModulePromise) {
           audioWorkletModulePromise = (async () => {
             try {
-              await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js?v=5.0.2');
+              await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js?v=5.0.3');
               workletNode = new AudioWorkletNode(audioCtx, 'ninada-stream-processor', {
                 numberOfInputs: 0,
                 numberOfOutputs: 1,
@@ -1950,13 +1996,14 @@
       return audioCtx;
     }
 
-    function beginLiveAudioSession(explicitSessionId = 0) {
+    function beginLiveAudioSession(explicitSessionId = 0, customInitialWatermark = 0) {
       if (explicitSessionId > 0) {
         activePlaySessionId = explicitSessionId;
       } else {
         activePlaySessionId += 1;
       }
-      const initialWatermark = Math.round(0.20 * SAMPLE_RATE);
+      const initialWatermark =
+        customInitialWatermark > 0 ? customInitialWatermark : Math.round(0.16 * SAMPLE_RATE);
       streamStats.underrunCount = 0;
       streamStats.playedSamples = 0;
       streamStats.bufferedSamples = 0;
@@ -1981,8 +2028,9 @@
     function pushLivePcmChunk(pcm, sampleRate = SAMPLE_RATE, chunkMeta = null) {
       if (!audioCtx || audioCtx.state !== 'running') return;
       if (workletReady && workletNode) {
-        // Sub-second closed-form streaming watermark calibrated for 3-way split WebGPU [44, 112] & low-mem WASM [56, 96]:
-        // starts playback immediately on Chunk 0 when steady synthesis outpaces drain, or on Chunk 1 (< 1s) under heavy CPU load.
+        // Sub-second closed-form streaming watermark calibrated for 3-way split WebGPU [44, 112] & mobile WASM [44, 96]:
+        // starts playback immediately on Chunk 0 when steady synthesis outpaces drain, or on Chunk 1 (< 0.8s) on mobile WASM.
+        // Never locks in a multi-second watermark from cold Chunk 0 JIT!
         if (chunkMeta && chunkMeta.index === 0) {
           const c0Sec = Math.max(0.05, pcm.length / sampleRate);
           const vocBackend = chunkMeta.vocoderBackend || streamStats.vocoderBackend || 'wasm';
@@ -1997,46 +2045,27 @@
             const flowBlockSec = Math.max(0.012, (Number(chunkMeta.encFlowMs || 0) / 1000) * 0.45);
             const voc112Sec = voc0Sec * (112 / 44);
             const tArr1Sec = flowBlockSec + voc112Sec + 0.020;
-            const steadyRtf = (voc112Sec + flowBlockSec * 0.40) / 0.7509;
-            if (tArr1Sec + 0.125 <= c0Sec && steadyRtf <= 0.78) {
-              adaptedWatermark = Math.min(pcm.length, Math.round(0.12 * sampleRate));
-            } else if (steadyRtf <= 0.96) {
-              adaptedWatermark = Math.round((c0Sec + 0.05) * sampleRate);
+            const steadyRtf = (voc112Sec + flowBlockSec * 0.40) / 0.9387;
+            if (tArr1Sec + 0.115 <= c0Sec && steadyRtf <= 0.82) {
+              adaptedWatermark = Math.min(pcm.length, Math.round(0.10 * sampleRate));
             } else {
-              const estTotalSec = Math.max(c0Sec + 0.3, Number(chunkMeta.estimatedTotalSec || 2.2));
-              const clauseCount = Math.max(1, Number(chunkMeta.clauseCount || 1));
-              const neededSec =
-                ((steadyRtf - 0.92) * estTotalSec + (clauseCount - 1) * 0.14 + 0.25) / steadyRtf;
-              adaptedWatermark = Math.round(
-                Math.min(estTotalSec * 0.90, Math.max(c0Sec + 0.06, neededSec)) * sampleRate
-              );
+              adaptedWatermark = Math.round((c0Sec + 0.05) * sampleRate);
             }
           } else {
-            const voc56Sec = Math.max(0.015, Number(chunkMeta.vocoderMs || 0) / 1000);
-            const voc96Sec = voc56Sec * (96 / 56);
+            const voc44Sec = Math.max(0.012, Number(chunkMeta.vocoderMs || 0) / 1000);
+            const voc96Sec = voc44Sec * (96 / 44);
             const flowBlockSec = Math.max(0.012, (Number(chunkMeta.encFlowMs || 0) / 1000) * 0.65);
-            // Chunk 0 pre-computes 88 flow frames so Chunk 1 (bucket 56) runs with 0 ms flow overhead
-            const tArr1Sec = voc56Sec + 0.020;
-            const tArr2Sec = tArr1Sec + flowBlockSec + voc96Sec + 0.025;
-            const c0PlusC1Sec = c0Sec + 0.3413;
+            // Chunk 0 pre-computes 64 flow frames so Chunk 1 (bucket 44, 20 valid frames) runs with 0 ms flow overhead
+            const tArr1Sec = voc44Sec + 0.018;
+            const tArr2Sec = tArr1Sec + flowBlockSec + voc96Sec + 0.022;
+            const c0PlusC1Sec = c0Sec + 0.2133;
             const steadyRtf = (voc96Sec + flowBlockSec * 0.38) / 0.768;
-            const clauseCount = Math.max(1, Number(chunkMeta.clauseCount || 1));
-            const estTotalSec = Math.max(
-              c0Sec + 0.3,
-              Number(chunkMeta.estimatedTotalSec || chunkMeta.clauseDurationSec || 2.2)
-            );
 
-            if (tArr1Sec + 0.135 <= c0Sec && tArr2Sec + 0.145 <= c0PlusC1Sec && steadyRtf <= 0.80) {
-              adaptedWatermark = Math.min(pcm.length, Math.round(0.14 * sampleRate));
-            } else if (steadyRtf <= 0.94) {
-              adaptedWatermark = Math.round((c0Sec + 0.05) * sampleRate);
+            if (tArr1Sec + 0.115 <= c0Sec && tArr2Sec + 0.125 <= c0PlusC1Sec && steadyRtf <= 0.80) {
+              adaptedWatermark = Math.min(pcm.length, Math.round(0.12 * sampleRate));
             } else {
-              const neededSec =
-                (Math.max(0, steadyRtf - 0.90) * estTotalSec + (clauseCount - 1) * 0.18 + 0.30) /
-                Math.max(0.85, steadyRtf);
-              adaptedWatermark = Math.round(
-                Math.min(estTotalSec * 0.90, Math.max(c0Sec + 0.06, neededSec)) * sampleRate
-              );
+              // Defer multi-chunk RTF calibration to warm Chunk 1 so cold Chunk 0 JIT never triggers a long wait
+              adaptedWatermark = Math.round((c0Sec + 0.05) * sampleRate);
             }
           }
           streamStats.watermarkSamples = adaptedWatermark;
@@ -2046,33 +2075,50 @@
           });
         } else if (
           chunkMeta &&
-          chunkMeta.index <= 3 &&
+          chunkMeta.index >= 1 &&
+          chunkMeta.index <= 2 &&
           !chunkMeta.isFinal &&
           chunkMeta.tier === 'neural_onnx' &&
           streamStats.playedSamples === 0 &&
           workletReady &&
           workletNode
         ) {
-          // Only raise pre-play watermark if empirical multi-chunk RTF actually exceeds real-time (e.g. 1-thread non-COI fallback)
+          // Calibrate pre-play cushion from warm Chunk 1/2 vocoder speed; hard-cap at <= 1.26s audio (< 1.85s wall-clock)
           const nextPushedSec = (streamStats.totalPushedSamples + pcm.length) / sampleRate;
-          const elapsedSec = (performance.now() - (currentPendingReq?.t0 || performance.now())) / 1000;
-          if (nextPushedSec > 0.5 && elapsedSec > 0.1) {
-            const measuredRtf = (elapsedSec / nextPushedSec) * 1.03;
-            if (measuredRtf >= 0.98) {
-              const estTot = Math.max(nextPushedSec + 0.3, Number(chunkMeta.estimatedTotalSec || 2.5));
-              const cCount = Math.max(1, Number(chunkMeta.clauseCount || 1));
-              const remClauses = Math.max(0, cCount - 1 - Number(chunkMeta.clauseIndex || 0));
-              const neededSec =
-                (Math.max(0, measuredRtf - 0.92) * estTot + remClauses * 0.18 + 0.28) / measuredRtf;
-              const targetSec = Math.min(estTot * 0.90, Math.max(nextPushedSec + 0.05, neededSec));
-              const updatedWatermarkSamples = Math.round(targetSec * sampleRate);
-              if (updatedWatermarkSamples > streamStats.watermarkSamples) {
-                streamStats.watermarkSamples = updatedWatermarkSamples;
-                workletNode.port.postMessage({
-                  type: 'watermark',
-                  watermarkSamples: updatedWatermarkSamples,
-                });
-              }
+          const vocBackend = chunkMeta.vocoderBackend || streamStats.vocoderBackend || 'wasm';
+          const vocSec = Math.max(0.010, Number(chunkMeta.vocoderMs || 0) / 1000);
+          const bucketF = Number(chunkMeta.vocoderBucketFrames || (vocBackend === 'webgpu' ? 112 : 44));
+          const steadyVocSec =
+            vocBackend === 'webgpu'
+              ? vocSec * (112 / Math.max(44, bucketF))
+              : vocSec * (96 / Math.max(44, bucketF));
+          const steadyAudioSec = vocBackend === 'webgpu' ? 0.9387 : 0.768;
+          const flowShareSec = vocBackend === 'webgpu' ? 0.035 : 0.055 * (steadyVocSec / 0.35);
+          const warmSteadyRtf = (steadyVocSec + flowShareSec) / steadyAudioSec;
+
+          if (warmSteadyRtf > 0.92) {
+            const estTot = Math.max(
+              nextPushedSec + 0.25,
+              Number(chunkMeta.estimatedTotalSec || chunkMeta.clauseDurationSec || 2.4)
+            );
+            const cCount = Math.max(1, Number(chunkMeta.clauseCount || 1));
+            const remClauses = Math.max(0, cCount - 1 - Number(chunkMeta.clauseIndex || 0));
+            const neededSec =
+              (Math.max(0, warmSteadyRtf - 0.91) * estTot + remClauses * 0.14 + 0.24) /
+              Math.max(0.92, warmSteadyRtf);
+            const maxPrebufferAudioSec = 0.52;
+            const targetSec = Math.min(
+              maxPrebufferAudioSec,
+              estTot * 0.85,
+              Math.max(nextPushedSec - 0.02, neededSec)
+            );
+            const updatedWatermarkSamples = Math.round(targetSec * sampleRate);
+            if (updatedWatermarkSamples > streamStats.watermarkSamples) {
+              streamStats.watermarkSamples = updatedWatermarkSamples;
+              workletNode.port.postMessage({
+                type: 'watermark',
+                watermarkSamples: updatedWatermarkSamples,
+              });
             }
           }
         }
@@ -2143,7 +2189,8 @@
     }
 
     function setActiveLang(langCode, { loadDefaultPreset = true } = {}) {
-      activeLang = PRESETS_BY_LANG[langCode] ? langCode : 'sa';
+      activeLang = PRESETS_BY_LANG[langCode] ? langCode : 'en';
+      bootPrestreamCache = null;
       textInput.classList.toggle('latin-script', activeLang === 'en');
       for (const b of langBtns) {
         const isMatch = b.dataset.lang === activeLang;
@@ -2163,6 +2210,7 @@
 
     function lockAndLoadWorkerLang(targetLang, targetVoice = null) {
       const effVoice = targetVoice || (voiceSelect ? voiceSelect.value : 'male');
+      bootPrestreamCache = null;
       window.__ninadaReady = false;
       modelDot.classList.remove('ready');
       modelDot.classList.add('loading');
@@ -2171,7 +2219,13 @@
       activeTierBadge.textContent = `LOADING \u00b7 ${targetLang.toUpperCase()}`;
       setStudioControlsLocked(true);
       if (IS_LOW_MEM_DEVICE && typeof respawnSynthWorker === 'function') {
-        respawnSynthWorker(targetLang, effVoice);
+        mobileLangSwitchCount += 1;
+        if (mobileLangSwitchCount >= 6) {
+          mobileLangSwitchCount = 0;
+          respawnSynthWorker(targetLang, effVoice);
+        } else {
+          synthWorker.postMessage({ type: 'load_lang', lang: targetLang, voice: effVoice });
+        }
       } else {
         synthWorker.postMessage({ type: 'load_lang', lang: targetLang, voice: effVoice });
       }
@@ -2740,22 +2794,26 @@
       }
       try {
         loaderLabel.textContent = 'Activating Multi-Core WASM SIMD Isolation...';
+        if (window.__ninadaEarlyCoiPromise) {
+          await window.__ninadaEarlyCoiPromise;
+        }
         const reg = await navigator.serviceWorker.register('./coi-sw.js');
-        if (!navigator.serviceWorker.controller) {
+        if (!navigator.serviceWorker.controller && !reg.active) {
           await new Promise((resolve) => {
-            const timer = setTimeout(resolve, 1500);
-            navigator.serviceWorker.addEventListener(
-              'controllerchange',
-              () => {
-                clearTimeout(timer);
-                resolve();
-              },
-              { once: true }
-            );
-            const sw = reg.installing || reg.waiting || reg.active;
-            if (sw && sw.state === 'activated' && navigator.serviceWorker.controller) {
+            let settled = false;
+            const done = () => {
+              if (settled) return;
+              settled = true;
               clearTimeout(timer);
               resolve();
+            };
+            const timer = setTimeout(done, 3500);
+            navigator.serviceWorker.addEventListener('controllerchange', done, { once: true });
+            const sw = reg.installing || reg.waiting;
+            if (sw) {
+              sw.addEventListener('statechange', () => {
+                if (sw.state === 'activated' || sw.state === 'redundant') done();
+              });
             }
           });
         }
@@ -2771,12 +2829,12 @@
     }
 
     setStudioControlsLocked(true);
-    setActiveLang('sa', { loadDefaultPreset: true });
+    setActiveLang('en', { loadDefaultPreset: true });
     await ensureCrossOriginIsolation();
 
     // Dedicated off-main-thread Web Worker for ONNX Runtime WebGPU / WASM SIMD
     const workerUrlSuffix = window.location.search ? '&' + window.location.search.slice(1) : '';
-    let synthWorker = new Worker('./synth-worker.mjs?v=5.0.2' + workerUrlSuffix, { type: 'module' });
+    let synthWorker = new Worker('./synth-worker.mjs?v=5.0.3' + workerUrlSuffix, { type: 'module' });
     let nextReqSeq = 1;
     let currentPendingReq = null;
 
@@ -2994,6 +3052,16 @@
             threads: streamStats.threads,
             crossOriginIsolated: streamStats.crossOriginIsolated,
           };
+          if (req.isBootPrestream && pcm.length > 0) {
+            bootPrestreamCache = {
+              key: req.synthKey,
+              pcm,
+              sampleRate: SAMPLE_RATE,
+              blobUrl: currentBlobUrl,
+              summary,
+              unconsumed: true,
+            };
+          }
           window.__ninadaLastResult = summary;
           req.resolve(summary);
         };
@@ -3018,9 +3086,50 @@
     };
     synthWorker.addEventListener('message', onSynthWorkerMessage);
 
+    function buildSynthKey(txt) {
+      const v = voiceSelect ? voiceSelect.value : 'male';
+      const r = Number(rateSlider.value).toFixed(2);
+      const n = Number(noiseSlider.value).toFixed(2);
+      return `${activeLang}|${v}|${r}|${n}|${tierSelect.value}|${txt}`;
+    }
+
+    async function playBootPrestreamInstant(cached) {
+      cached.unconsumed = false;
+      bootPrestreamCache = null;
+      stopLiveAudio();
+      const tClick = performance.now();
+      streamStats.requestStartPerfMs = tClick;
+      streamStats.audibleStartMs = null;
+      const playSessionId = activePlaySessionId + 1;
+      activePlaySessionId = playSessionId;
+      synthBtn.classList.add('streaming');
+      synthBtnLabel.textContent = 'Playing Stream...';
+      stopBtn.disabled = false;
+
+      await ensureAudioContext({ resumeNow: true });
+      if (audioCtx && audioCtx.state === 'running') {
+        beginLiveAudioSession(playSessionId, Math.round(0.02 * SAMPLE_RATE));
+        const pcm = cached.pcm;
+        const sliceStep = 12000;
+        for (let off = 0; off < pcm.length; off += sliceStep) {
+          pushLivePcmChunk(pcm.subarray(off, Math.min(pcm.length, off + sliceStep)), cached.sampleRate, null);
+        }
+        if (workletReady && workletNode) {
+          pendingAudioSrcUrl = cached.blobUrl;
+          workletNode.port.postMessage({ type: 'eos', sessionId: playSessionId });
+        }
+      }
+      const instantSummary = {
+        ...cached.summary,
+        audibleStartMs: streamStats.audibleStartMs ?? Math.max(1, performance.now() - tClick),
+      };
+      window.__ninadaLastResult = instantSummary;
+      return instantSummary;
+    }
+
     function respawnSynthWorker(targetLang, effVoice) {
       try { synthWorker.terminate(); } catch {}
-      synthWorker = new Worker('./synth-worker.mjs?v=5.0.2' + workerUrlSuffix, { type: 'module' });
+      synthWorker = new Worker('./synth-worker.mjs?v=5.0.3' + workerUrlSuffix, { type: 'module' });
       synthWorker.addEventListener('error', onSynthWorkerError);
       synthWorker.addEventListener('message', onSynthWorkerMessage);
       synthWorker.postMessage({ type: 'init', lang: targetLang, voice: effVoice });
@@ -3040,11 +3149,56 @@
       stopBtn.disabled = true;
     }
 
-    async function runSynthesis(autoPlay = true) {
+    async function runSynthesis(autoPlay = true, runOpts = {}) {
       if (!isModelReady) return null;
       const txt = textInput.value.trim();
       if (!txt) return null;
+      const synthKey = buildSynthKey(txt);
+      const isBootPrestream = Boolean(runOpts && runOpts.isBootPrestream);
 
+      if (autoPlay && !isBootPrestream) {
+        if (
+          currentPendingReq &&
+          currentPendingReq.isBootPrestream &&
+          !currentPendingReq.cancelled &&
+          currentPendingReq.synthKey === synthKey
+        ) {
+          const inFlight = currentPendingReq;
+          inFlight.isBootPrestream = false;
+          inFlight.autoPlay = true;
+          streamStats.requestStartPerfMs = performance.now();
+          streamStats.audibleStartMs = null;
+          const playSessionId = activePlaySessionId + 1;
+          activePlaySessionId = playSessionId;
+          inFlight.playSessionId = playSessionId;
+          synthBtn.classList.add('streaming');
+          synthBtnLabel.textContent = 'Streaming...';
+          stopBtn.disabled = false;
+          const alreadyArrived = inFlight.chunks.slice();
+          inFlight.audioInitPromise = ensureAudioContext({ resumeNow: true }).then(() => {
+            if (!inFlight.cancelled && activePlaySessionId === playSessionId) {
+              beginLiveAudioSession(playSessionId, Math.round(0.03 * SAMPLE_RATE));
+              for (const ch of alreadyArrived) {
+                pushLivePcmChunk(ch, SAMPLE_RATE, null);
+              }
+              inFlight.audioInitPromise = null;
+            }
+          });
+          return new Promise((res) => {
+            const origResolve = inFlight.resolve;
+            inFlight.resolve = (val) => {
+              if (origResolve) origResolve(val);
+              res(val);
+            };
+          });
+        }
+
+        if (bootPrestreamCache && bootPrestreamCache.unconsumed && bootPrestreamCache.key === synthKey) {
+          return playBootPrestreamInstant(bootPrestreamCache);
+        }
+      }
+
+      bootPrestreamCache = null;
       if (currentPendingReq) {
         currentPendingReq.cancelled = true;
         currentPendingReq.chunks.length = 0;
@@ -3063,6 +3217,8 @@
 
       const reqRecord = {
         reqId,
+        synthKey,
+        isBootPrestream,
         autoPlay,
         playSessionId: 0,
         cancelled: false,
@@ -3118,13 +3274,22 @@
       });
     }
 
-    // Eagerly warm AudioContext + AudioWorklet on first touch/pointer gesture so tap-to-audio has 0ms setup delay
+    // Unlock AudioContext + AudioWorklet on mobile/iOS gestures (touchend/pointerup/click) until running
+    const GESTURE_EVENTS = ['pointerup', 'touchend', 'click', 'keydown'];
     const warmAudioOnGesture = () => {
-      ensureAudioContext({ resumeNow: true }).catch(() => {});
+      ensureAudioContext({ resumeNow: true })
+        .then(() => {
+          if (audioCtx && audioCtx.state === 'running') {
+            for (const evName of GESTURE_EVENTS) {
+              window.removeEventListener(evName, warmAudioOnGesture, true);
+            }
+          }
+        })
+        .catch(() => {});
     };
-    window.addEventListener('pointerdown', warmAudioOnGesture, { capture: true, passive: true, once: true });
-    window.addEventListener('touchstart', warmAudioOnGesture, { capture: true, passive: true, once: true });
-    window.addEventListener('keydown', warmAudioOnGesture, { capture: true, passive: true, once: true });
+    for (const evName of GESTURE_EVENTS) {
+      window.addEventListener(evName, warmAudioOnGesture, { capture: true, passive: true });
+    }
 
     audioPlayer.addEventListener('timeupdate', () => {
       if (!isStreamAudioActive && hasWaveBars && audioPlayer.duration > 0) {
@@ -3162,16 +3327,22 @@
     window.__ninadaRunSynthesis = runSynthesis;
     window.__ninadaCancel = cancelActiveSynthesis;
 
-    synthWorker.postMessage({ type: 'init' });
+    synthWorker.postMessage({ type: 'init', lang: 'en', voice: 'male' });
     // Pre-compile AudioWorklet module in parallel while ONNX session initializes in Web Worker
     ensureAudioContext({ resumeNow: false }).catch(() => {});
     await workerReadyPromise;
     refreshInspection();
-    if (!IS_MOBILE_DEVICE) {
-      await new Promise((r) => setTimeout(r, 120));
-      if (!currentPendingReq && !isStreamAudioActive) {
-        await runSynthesis(false);
+    if (!currentPendingReq && !isStreamAudioActive) {
+      // Attempt immediate audible stream on load; if mobile browser suspends ungestured AudioContext,
+      // stream into bootPrestreamCache + animated waveform so first tap plays in < 20 ms!
+      if (audioCtx && audioCtx.state === 'suspended') {
+        await Promise.race([
+          audioCtx.resume().catch(() => {}),
+          new Promise((r) => setTimeout(r, 90)),
+        ]);
       }
+      const canAutoPlayOnLoad = Boolean(audioCtx && audioCtx.state === 'running');
+      await runSynthesis(canAutoPlayOnLoad, { isBootPrestream: !canAutoPlayOnLoad });
     }
   </script>
 </body>

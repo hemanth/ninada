@@ -1,8 +1,8 @@
-import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.2';
+import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.3';
 
 const HF_REPO = 'gnumanth/ninada';
-const SUPPORTED_LANGS = ['sa', 'kn', 'hi', 'ta', 'te', 'ml', 'en', 'mr', 'bn', 'gu', 'pa', 'or'];
-const LOCAL_BUNDLED_LANGS = new Set(['sa', 'kn', 'hi', 'ta', 'te', 'ml']);
+const SUPPORTED_LANGS = ['en', 'sa', 'kn', 'hi', 'ta', 'te', 'ml', 'mr', 'bn', 'gu', 'pa', 'or'];
+const LOCAL_BUNDLED_LANGS = new Set(['en', 'sa', 'kn', 'hi', 'ta', 'te', 'ml']);
 
 const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v5.0.1';
 const MODEL_CACHE_PREFIX = 'ninada-onnx-';
@@ -92,14 +92,20 @@ async function resolveWorkerOrt({ forcePureWasm = false } = {}) {
         ]);
         if (adapter && !adapter.info?.isFallbackAdapter && !adapter.isFallbackAdapter) {
           const hasJspi = typeof WebAssembly !== 'undefined' && typeof WebAssembly.promising === 'function';
-          const gpuEntry = hasJspi ? './ort/ort.jspi.min.mjs' : './ort/ort.webgpu.min.mjs';
-          const gpuNs = await import(gpuEntry);
-          const gpuOrt = unwrapOrtNamespace(gpuNs);
-          if (gpuOrt?.InferenceSession) {
-            configureOrtWasmEnv(gpuOrt, { forWebGpuHybrid: true });
-            ort = gpuOrt;
-            ortBackendMode = 'webgpu';
-            return ort;
+          const workerCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
+          const isUltraLowRam = Boolean(self.navigator?.deviceMemory && self.navigator.deviceMemory <= 2);
+          // On COI mobile without JSPI, 14 MB 4-thread WASM SIMD (<500ms) avoids 27 MB asyncify download;
+          // on non-COI in-app WebViews (!workerCoi), enable WebGPU so speech streams in ~80-150ms with 0 underruns!
+          if (!isUltraLowRam && (!IS_MOBILE_OR_LOW_MEM || hasJspi || !workerCoi)) {
+            const gpuEntry = hasJspi ? './ort/ort.jspi.min.mjs' : './ort/ort.webgpu.min.mjs';
+            const gpuNs = await import(gpuEntry);
+            const gpuOrt = unwrapOrtNamespace(gpuNs);
+            if (gpuOrt?.InferenceSession) {
+              configureOrtWasmEnv(gpuOrt, { forWebGpuHybrid: true });
+              ort = gpuOrt;
+              ortBackendMode = 'webgpu';
+              return ort;
+            }
           }
         }
       } catch {
@@ -174,7 +180,7 @@ async function getModelsManifest() {
       fallbackLanguages[lc] = buildFallbackLangSpec(lc);
     }
     try {
-      const res = await fetch('./models_manifest.json?v=5.0.2', { cache: 'no-cache' });
+      const res = await fetch('./models_manifest.json?v=5.0.3', { cache: 'no-cache' });
       if (res.ok) {
         const json = await res.json();
         if (json?.cacheName) {
@@ -407,85 +413,42 @@ function buildSessionOpts() {
 }
 
 async function warmupSpecialistSession(session) {
-  const warmIds = new ort.Tensor('int64', BigInt64Array.from([0n, 3n, 0n, 4n, 0n]), [1, 5]);
-  const warmScales = new ort.Tensor('float32', Float32Array.from([1.0, 0.40, 0.0]), [3]);
+  // Pure WASM requires zero shader warmup; returning immediately eliminates 2-4s of mobile boot lock
+  if (!session || session.vocoderBackend !== 'webgpu' || !session.vocoderSession) {
+    return;
+  }
 
-  if (session?.isThreeWaySplit && session.priorSession && session.flowSession && session.vocoderSession) {
-    const pOut = await session.priorSession.run({
-      input_ids: warmIds,
-      scales: warmScales,
-    });
-    warmIds.dispose?.();
-    warmScales.dispose?.();
-    pOut[session.zpName]?.dispose?.();
-    pOut.durations?.dispose?.();
-
-    const warmFlowF = 68;
-    const warmZp = new ort.Tensor('float32', new Float32Array(192 * warmFlowF), [1, 192, warmFlowF]);
-    const warmMask = new ort.Tensor('float32', new Float32Array(warmFlowF).fill(1.0), [1, 1, warmFlowF]);
-    const fOut = await session.flowSession.run({
-      [session.zpName]: warmZp,
-      [session.yMaskName]: warmMask,
-    });
-    warmZp.dispose?.();
-    warmMask.dispose?.();
-    fOut[session.latentName]?.dispose?.();
-
-    // Pre-compile exact static vocoder buckets so first user stream has zero shader/JIT stall
-    const buckets = session.vocoderBackend === 'webgpu' ? [44, 112] : [56, 96];
-    for (const bFrames of buckets) {
-      const zData = new Float32Array(192 * bFrames).fill(0.02);
-      const warmLat = new ort.Tensor('float32', zData, [1, 192, bFrames]);
-      const vocOut = await session.vocoderSession.run({ [session.latentName]: warmLat });
-      warmLat.dispose?.();
-      const wavT = vocOut[session.wav3dName];
-      const wavData = wavT?.data;
-      if (session.vocoderBackend === 'webgpu') {
-        if (!wavData || wavData.length === 0) {
-          wavT?.dispose?.();
-          throw new Error('WebGPU vocoder returned empty output');
-        }
-        const checkN = Math.min(64, wavData.length);
-        for (let i = 0; i < checkN; i++) {
-          if (!Number.isFinite(wavData[i])) {
-            wavT?.dispose?.();
-            throw new Error('WebGPU vocoder returned non-finite output');
-          }
-        }
-      }
+  // WebGPU: pre-compile 44-frame first-chunk WGSL shader pipeline + verify finite output and mobile dispatch speed
+  const zData = new Float32Array(192 * 44).fill(0.02);
+  const warmLat = new ort.Tensor('float32', zData, [1, 192, 44]);
+  const vocOut = await session.vocoderSession.run({ [session.latentName]: warmLat });
+  warmLat.dispose?.();
+  const wavT = vocOut[session.wav3dName];
+  const wavData = wavT?.data;
+  if (!wavData || wavData.length === 0) {
+    wavT?.dispose?.();
+    throw new Error('WebGPU vocoder returned empty output');
+  }
+  const checkN = Math.min(64, wavData.length);
+  for (let i = 0; i < checkN; i++) {
+    if (!Number.isFinite(wavData[i])) {
       wavT?.dispose?.();
+      throw new Error('WebGPU vocoder returned non-finite output');
     }
-    return;
   }
+  wavT?.dispose?.();
 
-  if (session?.isSplitStudioVits && session.encFlowSession && session.vocoderSession && session.latentName) {
-    const encOut = await session.encFlowSession.run({
-      input_ids: warmIds,
-      scales: warmScales,
-    });
-    warmIds.dispose?.();
-    warmScales.dispose?.();
-    encOut[session.latentName]?.dispose?.();
-    encOut.durations?.dispose?.();
-
-    const buckets = session.vocoderBackend === 'webgpu' ? [44, 112] : [56, 96];
-    for (const bFrames of buckets) {
-      const warmLat = new ort.Tensor('float32', new Float32Array(192 * bFrames), [1, 192, bFrames]);
-      const vocOut = await session.vocoderSession.run({ [session.latentName]: warmLat });
-      warmLat.dispose?.();
-      vocOut[session.wav3dName]?.dispose?.();
+  if (IS_MOBILE_OR_LOW_MEM && typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated) {
+    const probeLat = new ort.Tensor('float32', zData, [1, 192, 44]);
+    const t0 = performance.now();
+    const probeOut = await session.vocoderSession.run({ [session.latentName]: probeLat });
+    const dt = performance.now() - t0;
+    probeLat.dispose?.();
+    probeOut[session.wav3dName]?.dispose?.();
+    if (dt > 260) {
+      throw new Error(`Mobile WebGPU vocoder slower than multi-thread WASM (${Math.round(dt)}ms)`);
     }
-    return;
   }
-
-  const out = await session.run({
-    input_ids: warmIds,
-    scales: warmScales,
-  });
-  warmIds.dispose?.();
-  warmScales.dispose?.();
-  out.waveform?.dispose?.();
-  out.durations?.dispose?.();
 }
 
 async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true } = {}) {
@@ -725,7 +688,7 @@ async function ensureLangReady(rawLang = 'sa', { voice = 'male', emitReady = tru
 self.addEventListener('message', (ev) => {
   const msg = ev.data || {};
   if (msg.type === 'init' || msg.type === 'load_lang') {
-    const targetLang = msg.lang || 'sa';
+    const targetLang = msg.lang || 'en';
     const targetVoice = normalizeVoiceKey(msg.voice);
     if (activeAbort) {
       activeAbort.abort();
@@ -747,7 +710,7 @@ self.addEventListener('message', (ev) => {
 
   if (msg.type === 'stream') {
     const reqId = Number(msg.reqId || Date.now());
-    const targetLang = SUPPORTED_LANGS.includes(msg.lang) ? msg.lang : 'sa';
+    const targetLang = SUPPORTED_LANGS.includes(msg.lang) ? msg.lang : 'en';
     const targetVoice = normalizeVoiceKey(msg.voice);
     const tier = msg.tier || 'auto';
     if (activeAbort) {
@@ -793,6 +756,7 @@ self.addEventListener('message', (ev) => {
           tier,
           firstChunkFrames: Number(msg.firstChunkFrames || defaultFirstFrames),
           chunkFrames: Number(msg.chunkFrames || defaultChunkFrames),
+          firstBucketFrames: 44,
           firstLatentFrames: Number(msg.firstLatentFrames || 68),
           singleThread: finalVocoderBackend !== 'webgpu' && (!workerIsCoi || workerThreads <= 1),
           yieldBetweenWindows: true,

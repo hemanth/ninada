@@ -4150,7 +4150,10 @@ async function ninada(input = 'sa', opts = {}) {
             const isWebGpuVoc = activeSess.vocoderBackend === 'webgpu';
             const haloLatent = 12;
             const flowHaloLatent = 24;
-            const firstBucket = isWebGpuVoc ? 44 : 56;
+            const firstBucket = Math.max(
+              36,
+              Number(callOpts.firstBucketFrames || (isWebGpuVoc ? 44 : 56))
+            );
             const steadyBucket = isWebGpuVoc ? 112 : 96;
             const steadyValid = steadyBucket - 2 * haloLatent;
             const xfadeSamples = 512;
@@ -4221,7 +4224,7 @@ async function ninada(input = 'sa', opts = {}) {
               // Compute bounded flow blocks (<= 192 valid frames) to cap peak activation RAM on low-memory devices
               while (zComputedUpTo < targetFrameEnd) {
                 const isFirstFlow = zComputedUpTo === 0;
-                const firstFlowCap = isWebGpuVoc ? firstBucket : 88;
+                const firstFlowCap = isWebGpuVoc ? firstBucket : firstBucket <= 44 ? 64 : 88;
                 const blockValidCap = isFirstFlow
                   ? Math.max(targetFrameEnd, firstFlowCap)
                   : Math.max(targetFrameEnd - zComputedUpTo, 192);

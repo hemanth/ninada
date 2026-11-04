@@ -26,8 +26,8 @@
       "expectedBytes": 29280152,
       "totalMB": 27.92,
       "urls": [
-        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/en.onnx",
-        "./models/en.onnx"
+        "./models/en.onnx",
+        "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/en.onnx"
       ],
       "femaleCacheKey": "ninada_v501_en_female_24k_q8f16.onnx",
       "femaleExpectedBytes": 29280152,

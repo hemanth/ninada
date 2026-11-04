@@ -231,14 +231,14 @@ async function main() {
     assert.equal(preLoadLock.langDisabled, true);
     assert.equal(preLoadLock.presetDisabled, true);
     assert.ok(
-      preLoadLock.badgeAfterBlockedClick.includes("SA"),
+      preLoadLock.badgeAfterBlockedClick.includes("EN"),
       `Blocked click should not switch language; got ${preLoadLock.badgeAfterBlockedClick}`
     );
 
     await page.waitForFunction(
       () =>
         window.__ninadaReady === true &&
-        window.__ninadaLoadedLang === "sa" &&
+        window.__ninadaLoadedLang === "en" &&
         window.__ninadaLastResult &&
         window.__ninadaLastResult.tier === "neural_onnx",
       null,
@@ -265,7 +265,7 @@ async function main() {
       `Expected >=2 WASM threads under COI, got ${postLoadState.readyInfo.threads}`
     );
     assert.equal(postLoadState.controlsLocked, false);
-    assert.equal(postLoadState.loadedLang, "sa");
+    assert.equal(postLoadState.loadedLang, "en");
     assert.equal(postLoadState.modelCached, true, "Expected ONNX models to be persisted in browser cache");
     assert.equal(postLoadState.synthDisabled, false);
     assert.equal(postLoadState.langAnyDisabled, false);
@@ -273,7 +273,7 @@ async function main() {
     assert.equal(
       onnxBuckets.phase1.length,
       1,
-      `Expected 1 native SA ONNX fetch on cold load, got ${onnxBuckets.phase1.length}: ${onnxBuckets.phase1.join(", ")}`
+      `Expected 1 native EN ONNX fetch on cold load, got ${onnxBuckets.phase1.length}: ${onnxBuckets.phase1.join(", ")}`
     );
 
     // 2. Reload page in same browser context — verify immediate COI + 0 network ONNX requests (100% browser cache hit!)
@@ -282,7 +282,7 @@ async function main() {
     await page.waitForFunction(
       () =>
         window.__ninadaReady === true &&
-        window.__ninadaLoadedLang === "sa" &&
+        window.__ninadaLoadedLang === "en" &&
         window.__ninadaLastResult &&
         window.__ninadaLastResult.tier === "neural_onnx",
       null,
@@ -309,22 +309,22 @@ async function main() {
     assert.equal(reloadCacheState.controlsLocked, false);
     assert.ok(reloadCacheState.loaderText.includes("Loaded from Cache"));
 
-    const saResult = await page.evaluate(() => window.__ninadaLastResult);
-    console.log("Sanskrit 24 kHz Streaming Neural ONNX Result:", saResult);
-    assert.equal(saResult.isNeural, true);
-    assert.equal(saResult.tier, "neural_onnx");
-    assert.equal(saResult.lang, "sa");
-    assert.ok(saResult.samples > 24000, `Expected >1s 24kHz audio, got ${saResult.samples} samples`);
-    assert.ok(saResult.rms > 0.02, `Expected non-silent RMS > 0.02, got ${saResult.rms}`);
+    const enResult = await page.evaluate(() => window.__ninadaLastResult);
+    console.log("Indian English 24 kHz Auto-Boot Streaming Neural ONNX Result:", enResult);
+    assert.equal(enResult.isNeural, true);
+    assert.equal(enResult.tier, "neural_onnx");
+    assert.equal(enResult.lang, "en");
+    assert.ok(enResult.samples > 24000, `Expected >1s 24kHz audio, got ${enResult.samples} samples`);
+    assert.ok(enResult.rms > 0.02, `Expected non-silent RMS > 0.02, got ${enResult.rms}`);
     assert.ok(
-      saResult.ttfaMs > 0 && saResult.ttfaMs < MAX_BROWSER_TTFA_MS,
-      `Expected streaming TTFA < ${MAX_BROWSER_TTFA_MS}ms, got ${saResult.ttfaMs}`
+      enResult.ttfaMs > 0 && enResult.ttfaMs < MAX_BROWSER_TTFA_MS,
+      `Expected streaming TTFA < ${MAX_BROWSER_TTFA_MS}ms, got ${enResult.ttfaMs}`
     );
     assert.ok(
-      saResult.rtf < MAX_BROWSER_RTF,
-      `Expected multi-threaded RTF < ${MAX_BROWSER_RTF} (<1.0x real-time under load, single-thread is >4.0x), got ${saResult.rtf}`
+      enResult.rtf < MAX_BROWSER_RTF,
+      `Expected multi-threaded RTF < ${MAX_BROWSER_RTF} (<1.0x real-time under load, single-thread is >4.0x), got ${enResult.rtf}`
     );
-    assert.ok(saResult.wavBytes > 48000);
+    assert.ok(enResult.wavBytes > 48000);
 
     // Verify highlighted SDK code showcase, install pills, and interactive code tabs
     const codeCheckInitial = await page.evaluate(() => ({
@@ -339,7 +339,7 @@ async function main() {
     assert.equal(codeCheckInitial.installCount, 2, "Expected npm and pip install pills in masthead");
     assert.equal(codeCheckInitial.tabCount, 4, "Expected 4 SDK code showcase tabs");
     assert.ok(codeCheckInitial.kwCount >= 4 && codeCheckInitial.strCount >= 3 && codeCheckInitial.fnCount >= 2);
-    assert.ok(codeCheckInitial.badge.includes("SA"));
+    assert.ok(codeCheckInitial.badge.includes("EN"));
     assert.ok(codeCheckInitial.jsCode.includes("webml-kit"), "Expected JS snippet to use webml-kit");
     assert.ok(!codeCheckInitial.jsCode.includes("onnxruntime-web"), "Expected zero raw onnxruntime-web import in JS snippet");
 
@@ -429,8 +429,8 @@ async function main() {
 
     assert.equal(
       onnxBuckets.switchLangs.length,
-      5,
-      `Expected exactly 5 native specialist ONNX downloads (kn, hi, ta, te, ml) when visiting all 6 tabs, got ${onnxBuckets.switchLangs.length}: ${onnxBuckets.switchLangs.join(", ")}`
+      6,
+      `Expected exactly 6 native specialist ONNX downloads (kn, hi, ta, te, ml, sa) when visiting all 6 Indic tabs after EN boot, got ${onnxBuckets.switchLangs.length}: ${onnxBuckets.switchLangs.join(", ")}`
     );
 
     // 4. Revisit cached Kannada (`kn`) — verify 0 network ONNX requests + Real-Time AudioWorklet Multi-Sentence Smoothness!
@@ -692,7 +692,7 @@ async function main() {
       await stPage.waitForFunction(
         () =>
           window.__ninadaReady === true &&
-          window.__ninadaLoadedLang === "sa" &&
+          window.__ninadaLoadedLang === "en" &&
           window.__ninadaLastResult &&
           window.__ninadaLastResult.tier === "neural_onnx",
         null,
