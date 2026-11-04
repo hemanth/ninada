@@ -17,6 +17,7 @@ import ninada, {
   iastToDevanagari,
   brahmicToDevanagari,
   splitStudioVitsOnnxBuffer,
+  createSplitStudioVitsSession,
 } from '../src/index.js';
 
 test('87-token Brahmic vocabulary and 24 kHz IPA vocabulary with retroflex lateral slot 79', () => {
@@ -224,8 +225,19 @@ test('In-memory Studio VITS ONNX splitter enables sub-clause latent-window strea
   const splitMs = performance.now() - tSplit0;
   assert.ok(split, 'Expected splitStudioVitsOnnxBuffer to succeed on docs/models/sa.onnx');
   assert.ok(splitMs < 60, `Expected in-memory ONNX split < 60ms, got ${splitMs.toFixed(1)}ms`);
+  assert.ok(split.priorBytes && split.priorBytes.byteLength > 3_000_000);
+  assert.ok(split.flowBytes && split.flowBytes.byteLength > 3_000_000);
   assert.ok(split.encFlowBytes.byteLength > 5_000_000);
   assert.ok(split.vocoderBytes.byteLength > 5_000_000);
+
+  // Verify boxed raw-buffer zero-retention release before ORT session creation
+  const ortMod = await import('onnxruntime-web');
+  const ort = ortMod.default?.InferenceSession ? ortMod.default : ortMod;
+  const rawBox = { bytes: new Uint8Array(rawBuf) };
+  const boxedSess = await createSplitStudioVitsSession(ort, rawBox, { executionProviders: ['wasm'] });
+  assert.equal(rawBox.bytes, null, 'Expected rawBox.bytes to be released before/during split session creation');
+  assert.equal(boxedSess.isThreeWaySplit, true, 'Expected 3-way prior+flow+vocoder split session');
+  await boxedSess.release();
 
   const voice = await ninada('sanskrit', { models: { sa: saPath } });
   const singleClauseText = 'प्रज्ञापूर्वकव्यापारवत्त्वं जीवत्वम् यथार्थज्ञानं प्रमाणम् धर्मक्षेत्रे कुरुक्षेत्रे समवेता युयुत्सवः';
@@ -265,12 +277,12 @@ test('In-memory Studio VITS ONNX splitter enables sub-clause latent-window strea
     errEnergy += d * d;
   }
   for (const ch of streamChunks) {
-    assert.equal(
-      ch.vocoderBucketFrames,
-      80,
-      `Expected single static vocoder bucket shape (80), got ${ch.vocoderBucketFrames}`
+    assert.ok(
+      [44, 56, 96, 112].includes(ch.vocoderBucketFrames),
+      `Expected static vocoder bucket shape in {44, 56, 96, 112}, got ${ch.vocoderBucketFrames}`
     );
   }
+  assert.equal(streamChunks[0].vocoderBucketFrames, 56, 'Expected compact 56-frame first WASM vocoder bucket');
   const snrDb = 10 * Math.log10(sigEnergy / Math.max(1e-12, errEnergy));
   assert.ok(snrDb > 45, `Expected latent-windowed HiFi-GAN SNR > 45 dB vs monolithic, got ${snrDb.toFixed(2)} dB`);
   await voice.dispose();

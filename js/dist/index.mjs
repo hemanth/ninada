@@ -3038,6 +3038,10 @@ const _UTF8_ENC = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 const _VI_SUFFIX_FLOAT_1_192_T = new Uint8Array([
   18, 20, 10, 18, 8, 1, 18, 14, 10, 2, 8, 1, 10, 3, 8, 192, 1, 10, 3, 18, 1, 84,
 ]);
+//   FLOAT [1, 1, "T"]   -> type { tensor_type { elem_type=1, shape { 1, 1, "T" } } }
+const _VI_SUFFIX_FLOAT_1_1_T = new Uint8Array([
+  18, 19, 10, 17, 8, 1, 18, 13, 10, 2, 8, 1, 10, 2, 8, 1, 10, 3, 18, 1, 84,
+]);
 //   FLOAT [1, 1, "N"]   -> type { tensor_type { elem_type=1, shape { 1, 1, "N" } } }
 const _VI_SUFFIX_FLOAT_1_1_N = new Uint8Array([
   18, 19, 10, 17, 8, 1, 18, 13, 10, 2, 8, 1, 10, 2, 8, 1, 10, 3, 18, 1, 78,
@@ -3149,22 +3153,38 @@ function _pbScanGraphNodeInputs(buf, gStart, gEnd, outInputs) {
   }
 }
 
+function _pbConcatParts(parts) {
+  let total = 0;
+  for (let i = 0; i < parts.length; i++) total += parts[i].byteLength;
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (let i = 0; i < parts.length; i++) {
+    out.set(parts[i], off);
+    off += parts[i].byteLength;
+  }
+  return out;
+}
+
 /**
  * Splits a monolithic Studio VITS 24 kHz `.onnx` binary (`input_ids, scales -> waveform, durations`)
- * in memory (< 8ms, zero weight duplication) into:
- *   - `encFlowBytes`: `TextEncoder + DurationPredictor + NormalizingFlow` (`input_ids, scales -> latent, durations`)
+ * in memory (< 8ms, zero weight duplication) into three disjoint stages:
+ *   - `priorBytes`: `TextEncoder + DurationPredictor` (`input_ids, scales -> z_p, durations`)
+ *   - `flowBytes`: `NormalizingFlow` (`z_p, y_mask -> latent`)
  *   - `vocoderBytes`: `HiFi-GAN WaveformDecoder` (`latent -> wav3d`)
+ * Plus `encFlowBytes` (2-way `prior + flow` union) when requested or when `/flow/` is absent.
  * Returns `null` if the ONNX graph is not a Studio VITS model with `/waveform_decoder/conv_pre/Conv`.
  */
-function splitStudioVitsOnnxBuffer(rawBuffer) {
+function splitStudioVitsOnnxBuffer(rawBuffer, splitOpts = {}) {
   try {
+    const unwrappedBuf =
+      rawBuffer && typeof rawBuffer === 'object' && 'bytes' in rawBuffer ? rawBuffer.bytes : rawBuffer;
     let buf = null;
-    if (rawBuffer instanceof Uint8Array) {
-      buf = rawBuffer;
-    } else if (rawBuffer instanceof ArrayBuffer) {
-      buf = new Uint8Array(rawBuffer);
-    } else if (ArrayBuffer.isView(rawBuffer)) {
-      buf = new Uint8Array(rawBuffer.buffer, rawBuffer.byteOffset, rawBuffer.byteLength);
+    if (unwrappedBuf instanceof Uint8Array) {
+      buf = unwrappedBuf;
+    } else if (unwrappedBuf instanceof ArrayBuffer) {
+      buf = new Uint8Array(unwrappedBuf);
+    } else if (ArrayBuffer.isView(unwrappedBuf)) {
+      buf = new Uint8Array(unwrappedBuf.buffer, unwrappedBuf.byteOffset, unwrappedBuf.byteLength);
     }
     if (!buf || buf.byteLength < 65536 || buf[0] !== 0x08) return null;
 
@@ -3213,6 +3233,7 @@ function splitStudioVitsOnnxBuffer(rawBuffer) {
         const outputs = [];
         const extraInputs = [];
         let name = '';
+        let opType = '';
         let np = nStart;
         while (np < nEnd) {
           const [nTag, np1] = _pbReadVarint(buf, np);
@@ -3228,8 +3249,10 @@ function splitStudioVitsOnnxBuffer(rawBuffer) {
           } else if (nf === 3 && nwt === 2) {
             const [sLen, sStart] = _pbReadVarint(buf, np1);
             name = _pbDecodeUtf8(buf, sStart, sStart + sLen);
+          } else if (nf === 4 && nwt === 2) {
+            const [sLen, sStart] = _pbReadVarint(buf, np1);
+            opType = _pbDecodeUtf8(buf, sStart, sStart + sLen);
           } else if (nf === 5 && nwt === 2) {
-            // Check AttributeProto field 5 (`g`, GraphProto) for subgraph references
             const [aLen, aStart] = _pbReadVarint(buf, np1);
             const aEnd = aStart + aLen;
             let ap = aStart;
@@ -3247,7 +3270,7 @@ function splitStudioVitsOnnxBuffer(rawBuffer) {
           }
           np = nfEnd;
         }
-        nodes.push({ raw: buf.subarray(fStart, fEnd), inputs, outputs, extraInputs, name });
+        nodes.push({ raw: buf.subarray(fStart, fEnd), inputs, outputs, extraInputs, name, opType });
       } else if (fNum === 2 && wt === 2) {
         graphNameSlice = buf.subarray(fStart, fEnd);
       } else if (fNum === 5 && wt === 2) {
@@ -3295,11 +3318,17 @@ function splitStudioVitsOnnxBuffer(rawBuffer) {
     const inNameSet = new Set(graphInputs.map((i) => i.name));
     if (!inNameSet.has('input_ids') || !inNameSet.has('scales')) return null;
 
+    let firstFlowNode = null;
+    let convPreIdx = -1;
     let convPreNode = null;
     let lastDecNode = null;
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i];
-      if (!convPreNode && (n.name === '/waveform_decoder/conv_pre/Conv' || n.name.endsWith('waveform_decoder/conv_pre/Conv'))) {
+      if (!firstFlowNode && n.name.startsWith('/flow/') && n.opType !== 'Constant') {
+        firstFlowNode = n;
+      }
+      if (convPreIdx < 0 && (n.name === '/waveform_decoder/conv_pre/Conv' || n.name.endsWith('waveform_decoder/conv_pre/Conv'))) {
+        convPreIdx = i;
         convPreNode = n;
       }
       if (n.name.startsWith('/waveform_decoder') && n.outputs.length > 0) {
@@ -3355,58 +3384,90 @@ function splitStudioVitsOnnxBuffer(rawBuffer) {
       return { indices, usedInputs };
     }
 
-    const encSub = collectSubgraph([latentName, 'durations'], new Set(['input_ids', 'scales']));
+    function buildSubmodelBytes(sub, inputValueInfos, outputValueInfos) {
+      const graphParts = [];
+      for (const idx of sub.indices) graphParts.push(nodes[idx].raw);
+      if (graphNameSlice) graphParts.push(graphNameSlice);
+      for (const init of initializers) {
+        if (sub.usedInputs.has(init.name)) graphParts.push(init.raw);
+      }
+      for (const vi of inputValueInfos) graphParts.push(vi);
+      for (const vi of outputValueInfos) graphParts.push(vi);
+      const graphField = _pbWrapLengthDelimited(7, graphParts);
+      return _pbConcatParts([...modelMetaSlices, graphField]);
+    }
+
     const vocSub = collectSubgraph([wav3dName], new Set([latentName]));
-    if (encSub.indices.length === 0 || vocSub.indices.length === 0) return null;
+    if (vocSub.indices.length === 0) return null;
 
-    const encGraphParts = [];
-    for (const idx of encSub.indices) encGraphParts.push(nodes[idx].raw);
-    if (graphNameSlice) encGraphParts.push(graphNameSlice);
-    for (const init of initializers) {
-      if (encSub.usedInputs.has(init.name)) encGraphParts.push(init.raw);
+    const vocoderBytes = buildSubmodelBytes(
+      vocSub,
+      [_pbMakeValueInfoField(11, latentName, _VI_SUFFIX_FLOAT_1_192_T)],
+      [_pbMakeValueInfoField(12, wav3dName, _VI_SUFFIX_FLOAT_1_1_N)]
+    );
+
+    const latentProdIdx = producerByTensor.get(latentName);
+    const latentProdNode = latentProdIdx !== undefined ? nodes[latentProdIdx] : null;
+    const candidateZp = firstFlowNode ? firstFlowNode.inputs.find(Boolean) : '';
+    const candidateYMask =
+      latentProdNode && latentProdNode.opType === 'Mul' && latentProdNode.inputs.length >= 2
+        ? latentProdNode.inputs[1]
+        : '';
+
+    let priorBytes = null;
+    let flowBytes = null;
+    let zpName = null;
+    let yMaskName = null;
+
+    if (candidateZp && candidateYMask) {
+      const priorSub = collectSubgraph([candidateZp, 'durations'], new Set(['input_ids', 'scales']));
+      const flowSub = collectSubgraph([latentName], new Set([candidateZp, candidateYMask]));
+      // Verify flowSub has zero dynamic dependencies back to input_ids or scales
+      const flowHasTokenDeps =
+        flowSub.usedInputs.has('input_ids') || flowSub.usedInputs.has('scales');
+      if (priorSub.indices.length > 0 && flowSub.indices.length > 0 && !flowHasTokenDeps) {
+        zpName = candidateZp;
+        yMaskName = candidateYMask;
+        const priorIns = graphInputs
+          .filter((gi) => gi.name === 'input_ids' || gi.name === 'scales')
+          .map((gi) => gi.raw);
+        priorBytes = buildSubmodelBytes(
+          priorSub,
+          priorIns,
+          [_pbMakeValueInfoField(12, zpName, _VI_SUFFIX_FLOAT_1_192_T), durOutputRec.raw]
+        );
+        flowBytes = buildSubmodelBytes(
+          flowSub,
+          [
+            _pbMakeValueInfoField(11, zpName, _VI_SUFFIX_FLOAT_1_192_T),
+            _pbMakeValueInfoField(11, yMaskName, _VI_SUFFIX_FLOAT_1_1_T),
+          ],
+          [_pbMakeValueInfoField(12, latentName, _VI_SUFFIX_FLOAT_1_192_T)]
+        );
+      }
     }
-    for (const gi of graphInputs) {
-      if (gi.name === 'input_ids' || gi.name === 'scales') encGraphParts.push(gi.raw);
-    }
-    encGraphParts.push(_pbMakeValueInfoField(12, latentName, _VI_SUFFIX_FLOAT_1_192_T));
-    encGraphParts.push(durOutputRec.raw);
 
-    const vocGraphParts = [];
-    for (const idx of vocSub.indices) vocGraphParts.push(nodes[idx].raw);
-    if (graphNameSlice) vocGraphParts.push(graphNameSlice);
-    for (const init of initializers) {
-      if (vocSub.usedInputs.has(init.name)) vocGraphParts.push(init.raw);
-    }
-    vocGraphParts.push(_pbMakeValueInfoField(11, latentName, _VI_SUFFIX_FLOAT_1_192_T));
-    vocGraphParts.push(_pbMakeValueInfoField(12, wav3dName, _VI_SUFFIX_FLOAT_1_1_N));
-
-    const encGraphField = _pbWrapLengthDelimited(7, encGraphParts);
-    const vocGraphField = _pbWrapLengthDelimited(7, vocGraphParts);
-
-    const encModelParts = [...modelMetaSlices, encGraphField];
-    const vocModelParts = [...modelMetaSlices, vocGraphField];
-
-    let encLen = 0;
-    for (const p of encModelParts) encLen += p.byteLength;
-    const encFlowBytes = new Uint8Array(encLen);
-    let eOff = 0;
-    for (const p of encModelParts) {
-      encFlowBytes.set(p, eOff);
-      eOff += p.byteLength;
-    }
-
-    let vocLen = 0;
-    for (const p of vocModelParts) vocLen += p.byteLength;
-    const vocoderBytes = new Uint8Array(vocLen);
-    let vOff = 0;
-    for (const p of vocModelParts) {
-      vocoderBytes.set(p, vOff);
-      vOff += p.byteLength;
+    let encFlowBytes = null;
+    if (!priorBytes || !flowBytes || !splitOpts.skipCombinedEncFlow) {
+      const encSub = collectSubgraph([latentName, 'durations'], new Set(['input_ids', 'scales']));
+      if (encSub.indices.length === 0) return null;
+      const encIns = graphInputs
+        .filter((gi) => gi.name === 'input_ids' || gi.name === 'scales')
+        .map((gi) => gi.raw);
+      encFlowBytes = buildSubmodelBytes(
+        encSub,
+        encIns,
+        [_pbMakeValueInfoField(12, latentName, _VI_SUFFIX_FLOAT_1_192_T), durOutputRec.raw]
+      );
     }
 
     return {
+      priorBytes,
+      flowBytes,
       encFlowBytes,
       vocoderBytes,
+      zpName,
+      yMaskName,
       latentName,
       wav3dName,
     };
@@ -3415,37 +3476,134 @@ function splitStudioVitsOnnxBuffer(rawBuffer) {
   }
 }
 
-async function createSplitStudioVitsSession(ort, rawBytes, sessionOpts) {
+async function createSplitStudioVitsSession(ort, rawBytesOrBox, sessionOpts) {
   if (!ort || !ort.InferenceSession) return null;
-  const split = splitStudioVitsOnnxBuffer(rawBytes);
+  const isBoxed = Boolean(rawBytesOrBox && typeof rawBytesOrBox === 'object' && 'bytes' in rawBytesOrBox);
+  const split = splitStudioVitsOnnxBuffer(rawBytesOrBox, { skipCombinedEncFlow: true });
   if (!split) {
-    return ort.InferenceSession.create(rawBytes, sessionOpts);
+    const fallbackRaw = isBoxed ? rawBytesOrBox.bytes : rawBytesOrBox;
+    if (isBoxed) rawBytesOrBox.bytes = null;
+    return ort.InferenceSession.create(fallbackRaw, sessionOpts);
   }
-  const { latentName, wav3dName } = split;
+
+  // Release caller's 28 MB raw buffer immediately before compiling WASM/WebGPU sessions
+  if (isBoxed) {
+    rawBytesOrBox.bytes = null;
+  }
+
+  const { zpName, yMaskName, latentName, wav3dName } = split;
+  let priorBytes = split.priorBytes;
+  let flowBytes = split.flowBytes;
   let encFlowBytes = split.encFlowBytes;
   let vocoderBytes = split.vocoderBytes;
+  split.priorBytes = null;
+  split.flowBytes = null;
   split.encFlowBytes = null;
   split.vocoderBytes = null;
 
+  const baseProviders = Array.isArray(sessionOpts?.executionProviders)
+    ? sessionOpts.executionProviders
+    : ort.env?.wasm
+    ? ['wasm']
+    : ['cpu'];
+  const vocProviders = Array.isArray(sessionOpts?.vocoderExecutionProviders)
+    ? sessionOpts.vocoderExecutionProviders
+    : baseProviders;
+  const wantsWebGpuVocoder = vocProviders.some(
+    (p) => p === 'webgpu' || (p && typeof p === 'object' && p.name === 'webgpu')
+  );
+  const cpuBackend = baseProviders.some((p) => p === 'cpu') && !ort.env?.wasm ? ['cpu'] : ['wasm'];
+
+  // Keep INT8 weights compact on CPU/WASM (saves >250 MB RSS by avoiding FP32 ConstantFolding + prepacking bloat)
+  const wasmStageOpts = {
+    executionProviders: cpuBackend,
+    graphOptimizationLevel: cpuBackend[0] === 'wasm' ? 'disabled' : 'all',
+    enableCpuMemArena: false,
+    enableMemPattern: false,
+  };
+
+  const TensorCtor = ort.Tensor || DuckOrtTensor;
+  let priorSession = null;
+  let flowSession = null;
   let encFlowSession = null;
   let vocoderSession = null;
+  let vocoderBackend = 'wasm';
+
   try {
-    encFlowSession = await ort.InferenceSession.create(encFlowBytes, sessionOpts);
-    encFlowBytes = null;
-    vocoderSession = await ort.InferenceSession.create(vocoderBytes, sessionOpts);
+    if (priorBytes && flowBytes && zpName && yMaskName) {
+      priorSession = await ort.InferenceSession.create(priorBytes, wasmStageOpts);
+      priorBytes = null;
+      flowSession = await ort.InferenceSession.create(flowBytes, wasmStageOpts);
+      flowBytes = null;
+    } else if (encFlowBytes) {
+      encFlowSession = await ort.InferenceSession.create(encFlowBytes, wasmStageOpts);
+      encFlowBytes = null;
+    }
+
+    if (wantsWebGpuVocoder) {
+      try {
+        vocoderSession = await ort.InferenceSession.create(vocoderBytes, {
+          executionProviders: ['webgpu'],
+          graphOptimizationLevel: 'all',
+          enableCpuMemArena: true,
+          enableMemPattern: true,
+        });
+        vocoderBackend = 'webgpu';
+      } catch (gpuErr) {
+        if (sessionOpts?.strictWebGpu) {
+          throw gpuErr;
+        }
+        vocoderSession = await ort.InferenceSession.create(vocoderBytes, wasmStageOpts);
+        vocoderBackend = cpuBackend[0];
+      }
+    } else {
+      vocoderSession = await ort.InferenceSession.create(vocoderBytes, wasmStageOpts);
+      vocoderBackend = cpuBackend[0];
+    }
     vocoderBytes = null;
   } catch (err) {
+    try { await priorSession?.release?.(); } catch {}
+    try { await flowSession?.release?.(); } catch {}
     try { await encFlowSession?.release?.(); } catch {}
     try { await vocoderSession?.release?.(); } catch {}
-    return ort.InferenceSession.create(rawBytes, sessionOpts);
+    throw err;
+  }
+
+  // Compatibility wrapper when 3-way split is active so external callers using encFlowSession.run() still work
+  if (!encFlowSession && priorSession && flowSession) {
+    encFlowSession = {
+      async run(feeds) {
+        const pOut = await priorSession.run(feeds);
+        const zpT = pOut[zpName];
+        const T = Number(zpT?.dims?.[2] || Math.max(1, Math.floor((zpT?.data?.length || 192) / 192)));
+        const maskT = new TensorCtor('float32', new Float32Array(T).fill(1.0), [1, 1, T]);
+        try {
+          const fOut = await flowSession.run({ [zpName]: zpT, [yMaskName]: maskT });
+          return {
+            [latentName]: fOut[latentName],
+            durations: pOut.durations,
+          };
+        } finally {
+          zpT?.dispose?.();
+          maskT?.dispose?.();
+        }
+      },
+      async release() {},
+    };
   }
 
   return {
     inputNames: ['input_ids', 'scales'],
     outputNames: ['waveform', 'durations'],
     isSplitStudioVits: true,
+    isThreeWaySplit: Boolean(priorSession && flowSession && zpName && yMaskName),
+    priorSession,
+    flowSession,
     encFlowSession,
     vocoderSession,
+    vocoderBackend,
+    zpName,
+    yMaskName,
     latentName,
     wav3dName,
     async run(feeds) {
@@ -3463,6 +3621,8 @@ async function createSplitStudioVitsSession(ort, rawBytes, sessionOpts) {
       }
     },
     async release() {
+      try { await priorSession?.release?.(); } catch {}
+      try { await flowSession?.release?.(); } catch {}
       try { await encFlowSession?.release?.(); } catch {}
       try { await vocoderSession?.release?.(); } catch {}
     },
@@ -3523,23 +3683,16 @@ async function createOrtSession(ort, source, providers, useCache = true, webmlOp
     resolved = await fetchBrowserCachedBytes(resolved, useCache);
   }
   const useProviders = providers || (ort.env?.wasm ? ['wasm'] : ['cpu']);
-  const isLowMemBrowser =
-    !isNode &&
-    typeof navigator !== 'undefined' &&
-    ((Number(navigator.deviceMemory) > 0 && Number(navigator.deviceMemory) <= 4) ||
-      /Android|iPhone|iPad|iPod|Mobile/i.test(String(navigator.userAgent || '')));
-  const canUseArena =
-    isNode ||
-    Boolean(typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated) ||
-    !isLowMemBrowser;
   const sessionOpts = {
     executionProviders: useProviders,
-    graphOptimizationLevel: 'all',
-    enableCpuMemArena: canUseArena,
-    enableMemPattern: true,
+    graphOptimizationLevel: useProviders[0] === 'wasm' ? 'disabled' : 'all',
+    enableCpuMemArena: false,
+    enableMemPattern: false,
   };
   if (resolved instanceof Uint8Array || resolved instanceof ArrayBuffer || ArrayBuffer.isView(resolved)) {
-    return createSplitStudioVitsSession(ort, resolved, sessionOpts);
+    const rawBox = { bytes: resolved };
+    resolved = null;
+    return createSplitStudioVitsSession(ort, rawBox, sessionOpts);
   }
   return ort.InferenceSession.create(resolved, sessionOpts);
 }
@@ -3985,32 +4138,137 @@ export default async function ninada(input = 'sa', opts = {}) {
           const idTensor = new TensorCtor('int64', BigInt64Array.from(studioIds.map(BigInt)), [1, studioIds.length]);
           const scalesTensor = new TensorCtor('float32', Float32Array.from([1.0 / effRate, effNoise, effNoiseDp]), [3]);
 
-          // Sub-Clause Latent-Window HiFi-GAN Streaming Path (when session was split into encFlow + vocoder)
+          // Sub-Clause 3-Stage Latent-Window Streaming Path (prior -> incremental flow -> static-bucket HiFi-GAN)
           if (activeSess?.isSplitStudioVits && !callOpts._monolithicVocoder) {
-            const tEnc0 = nowMs();
-            const encOut = await activeSess.encFlowSession.run({
-              input_ids: idTensor,
-              scales: scalesTensor,
-            });
-            const encFlowMs = nowMs() - tEnc0;
-            idTensor.dispose?.();
-            scalesTensor.dispose?.();
+            const isThreeWay = Boolean(
+              activeSess.isThreeWaySplit &&
+              activeSess.priorSession &&
+              activeSess.flowSession &&
+              activeSess.zpName &&
+              activeSess.yMaskName
+            );
+            const isWebGpuVoc = activeSess.vocoderBackend === 'webgpu';
+            const haloLatent = 12;
+            const flowHaloLatent = 24;
+            const firstBucket = isWebGpuVoc ? 44 : 56;
+            const steadyBucket = isWebGpuVoc ? 112 : 96;
+            const steadyValid = steadyBucket - 2 * haloLatent;
+            const xfadeSamples = 512;
 
-            const zTensor = encOut[activeSess.latentName];
-            const dursTensor = encOut.durations;
-            if (signal?.aborted || !zTensor) {
-              zTensor?.dispose?.();
+            let latentChannels = 192;
+            let totalLatentFrames = 1;
+            let zpFlat = null;
+            let zFlat = null;
+            let zComputedUpTo = 0;
+            let dursArr = [];
+            let encFlowMs = 0;
+
+            if (isThreeWay) {
+              const tPrior0 = nowMs();
+              const priorOut = await activeSess.priorSession.run({
+                input_ids: idTensor,
+                scales: scalesTensor,
+              });
+              encFlowMs = nowMs() - tPrior0;
+              idTensor.dispose?.();
+              scalesTensor.dispose?.();
+
+              const zpTensor = priorOut[activeSess.zpName];
+              const dursTensor = priorOut.durations;
+              if (signal?.aborted || !zpTensor) {
+                zpTensor?.dispose?.();
+                dursTensor?.dispose?.();
+                return;
+              }
+              const zpDims = zpTensor.dims || [1, 192, Math.floor(zpTensor.data.length / 192)];
+              latentChannels = Number(zpDims[1] || 192);
+              totalLatentFrames = Math.max(1, Number(zpDims[2] || Math.floor(zpTensor.data.length / latentChannels)));
+              zpFlat = new Float32Array(zpTensor.data);
+              dursArr = dursTensor ? Array.from(dursTensor.data, Number) : [];
+              zpTensor.dispose?.();
               dursTensor?.dispose?.();
-              return;
+              zFlat = new Float32Array(latentChannels * totalLatentFrames);
+            } else {
+              const tEnc0 = nowMs();
+              const encOut = await activeSess.encFlowSession.run({
+                input_ids: idTensor,
+                scales: scalesTensor,
+              });
+              encFlowMs = nowMs() - tEnc0;
+              idTensor.dispose?.();
+              scalesTensor.dispose?.();
+
+              const zTensor = encOut[activeSess.latentName];
+              const dursTensor = encOut.durations;
+              if (signal?.aborted || !zTensor) {
+                zTensor?.dispose?.();
+                dursTensor?.dispose?.();
+                return;
+              }
+              const zDims = zTensor.dims || [1, 192, Math.floor(zTensor.data.length / 192)];
+              latentChannels = Number(zDims[1] || 192);
+              totalLatentFrames = Math.max(1, Number(zDims[2] || Math.floor(zTensor.data.length / latentChannels)));
+              zFlat = new Float32Array(zTensor.data);
+              zComputedUpTo = totalLatentFrames;
+              dursArr = dursTensor ? Array.from(dursTensor.data, Number) : [];
+              zTensor.dispose?.();
+              dursTensor?.dispose?.();
             }
 
-            const zDims = zTensor.dims || [1, 192, Math.floor(zTensor.data.length / 192)];
-            const latentChannels = Number(zDims[1] || 192);
-            const totalLatentFrames = Math.max(1, Number(zDims[2] || Math.floor(zTensor.data.length / latentChannels)));
-            const zFlat = new Float32Array(zTensor.data);
-            const dursArr = dursTensor ? Array.from(dursTensor.data, Number) : [];
-            zTensor.dispose?.();
-            dursTensor?.dispose?.();
+            const ensureFlowUpTo = async (targetFrameEnd) => {
+              if (!isThreeWay || zComputedUpTo >= targetFrameEnd || !zpFlat) return 0;
+              const tFl0 = nowMs();
+              // Compute bounded flow blocks (<= 192 valid frames) to cap peak activation RAM on low-memory devices
+              while (zComputedUpTo < targetFrameEnd) {
+                const isFirstFlow = zComputedUpTo === 0;
+                const firstFlowCap = isWebGpuVoc ? firstBucket : 88;
+                const blockValidCap = isFirstFlow
+                  ? Math.max(targetFrameEnd, firstFlowCap)
+                  : Math.max(targetFrameEnd - zComputedUpTo, 192);
+                const nextValidEnd =
+                  totalLatentFrames - zComputedUpTo <= blockValidCap + flowHaloLatent
+                    ? totalLatentFrames
+                    : Math.min(totalLatentFrames, zComputedUpTo + blockValidCap);
+                const lFHalo = Math.min(zComputedUpTo, flowHaloLatent);
+                const rFHalo = Math.min(totalLatentFrames - nextValidEnd, flowHaloLatent);
+                const fSliceStart = zComputedUpTo - lFHalo;
+                const fSliceLen = (nextValidEnd - zComputedUpTo) + lFHalo + rFHalo;
+
+                const subZp = new Float32Array(latentChannels * fSliceLen);
+                for (let ch = 0; ch < latentChannels; ch++) {
+                  const sOff = ch * totalLatentFrames + fSliceStart;
+                  subZp.set(zpFlat.subarray(sOff, sOff + fSliceLen), ch * fSliceLen);
+                }
+                const subZpTensor = new TensorCtor('float32', subZp, [1, latentChannels, fSliceLen]);
+                const subMaskTensor = new TensorCtor(
+                  'float32',
+                  new Float32Array(fSliceLen).fill(1.0),
+                  [1, 1, fSliceLen]
+                );
+                const flowOut = await activeSess.flowSession.run({
+                  [activeSess.zpName]: subZpTensor,
+                  [activeSess.yMaskName]: subMaskTensor,
+                });
+                subZpTensor.dispose?.();
+                subMaskTensor.dispose?.();
+
+                const flowLatTensor = flowOut[activeSess.latentName];
+                if (flowLatTensor?.data) {
+                  const fd = flowLatTensor.data;
+                  const copyFrames = nextValidEnd - zComputedUpTo;
+                  for (let ch = 0; ch < latentChannels; ch++) {
+                    const srcBase = ch * fSliceLen + lFHalo;
+                    zFlat.set(fd.subarray(srcBase, srcBase + copyFrames), ch * totalLatentFrames + zComputedUpTo);
+                  }
+                }
+                flowLatTensor?.dispose?.();
+                zComputedUpTo = nextValidEnd;
+              }
+              if (zComputedUpTo >= totalLatentFrames) {
+                zpFlat = null;
+              }
+              return nowMs() - tFl0;
+            };
 
             const isFinalClause = cIdx === clauses.length - 1;
             const endsWithDouble = /(?:॥|\|\||।।|।\s*।|\.\s*\.)\s*$/.test(clauseItem.text || '');
@@ -4025,52 +4283,61 @@ export default async function ninada(input = 'sa', opts = {}) {
                 ? clauseTotalSamples / SAMPLE_RATE
                 : (clauseTotalSamples / SAMPLE_RATE) * (totalStudioWeight / thisStudioWeight);
 
-            // Single static vocoder bucket [1, 192, 80] with 12-frame symmetric HiFi-GAN halo (>60 dB SNR vs monolithic):
-            // keeping one static input shape preserves ORT WASM memory-pattern planning and L2 cache locality on mobile.
-            const VOCODER_BUCKET = 80;
-            const haloLatent = 12;
-            const steadyLatent = VOCODER_BUCKET - 2 * haloLatent; // 56 valid frames (0.597s audio)
-            const xfadeSamples = 512;
-            const firstLatent = Math.max(
-              32,
-              Math.min(VOCODER_BUCKET - haloLatent, Number(callOpts.firstLatentFrames || (VOCODER_BUCKET - haloLatent)))
-            );
-
             const fBounds = [];
             for (let fCur = 0; fCur < totalLatentFrames; ) {
               const remFrames = totalLatentFrames - fCur;
-              let fNext;
-              if (fCur === 0) {
-                fNext = totalLatentFrames <= VOCODER_BUCKET ? totalLatentFrames : Math.min(totalLatentFrames, firstLatent);
-              } else if (remFrames <= VOCODER_BUCKET - haloLatent) {
-                fNext = totalLatentFrames;
-              } else if (remFrames <= VOCODER_BUCKET - haloLatent + Math.floor(steadyLatent / 2)) {
-                fNext = fCur + Math.ceil(remFrames / 2);
+              const useFastBucket = fCur === 0 || (!isWebGpuVoc && fBounds.length === 1);
+              if (useFastBucket) {
+                if (fCur === 0) {
+                  const firstValidCap = firstBucket - haloLatent;
+                  const fNext = totalLatentFrames <= firstBucket ? totalLatentFrames : Math.min(totalLatentFrames, firstValidCap);
+                  fBounds.push([fCur, fNext, firstBucket]);
+                  fCur = fNext;
+                } else {
+                  const secondValidCap = firstBucket - 2 * haloLatent;
+                  const fNext =
+                    remFrames <= firstBucket - haloLatent
+                      ? totalLatentFrames
+                      : fCur + secondValidCap;
+                  fBounds.push([fCur, fNext, firstBucket]);
+                  fCur = fNext;
+                }
               } else {
-                fNext = fCur + steadyLatent;
+                let fNext;
+                if (remFrames <= steadyBucket - haloLatent) {
+                  fNext = totalLatentFrames;
+                } else if (remFrames < steadyValid + 16) {
+                  fNext = fCur + Math.ceil(remFrames / 2);
+                } else {
+                  fNext = fCur + steadyValid;
+                }
+                fBounds.push([fCur, fNext, steadyBucket]);
+                fCur = fNext;
               }
-              fBounds.push([fCur, fNext]);
-              fCur = fNext;
             }
 
-            const zSliceBuf = new Float32Array(latentChannels * VOCODER_BUCKET);
+            const firstSliceBuf = new Float32Array(latentChannels * firstBucket);
+            const steadySliceBuf = new Float32Array(latentChannels * steadyBucket);
             let prevRightHalo = null;
             const shouldYield = callOpts.yieldBetweenWindows !== false && !isNodeEnv();
 
             for (let wIdx = 0; wIdx < fBounds.length; wIdx++) {
-              if (shouldYield) {
+              if (shouldYield && (wIdx > 0 || cIdx > 0)) {
                 await yieldMacrotask();
               }
               if (signal?.aborted) return;
 
-              const [fStart, fEnd] = fBounds[wIdx];
+              const [fStart, fEnd, bucketF] = fBounds[wIdx];
               const validF = fEnd - fStart;
               const lHalo = Math.min(fStart, haloLatent);
               const rHalo = Math.min(totalLatentFrames - fEnd, haloLatent);
               const sliceStart = fStart - lHalo;
               const rawSliceF = validF + lHalo + rHalo;
-              const bucketF = VOCODER_BUCKET;
 
+              const flowStepMs = await ensureFlowUpTo(sliceStart + rawSliceF);
+              if (signal?.aborted) return;
+
+              const zSliceBuf = bucketF === firstBucket ? firstSliceBuf : steadySliceBuf;
               for (let ch = 0; ch < latentChannels; ch++) {
                 const srcOff = ch * totalLatentFrames + sliceStart;
                 const dstOff = ch * bucketF;
@@ -4179,9 +4446,10 @@ export default async function ninada(input = 'sa', opts = {}) {
 
               let nextWindowSec = 0;
               if (!isLastSub) {
-                nextWindowSec = (VOCODER_BUCKET * STUDIO_HOP_LENGTH) / SAMPLE_RATE;
+                nextWindowSec = (fBounds[wIdx + 1][2] * STUDIO_HOP_LENGTH) / SAMPLE_RATE;
               }
 
+              const stageEncMs = wIdx === 0 ? encFlowMs + flowStepMs : flowStepMs;
               const chunkObj = attachLazyWav(
                 {
                   pcm,
@@ -4199,8 +4467,9 @@ export default async function ninada(input = 'sa', opts = {}) {
                   nextWindowSec,
                   vocoderWindowAudioSec: (bucketF * STUDIO_HOP_LENGTH) / SAMPLE_RATE,
                   vocoderBucketFrames: bucketF,
-                  encFlowMs: wIdx === 0 ? encFlowMs : 0,
-                  latencyMs: vocMs + (wIdx === 0 ? encFlowMs : 0),
+                  vocoderBackend: activeSess.vocoderBackend || 'wasm',
+                  encFlowMs: stageEncMs,
+                  latencyMs: vocMs + stageEncMs,
                   vocoderMs: vocMs,
                   ttfaMs,
                   lang: resolvedLc,
@@ -4215,6 +4484,8 @@ export default async function ninada(input = 'sa', opts = {}) {
               emit('chunk', chunkObj);
               yield chunkObj;
             }
+            zFlat = null;
+            zpFlat = null;
             continue;
           }
 

@@ -1,7 +1,4 @@
-import * as ortNs from './ort/ort.wasm.min.mjs';
-import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.1';
-
-const ort = ortNs?.default?.InferenceSession ? ortNs.default : ortNs;
+import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.2';
 
 const HF_REPO = 'gnumanth/ninada';
 const SUPPORTED_LANGS = ['sa', 'kn', 'hi', 'ta', 'te', 'ml', 'en', 'mr', 'bn', 'gu', 'pa', 'or'];
@@ -26,13 +23,25 @@ const IS_MOBILE_OR_LOW_MEM = Boolean(
     /Android|iPhone|iPad|iPod|Mobile/i.test(self.navigator?.userAgent || '')
 );
 const MAX_WARM_SESSIONS = IS_MOBILE_OR_LOW_MEM ? 1 : 2;
+const WORKER_PARAMS = (() => {
+  try {
+    return new URL(self.location.href).searchParams;
+  } catch {
+    return new URLSearchParams();
+  }
+})();
+const FORCE_NO_GPU = WORKER_PARAMS.get('gpu') === '0';
 
 let activeCacheName = DEFAULT_MODEL_CACHE_NAME;
 let manifestPromise = null;
 let cachesPruned = false;
-let ortConfigured = false;
 
-// Active WASM InferenceSession LRU keyed by `${lang}:${voiceKey}` (`sa:male`, `kn:male`, `kn:female`, ...)
+let ort = null;
+let ortBackendMode = 'none'; // 'webgpu' | 'wasm' | 'none'
+let webGpuDisabled = FORCE_NO_GPU;
+let ortResolvePromise = null;
+
+// Active InferenceSession LRU keyed by `${lang}:${voiceKey}` (`sa:male`, `kn:male`, `kn:female`, ...)
 const warmSessions = new Map();
 let voiceEngine = null;
 let currentLoadedLang = null;
@@ -41,6 +50,97 @@ let lastReadyPayload = null;
 let activeAbort = null;
 let activeReqId = 0;
 let runQueue = Promise.resolve();
+
+function unwrapOrtNamespace(ortNs) {
+  return ortNs?.default?.InferenceSession ? ortNs.default : ortNs;
+}
+
+function configureOrtWasmEnv(ortInstance, { forWebGpuHybrid = false } = {}) {
+  if (!ortInstance?.env?.wasm) return;
+  const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
+  ortInstance.env.wasm.wasmPaths = new URL('./ort/', import.meta.url).href;
+  ortInstance.env.wasm.proxy = false;
+  if (forWebGpuHybrid) {
+    // Hybrid mode runs vocoder on WebGPU and compact prior/flow on <=2 WASM threads (avoids mobile little-core contention)
+    ortInstance.env.wasm.numThreads = isCoi ? 2 : 1;
+  } else {
+    ortInstance.env.wasm.numThreads = isCoi
+      ? Math.min(4, Math.max(2, (self.navigator?.hardwareConcurrency || 4) - 1))
+      : 1;
+  }
+}
+
+async function resolveWorkerOrt({ forcePureWasm = false } = {}) {
+  if (forcePureWasm) {
+    webGpuDisabled = true;
+    if (ortBackendMode === 'wasm' && ort?.InferenceSession) {
+      return ort;
+    }
+    ortResolvePromise = null;
+  }
+  if (ort?.InferenceSession && (!forcePureWasm || ortBackendMode === 'wasm')) {
+    return ort;
+  }
+  if (ortResolvePromise) return ortResolvePromise;
+
+  ortResolvePromise = (async () => {
+    if (!webGpuDisabled && self.navigator?.gpu?.requestAdapter) {
+      try {
+        const adapter = await Promise.race([
+          self.navigator.gpu.requestAdapter(),
+          new Promise((r) => setTimeout(() => r(null), 1500)),
+        ]);
+        if (adapter && !adapter.info?.isFallbackAdapter && !adapter.isFallbackAdapter) {
+          const hasJspi = typeof WebAssembly !== 'undefined' && typeof WebAssembly.promising === 'function';
+          const gpuEntry = hasJspi ? './ort/ort.jspi.min.mjs' : './ort/ort.webgpu.min.mjs';
+          const gpuNs = await import(gpuEntry);
+          const gpuOrt = unwrapOrtNamespace(gpuNs);
+          if (gpuOrt?.InferenceSession) {
+            configureOrtWasmEnv(gpuOrt, { forWebGpuHybrid: true });
+            ort = gpuOrt;
+            ortBackendMode = 'webgpu';
+            return ort;
+          }
+        }
+      } catch {
+        // Fall through to pure WASM runtime
+      }
+      webGpuDisabled = true;
+    }
+
+    try {
+      const wasmNs = await import('./ort/ort.wasm.min.mjs');
+      const wasmOrt = unwrapOrtNamespace(wasmNs);
+      if (wasmOrt?.InferenceSession) {
+        configureOrtWasmEnv(wasmOrt, { forWebGpuHybrid: false });
+        ort = wasmOrt;
+        ortBackendMode = 'wasm';
+        return ort;
+      }
+    } catch {
+      ort = null;
+      ortBackendMode = 'none';
+    }
+    return null;
+  })();
+
+  return ortResolvePromise;
+}
+
+async function switchToPureWasmOrt() {
+  webGpuDisabled = true;
+  for (const [, entry] of warmSessions) {
+    try {
+      await entry?.session?.release?.();
+    } catch {}
+  }
+  warmSessions.clear();
+  voiceEngine = null;
+  ort = null;
+  ortBackendMode = 'none';
+  ortResolvePromise = null;
+  return resolveWorkerOrt({ forcePureWasm: true });
+}
 
 function normalizeVoiceKey(voice) {
   return typeof voice === 'string' && voice.trim().toLowerCase() === 'female' ? 'female' : 'male';
@@ -74,7 +174,7 @@ async function getModelsManifest() {
       fallbackLanguages[lc] = buildFallbackLangSpec(lc);
     }
     try {
-      const res = await fetch('./models_manifest.json?v=5.0.1', { cache: 'no-cache' });
+      const res = await fetch('./models_manifest.json?v=5.0.2', { cache: 'no-cache' });
       if (res.ok) {
         const json = await res.json();
         if (json?.cacheName) {
@@ -89,7 +189,7 @@ async function getModelsManifest() {
           }
         }
         return {
-          version: json?.version || '5.0.1',
+          version: json?.version || '5.0.2',
           cacheName: activeCacheName,
           languages: mergedLangs,
         };
@@ -98,7 +198,7 @@ async function getModelsManifest() {
       // Fallback to built-in specialist URL map
     }
     return {
-      version: '5.0.1',
+      version: '5.0.2',
       cacheName: activeCacheName,
       languages: fallbackLanguages,
     };
@@ -211,8 +311,11 @@ async function writeCachedAsset(cacheKey, bytes) {
       );
       return 'cache_storage';
     } catch {
-      // Fall through to IndexedDB if CacheStorage fails
+      // On low-memory devices, skip duplicate 28 MB Blob allocation if CacheStorage is full or unavailable
+      if (IS_MOBILE_OR_LOW_MEM) return null;
     }
+  } else if (IS_MOBILE_OR_LOW_MEM) {
+    return null;
   }
 
   try {
@@ -292,48 +395,97 @@ async function fetchOrLoadAsset(cacheKey, urls, expectedBytes, validator, onDelt
 }
 
 function buildSessionOpts() {
-  const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
-  const canUseArena = isCoi || !IS_MOBILE_OR_LOW_MEM;
+  const useWebGpu = ortBackendMode === 'webgpu' && !webGpuDisabled;
   return {
     executionProviders: ['wasm'],
-    graphOptimizationLevel: 'all',
-    enableCpuMemArena: canUseArena,
-    enableMemPattern: true,
+    vocoderExecutionProviders: useWebGpu ? ['webgpu'] : ['wasm'],
+    strictWebGpu: useWebGpu,
+    graphOptimizationLevel: 'disabled',
+    enableCpuMemArena: false,
+    enableMemPattern: false,
   };
 }
 
 async function warmupSpecialistSession(session) {
-  try {
-    const warmIds = new ort.Tensor('int64', BigInt64Array.from([0n, 3n, 0n, 4n, 0n]), [1, 5]);
-    const warmScales = new ort.Tensor('float32', Float32Array.from([1.0, 0.40, 0.0]), [3]);
-    if (session?.isSplitStudioVits && session.encFlowSession && session.vocoderSession && session.latentName) {
-      const encOut = await session.encFlowSession.run({
-        input_ids: warmIds,
-        scales: warmScales,
-      });
-      warmIds.dispose?.();
-      warmScales.dispose?.();
-      encOut[session.latentName]?.dispose?.();
-      encOut.durations?.dispose?.();
+  const warmIds = new ort.Tensor('int64', BigInt64Array.from([0n, 3n, 0n, 4n, 0n]), [1, 5]);
+  const warmScales = new ort.Tensor('float32', Float32Array.from([1.0, 0.40, 0.0]), [3]);
 
-      // Warm exclusively with the single static vocoder shape [1, 192, 80] so ORT WASM memory-pattern planning stays locked.
-      const warm80 = new ort.Tensor('float32', new Float32Array(192 * 80), [1, 192, 80]);
-      const voc80 = await session.vocoderSession.run({ [session.latentName]: warm80 });
-      warm80.dispose?.();
-      voc80[session.wav3dName]?.dispose?.();
-    } else {
-      const out = await session.run({
-        input_ids: warmIds,
-        scales: warmScales,
-      });
-      warmIds.dispose?.();
-      warmScales.dispose?.();
-      out.waveform?.dispose?.();
-      out.durations?.dispose?.();
+  if (session?.isThreeWaySplit && session.priorSession && session.flowSession && session.vocoderSession) {
+    const pOut = await session.priorSession.run({
+      input_ids: warmIds,
+      scales: warmScales,
+    });
+    warmIds.dispose?.();
+    warmScales.dispose?.();
+    pOut[session.zpName]?.dispose?.();
+    pOut.durations?.dispose?.();
+
+    const warmFlowF = 68;
+    const warmZp = new ort.Tensor('float32', new Float32Array(192 * warmFlowF), [1, 192, warmFlowF]);
+    const warmMask = new ort.Tensor('float32', new Float32Array(warmFlowF).fill(1.0), [1, 1, warmFlowF]);
+    const fOut = await session.flowSession.run({
+      [session.zpName]: warmZp,
+      [session.yMaskName]: warmMask,
+    });
+    warmZp.dispose?.();
+    warmMask.dispose?.();
+    fOut[session.latentName]?.dispose?.();
+
+    // Pre-compile exact static vocoder buckets so first user stream has zero shader/JIT stall
+    const buckets = session.vocoderBackend === 'webgpu' ? [44, 112] : [56, 96];
+    for (const bFrames of buckets) {
+      const zData = new Float32Array(192 * bFrames).fill(0.02);
+      const warmLat = new ort.Tensor('float32', zData, [1, 192, bFrames]);
+      const vocOut = await session.vocoderSession.run({ [session.latentName]: warmLat });
+      warmLat.dispose?.();
+      const wavT = vocOut[session.wav3dName];
+      const wavData = wavT?.data;
+      if (session.vocoderBackend === 'webgpu') {
+        if (!wavData || wavData.length === 0) {
+          wavT?.dispose?.();
+          throw new Error('WebGPU vocoder returned empty output');
+        }
+        const checkN = Math.min(64, wavData.length);
+        for (let i = 0; i < checkN; i++) {
+          if (!Number.isFinite(wavData[i])) {
+            wavT?.dispose?.();
+            throw new Error('WebGPU vocoder returned non-finite output');
+          }
+        }
+      }
+      wavT?.dispose?.();
     }
-  } catch {
-    // Non-fatal JIT warmup
+    return;
   }
+
+  if (session?.isSplitStudioVits && session.encFlowSession && session.vocoderSession && session.latentName) {
+    const encOut = await session.encFlowSession.run({
+      input_ids: warmIds,
+      scales: warmScales,
+    });
+    warmIds.dispose?.();
+    warmScales.dispose?.();
+    encOut[session.latentName]?.dispose?.();
+    encOut.durations?.dispose?.();
+
+    const buckets = session.vocoderBackend === 'webgpu' ? [44, 112] : [56, 96];
+    for (const bFrames of buckets) {
+      const warmLat = new ort.Tensor('float32', new Float32Array(192 * bFrames), [1, 192, bFrames]);
+      const vocOut = await session.vocoderSession.run({ [session.latentName]: warmLat });
+      warmLat.dispose?.();
+      vocOut[session.wav3dName]?.dispose?.();
+    }
+    return;
+  }
+
+  const out = await session.run({
+    input_ids: warmIds,
+    scales: warmScales,
+  });
+  warmIds.dispose?.();
+  warmScales.dispose?.();
+  out.waveform?.dispose?.();
+  out.durations?.dispose?.();
 }
 
 async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true } = {}) {
@@ -349,6 +501,16 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
       fromCache: true,
       cachedPersisted: true,
     };
+  }
+
+  // Pre-evict oldest warm session BEFORE allocating incoming 28 MB ONNX buffer to minimize peak RSS
+  while (warmSessions.size >= MAX_WARM_SESSIONS) {
+    const oldestKey = warmSessions.keys().next().value;
+    const evicted = warmSessions.get(oldestKey);
+    warmSessions.delete(oldestKey);
+    try {
+      await evicted?.session?.release?.();
+    } catch {}
   }
 
   const manifest = await getModelsManifest();
@@ -414,22 +576,51 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
     });
   }
 
-  // Evict oldest warm WASM session if at LRU capacity (ONNX bytes stay persisted in CacheStorage)
-  while (warmSessions.size >= MAX_WARM_SESSIONS) {
-    const oldestKey = warmSessions.keys().next().value;
-    const evicted = warmSessions.get(oldestKey);
-    warmSessions.delete(oldestKey);
-    try {
-      await evicted?.session?.release?.();
-    } catch {}
-  }
-
   const sessionOpts = buildSessionOpts();
-  const rawBytes = modelRes.bytes;
+  const rawBox = { bytes: modelRes.bytes };
   modelRes.bytes = null;
   modelRes = null;
-  const session = await createSplitStudioVitsSession(ort, rawBytes, sessionOpts);
-  await warmupSpecialistSession(session);
+
+  let session = null;
+  try {
+    session = await createSplitStudioVitsSession(ort, rawBox, sessionOpts);
+    await warmupSpecialistSession(session);
+  } catch (compileOrWarmErr) {
+    try {
+      await session?.release?.();
+    } catch {}
+    session = null;
+
+    // Automatic fallback 1: WebGPU driver/shader failure -> switch to multi-thread low-mem WASM
+    if (ortBackendMode === 'webgpu') {
+      const wasmOrt = await switchToPureWasmOrt();
+      if (wasmOrt?.InferenceSession) {
+        return loadOrGetWarmSession(lc, normVoice, { emitProgress: false });
+      }
+    }
+
+    // Automatic fallback 2: Multi-thread SharedArrayBuffer OOM -> retry single-thread WASM
+    if (ort?.env?.wasm && (ort.env.wasm.numThreads || 1) > 1) {
+      ort.env.wasm.numThreads = 1;
+      const retryRes = await fetchOrLoadAsset(
+        cacheKey,
+        urls,
+        expectedBytes,
+        (arr) => isValidOnnxBuffer(arr, expectedBytes),
+        null
+      );
+      if (retryRes?.bytes) {
+        const retryBox = { bytes: retryRes.bytes };
+        retryRes.bytes = null;
+        session = await createSplitStudioVitsSession(ort, retryBox, buildSessionOpts());
+        await warmupSpecialistSession(session);
+      } else {
+        throw compileOrWarmErr;
+      }
+    } else {
+      throw compileOrWarmErr;
+    }
+  }
 
   const entry = {
     session,
@@ -437,6 +628,7 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
     fromCache,
     cachedPersisted: Boolean(fromCache || cacheBackend),
     cacheBackend: cacheBackend || 'cache_storage',
+    vocoderBackend: session?.vocoderBackend || 'wasm',
   };
   warmSessions.set(slotKey, entry);
   return entry;
@@ -445,6 +637,8 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
 async function ensureLangReady(rawLang = 'sa', { voice = 'male', emitReady = true } = {}) {
   const lc = SUPPORTED_LANGS.includes(rawLang) ? rawLang : 'sa';
   const normVoice = normalizeVoiceKey(voice);
+
+  await resolveWorkerOrt();
 
   if (!ort || !ort.InferenceSession) {
     if (!voiceEngine) voiceEngine = await ninada(lc);
@@ -456,6 +650,7 @@ async function ensureLangReady(rawLang = 'sa', { voice = 'male', emitReady = tru
       voice: normVoice,
       isNeural: false,
       isStreamingNeural: false,
+      vocoderBackend: 'none',
       totalMB: 0,
       fromCache: false,
       cachedPersisted: false,
@@ -467,18 +662,11 @@ async function ensureLangReady(rawLang = 'sa', { voice = 'male', emitReady = tru
   }
 
   const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
-  if (!ortConfigured) {
-    ortConfigured = true;
-    ort.env.wasm.wasmPaths = new URL('./ort/', import.meta.url).href;
-    ort.env.wasm.proxy = false;
-    ort.env.wasm.numThreads = isCoi
-      ? Math.min(4, Math.max(2, (self.navigator?.hardwareConcurrency || 4) - 1))
-      : 1;
-  }
-  const activeThreads = ort.env.wasm.numThreads || 1;
 
   try {
-    const entry = await loadOrGetWarmSession(lc, normVoice, { emitReady, emitProgress: emitReady });
+    const entry = await loadOrGetWarmSession(lc, normVoice, { emitProgress: emitReady });
+    const activeThreads = ort?.env?.wasm?.numThreads || 1;
+    const activeVocBackend = entry.session?.vocoderBackend || entry.vocoderBackend || 'wasm';
 
     if (!voiceEngine) {
       voiceEngine = await ninada(lc, {
@@ -500,6 +688,7 @@ async function ensureLangReady(rawLang = 'sa', { voice = 'male', emitReady = tru
       voice: normVoice,
       isNeural: voiceEngine.isNeural,
       isStreamingNeural: voiceEngine.isStreamingNeural,
+      vocoderBackend: activeVocBackend,
       totalMB: entry.totalMB,
       fromCache: Boolean(entry.fromCache),
       cachedPersisted: Boolean(entry.cachedPersisted),
@@ -521,6 +710,7 @@ async function ensureLangReady(rawLang = 'sa', { voice = 'male', emitReady = tru
       voice: normVoice,
       isNeural: warmSessions.size > 0,
       isStreamingNeural: warmSessions.size > 0,
+      vocoderBackend: 'none',
       totalMB: 0,
       fromCache: false,
       cachedPersisted: false,
@@ -586,9 +776,11 @@ self.addEventListener('message', (ev) => {
         let totalSamples = 0;
         let finalTier = 'klatt_zero_dep';
         let finalLang = targetLang;
+        let finalVocoderBackend =
+          warmSessions.get(`${targetLang}:${targetVoice}`)?.vocoderBackend || 'wasm';
 
         const workerIsCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
-        const workerThreads = ort.env.wasm.numThreads || 1;
+        const workerThreads = ort?.env?.wasm?.numThreads || 1;
         const defaultChunkFrames = workerIsCoi ? 64 : 96;
         const defaultFirstFrames = workerIsCoi ? 40 : 56;
 
@@ -602,8 +794,8 @@ self.addEventListener('message', (ev) => {
           firstChunkFrames: Number(msg.firstChunkFrames || defaultFirstFrames),
           chunkFrames: Number(msg.chunkFrames || defaultChunkFrames),
           firstLatentFrames: Number(msg.firstLatentFrames || 68),
-          singleThread: !workerIsCoi || workerThreads <= 1,
-          yieldBetweenWindows: false,
+          singleThread: finalVocoderBackend !== 'webgpu' && (!workerIsCoi || workerThreads <= 1),
+          yieldBetweenWindows: true,
           signal: controller.signal,
         })) {
           if (controller.signal.aborted) return;
@@ -612,6 +804,9 @@ self.addEventListener('message', (ev) => {
           totalSamples += ch.pcm.length;
           finalTier = ch.tier;
           finalLang = ch.lang;
+          if (ch.vocoderBackend) {
+            finalVocoderBackend = ch.vocoderBackend;
+          }
 
           const pcmTransfer =
             ch.pcm.byteOffset === 0 && ch.pcm.byteLength === ch.pcm.buffer.byteLength
@@ -634,6 +829,8 @@ self.addEventListener('message', (ev) => {
               remainingClauseSec: ch.remainingClauseSec ?? 0,
               nextWindowSec: ch.nextWindowSec ?? 0,
               vocoderWindowAudioSec: ch.vocoderWindowAudioSec ?? ch.durationSec,
+              vocoderBucketFrames: ch.vocoderBucketFrames ?? 0,
+              vocoderBackend: ch.vocoderBackend || finalVocoderBackend,
               encFlowMs: ch.encFlowMs ?? 0,
               latencyMs: ch.latencyMs,
               vocoderMs: ch.vocoderMs ?? ch.latencyMs,
@@ -659,6 +856,7 @@ self.addEventListener('message', (ev) => {
           totalSamples,
           durationSec: totalSamples / SAMPLE_RATE,
           tier: finalTier,
+          vocoderBackend: finalVocoderBackend,
           isNeural: engine.isNeural,
           isStreamingNeural: engine.isStreamingNeural,
           lang: finalLang,
