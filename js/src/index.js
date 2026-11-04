@@ -1620,13 +1620,15 @@ export default async function ninada(input = 'sa', opts = {}) {
               activeSess.yMaskName
             );
             const isWebGpuVoc = activeSess.vocoderBackend === 'webgpu';
+            const isMobileWasm = !isWebGpuVoc && Boolean(callOpts.mobileWasmStreaming);
             const haloLatent = 12;
             const flowHaloLatent = 24;
             const firstBucket = Math.max(
               36,
               Number(callOpts.firstBucketFrames || (isWebGpuVoc ? 44 : 56))
             );
-            const steadyBucket = isWebGpuVoc ? 112 : 96;
+            const isSingleThreadWasm = isMobileWasm && Boolean(callOpts.singleThread);
+            const steadyBucket = isWebGpuVoc ? 112 : isSingleThreadWasm ? 168 : isMobileWasm ? 120 : 96;
             const steadyValid = steadyBucket - 2 * haloLatent;
             const xfadeSamples = 512;
 
@@ -1696,7 +1698,17 @@ export default async function ninada(input = 'sa', opts = {}) {
               // Compute bounded flow blocks (<= 192 valid frames) to cap peak activation RAM on low-memory devices
               while (zComputedUpTo < targetFrameEnd) {
                 const isFirstFlow = zComputedUpTo === 0;
-                const firstFlowCap = isWebGpuVoc ? firstBucket : firstBucket <= 44 ? 64 : 88;
+                const firstFlowCap = isWebGpuVoc
+                  ? firstBucket
+                  : isSingleThreadWasm
+                  ? firstBucket
+                  : isMobileWasm
+                  ? cIdx === 0
+                    ? 128
+                    : 104
+                  : firstBucket <= 44
+                  ? 64
+                  : 88;
                 const blockValidCap = isFirstFlow
                   ? Math.max(targetFrameEnd, firstFlowCap)
                   : Math.max(targetFrameEnd - zComputedUpTo, 192);
@@ -1761,7 +1773,9 @@ export default async function ninada(input = 'sa', opts = {}) {
             const fBounds = [];
             for (let fCur = 0; fCur < totalLatentFrames; ) {
               const remFrames = totalLatentFrames - fCur;
-              const useFastBucket = fCur === 0 || (!isWebGpuVoc && fBounds.length === 1);
+              const useFastBucket = isMobileWasm
+                ? cIdx === 0 && fCur === 0
+                : fCur === 0 || (!isWebGpuVoc && fBounds.length === 1);
               if (useFastBucket) {
                 if (fCur === 0) {
                   const firstValidCap = firstBucket - haloLatent;
@@ -1777,6 +1791,21 @@ export default async function ninada(input = 'sa', opts = {}) {
                   fBounds.push([fCur, fNext, firstBucket]);
                   fCur = fNext;
                 }
+              } else if (isMobileWasm && cIdx === 0 && fBounds.length === 1 && remFrames > 92) {
+                // Zero-flow Bridge Chunk 1 (~0.64s audio, 84 vocoded frames, 0ms flow since Chunk 0 pre-computed 128 frames)
+                const fNext = fCur + 60;
+                fBounds.push([fCur, fNext, steadyBucket]);
+                fCur = fNext;
+              } else if (isMobileWasm && cIdx === 0 && fBounds.length === 2 && remFrames > 104) {
+                // Step-up Chunk 2 (~0.85s audio, 104 vocoded frames) smoothly transitions into 96-frame steady state
+                const fNext = fCur + 80;
+                fBounds.push([fCur, fNext, steadyBucket]);
+                fCur = fNext;
+              } else if (isMobileWasm && cIdx >= 1 && fCur === 0 && remFrames > 92) {
+                // Inter-sentence first chunk (~0.68s audio, 76 vocoded frames) prevents sentence-boundary dips
+                const fNext = 64;
+                fBounds.push([0, fNext, steadyBucket]);
+                fCur = fNext;
               } else {
                 let fNext;
                 if (remFrames <= steadyBucket - haloLatent) {
@@ -1812,19 +1841,21 @@ export default async function ninada(input = 'sa', opts = {}) {
               const flowStepMs = await ensureFlowUpTo(sliceStart + rawSliceF);
               if (signal?.aborted) return;
 
-              const zSliceBuf = bucketF === firstBucket ? firstSliceBuf : steadySliceBuf;
+              const effBucketF = isMobileWasm ? rawSliceF : bucketF;
+              const backingBuf = bucketF === firstBucket ? firstSliceBuf : steadySliceBuf;
+              const zSliceBuf = effBucketF === bucketF ? backingBuf : backingBuf.subarray(0, latentChannels * effBucketF);
               for (let ch = 0; ch < latentChannels; ch++) {
                 const srcOff = ch * totalLatentFrames + sliceStart;
-                const dstOff = ch * bucketF;
+                const dstOff = ch * effBucketF;
                 zSliceBuf.set(zFlat.subarray(srcOff, srcOff + rawSliceF), dstOff);
-                if (rawSliceF < bucketF) {
+                if (rawSliceF < effBucketF) {
                   const edgeVal = zFlat[srcOff + rawSliceF - 1] || 0.0;
-                  zSliceBuf.fill(edgeVal, dstOff + rawSliceF, dstOff + bucketF);
+                  zSliceBuf.fill(edgeVal, dstOff + rawSliceF, dstOff + effBucketF);
                 }
               }
 
               const tVoc0 = nowMs();
-              const zSliceTensor = new TensorCtor('float32', zSliceBuf, [1, latentChannels, bucketF]);
+              const zSliceTensor = new TensorCtor('float32', zSliceBuf, [1, latentChannels, effBucketF]);
               const vocOut = await activeSess.vocoderSession.run({
                 [activeSess.latentName]: zSliceTensor,
               });
@@ -1940,8 +1971,8 @@ export default async function ninada(input = 'sa', opts = {}) {
                   estimatedTotalSec,
                   remainingClauseSec: ((totalLatentFrames - fEnd) * STUDIO_HOP_LENGTH) / SAMPLE_RATE,
                   nextWindowSec,
-                  vocoderWindowAudioSec: (bucketF * STUDIO_HOP_LENGTH) / SAMPLE_RATE,
-                  vocoderBucketFrames: bucketF,
+                  vocoderWindowAudioSec: (effBucketF * STUDIO_HOP_LENGTH) / SAMPLE_RATE,
+                  vocoderBucketFrames: effBucketF,
                   vocoderBackend: activeSess.vocoderBackend || 'wasm',
                   encFlowMs: stageEncMs,
                   latencyMs: vocMs + stageEncMs,

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Ninada: In-Browser Text to Speech for Indian English &amp; Indian Languages</title>
-  <meta name="description" content="Ninada v5.0.4: Sub-second in-browser 24 kHz streaming text to speech for Indian English, Classical Sanskrit, Hindi, Kannada, Marathi, Bengali, Tamil, Telugu, Malayalam, Gujarati, Punjabi, and Odia, running privately in the browser with offline caching." />
+  <meta name="description" content="Ninada v5.0.5: Sub-second in-browser 24 kHz streaming text to speech for Indian English, Classical Sanskrit, Hindi, Kannada, Marathi, Bengali, Tamil, Telugu, Malayalam, Gujarati, Punjabi, and Odia, running privately in the browser with offline caching." />
   <link rel="canonical" href="https://hemanth.github.io/ninada/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Ninada" />
@@ -71,8 +71,8 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-  <link rel="modulepreload" href="./ninada.mjs?v=5.0.4" />
-  <link rel="modulepreload" href="./synth-worker.mjs?v=5.0.4" />
+  <link rel="modulepreload" href="./ninada.mjs?v=5.0.5" />
+  <link rel="modulepreload" href="./synth-worker.mjs?v=5.0.5" />
   <link rel="modulepreload" href="./ort/ort.wasm.min.mjs" />
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" crossorigin="anonymous" />
   <noscript><link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" /></noscript>
@@ -1294,7 +1294,7 @@
   </div>
 
   <script type="module">
-    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.0.4';
+    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.0.5';
     const IS_MOBILE_DEVICE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
     const IS_LOW_MEM_DEVICE = Boolean(
       IS_MOBILE_DEVICE || (navigator.deviceMemory && navigator.deviceMemory <= 4)
@@ -1779,8 +1779,11 @@
       setDownloadEnabled(!locked && Boolean(currentBlobUrl));
     }
 
-    // Real-time AudioWorklet ring-buffer streaming state + fallback scheduler
+    // Real-time AudioWorklet (desktop) + C++ Native Hardware-Rate AudioBufferSourceNode Scheduler (mobile)
+    // Mobile Chrome (AAudio/Oboe) & iOS Safari run 100% glitch-free in C++ with `latencyHint: 'playback'` and 1:1 native-rate buffers
+    const USE_NATIVE_BUFFER_SCHEDULER = IS_MOBILE_DEVICE;
     let audioCtx = null;
+    let keepAliveSource = null;
     let workletNode = null;
     let workletReady = false;
     let workletFailed = false;
@@ -1789,13 +1792,26 @@
     let pendingAudioSrcUrl = null;
     let playbackIdleResolvers = [];
 
-    // Fallback AudioBufferSourceNode state (used only if AudioWorklet is unavailable)
+    // Native C++ AudioBufferSourceNode gapless hardware-frame scheduler state
     let activeSources = [];
     let nextPlayTime = 0;
+    let nextHardwareFrame = 0;
     let streamPlayStartCtxTime = 0;
     let totalScheduledSec = 0;
+    let mobileQueue = [];
+    let mobileQueuedSrcSamples = 0;
+    let mobilePlaybackStarted = false;
+    let mobileInitialLeadSec = 0.05;
+    let mobileEosReceived = false;
+    const nativeResampler = {
+      hist: new Float32Array(4),
+      primed: false,
+      phase: 0.0,
+      drainRemaining: 2,
+    };
     let rafPlayhead = 0;
     let lastRafTs = 0;
+    let lastWaveDrawTs = 0;
 
     const streamStats = {
       engine: 'none',
@@ -1872,7 +1888,13 @@
         try { src.disconnect(); } catch {}
       }
       activeSources = [];
+      mobileQueue = [];
+      mobileQueuedSrcSamples = 0;
+      mobilePlaybackStarted = false;
+      mobileInitialLeadSec = 0.05;
+      mobileEosReceived = false;
       nextPlayTime = 0;
+      nextHardwareFrame = 0;
       totalScheduledSec = 0;
       if (pendingAudioSrcUrl) {
         assignAudioPlayerBlob(pendingAudioSrcUrl);
@@ -1908,10 +1930,254 @@
           const played = Math.max(0, audioCtx.currentTime - streamPlayStartCtxTime);
           progress = Math.min(1, played / Math.max(0.05, totalScheduledSec));
         }
-        renderWaveBars(progress);
+        if (!IS_MOBILE_DEVICE || now - lastWaveDrawTs >= 32) {
+          lastWaveDrawTs = now;
+          renderWaveBars(progress);
+        }
         rafPlayhead = requestAnimationFrame(tick);
       };
       rafPlayhead = requestAnimationFrame(tick);
+    }
+
+    function upsampleChunkContinuous(src, srcRate, dstRate, isFinalFlush = false) {
+      if (srcRate === dstRate && !nativeResampler.primed) {
+        return src;
+      }
+      const ratio = srcRate / dstRate;
+      const n = src ? src.length : 0;
+      let srcIdx = 0;
+
+      if (!nativeResampler.primed) {
+        if (n === 0) return new Float32Array(0);
+        const s0 = src[0];
+        const s1 = n > 1 ? src[1] : s0;
+        const s2 = n > 2 ? src[2] : s1;
+        srcIdx = Math.min(n, 3);
+        nativeResampler.hist[0] = s0;
+        nativeResampler.hist[1] = s0;
+        nativeResampler.hist[2] = s1;
+        nativeResampler.hist[3] = s2;
+        nativeResampler.phase = 0.0;
+        nativeResampler.drainRemaining = 2;
+        nativeResampler.primed = true;
+      }
+
+      while (nativeResampler.phase >= 1.0) {
+        if (srcIdx < n) {
+          nativeResampler.phase -= 1.0;
+          nativeResampler.hist[0] = nativeResampler.hist[1];
+          nativeResampler.hist[1] = nativeResampler.hist[2];
+          nativeResampler.hist[2] = nativeResampler.hist[3];
+          nativeResampler.hist[3] = src[srcIdx++];
+        } else if (isFinalFlush && nativeResampler.drainRemaining > 0) {
+          nativeResampler.phase -= 1.0;
+          nativeResampler.hist[0] = nativeResampler.hist[1];
+          nativeResampler.hist[1] = nativeResampler.hist[2];
+          nativeResampler.hist[2] = nativeResampler.hist[3];
+          nativeResampler.hist[3] = 0.0;
+          nativeResampler.drainRemaining -= 1;
+        } else {
+          return new Float32Array(0);
+        }
+      }
+
+      const maxOut = Math.ceil((n + 6) / ratio) + 8;
+      const out = new Float32Array(maxOut);
+      let outLen = 0;
+
+      while (outLen < maxOut) {
+        const ym1 = nativeResampler.hist[0];
+        const y0 = nativeResampler.hist[1];
+        const y1 = nativeResampler.hist[2];
+        const y2 = nativeResampler.hist[3];
+        const t = nativeResampler.phase;
+        const c1 = 0.5 * (y1 - ym1);
+        const c2 = ym1 - 2.5 * y0 + 2.0 * y1 - 0.5 * y2;
+        const c3 = 0.5 * (y2 - ym1) + 1.5 * (y0 - y1);
+        let s = ((c3 * t + c2) * t + c1) * t + y0;
+        if (s > 1.0) s = 1.0;
+        else if (s < -1.0) s = -1.0;
+        out[outLen++] = s;
+
+        nativeResampler.phase += ratio;
+        let stalled = false;
+        while (nativeResampler.phase >= 1.0) {
+          if (srcIdx < n) {
+            nativeResampler.phase -= 1.0;
+            nativeResampler.hist[0] = nativeResampler.hist[1];
+            nativeResampler.hist[1] = nativeResampler.hist[2];
+            nativeResampler.hist[2] = nativeResampler.hist[3];
+            nativeResampler.hist[3] = src[srcIdx++];
+          } else if (isFinalFlush) {
+            if (nativeResampler.drainRemaining > 0) {
+              nativeResampler.phase -= 1.0;
+              nativeResampler.hist[0] = nativeResampler.hist[1];
+              nativeResampler.hist[1] = nativeResampler.hist[2];
+              nativeResampler.hist[2] = nativeResampler.hist[3];
+              nativeResampler.hist[3] = 0.0;
+              nativeResampler.drainRemaining -= 1;
+            } else {
+              nativeResampler.drainRemaining = -1;
+              stalled = true;
+              break;
+            }
+          } else {
+            stalled = true;
+            break;
+          }
+        }
+        if (stalled) break;
+      }
+
+      return outLen === out.length ? out : out.subarray(0, outLen);
+    }
+
+    function flushMobileBufferQueue() {
+      if (!audioCtx || audioCtx.state !== 'running') return;
+      if (!mobilePlaybackStarted) {
+        if (mobileQueuedSrcSamples < streamStats.watermarkSamples && !mobileEosReceived) {
+          return;
+        }
+        if (mobileQueuedSrcSamples === 0 && mobileEosReceived) {
+          finishLiveStreamPlayback();
+          return;
+        }
+        mobilePlaybackStarted = true;
+      }
+
+      if (mobileQueue.length === 0 && !(mobileEosReceived && nativeResampler.primed && nativeResampler.drainRemaining >= 0)) {
+        return;
+      }
+
+      let batchSrcSamples = 0;
+      let batchRate = SAMPLE_RATE;
+      for (const item of mobileQueue) {
+        batchSrcSamples += item.pcm.length;
+        if (item.sampleRate) batchRate = item.sampleRate;
+      }
+      let mergedSrc;
+      if (mobileQueue.length === 0) {
+        mergedSrc = new Float32Array(0);
+      } else if (mobileQueue.length === 1) {
+        mergedSrc = mobileQueue[0].pcm;
+      } else {
+        mergedSrc = new Float32Array(batchSrcSamples);
+        let off = 0;
+        for (const item of mobileQueue) {
+          mergedSrc.set(item.pcm, off);
+          off += item.pcm.length;
+        }
+      }
+      mobileQueue = [];
+      mobileQueuedSrcSamples = 0;
+
+      const dstRate = audioCtx.sampleRate || SAMPLE_RATE;
+      const hwPcm = upsampleChunkContinuous(mergedSrc, batchRate, dstRate, mobileEosReceived);
+      if (!hwPcm || hwPcm.length === 0) {
+        if (mobileEosReceived && activeSources.length === 0) {
+          streamStats.playedSamples = streamStats.totalPushedSamples;
+          if (!Number.isFinite(streamStats.minBufferedSamples)) {
+            streamStats.minBufferedSamples = streamStats.totalPushedSamples;
+          }
+          streamStats.endedCount += 1;
+          finishLiveStreamPlayback();
+        }
+        return;
+      }
+
+      const sessionIdSnap = activePlaySessionId;
+      const nowSec = audioCtx.currentTime;
+      const nowFrame = Math.ceil(nowSec * dstRate);
+
+      if (nextHardwareFrame === 0) {
+        nextHardwareFrame = Math.ceil((nowSec + mobileInitialLeadSec) * dstRate);
+        streamPlayStartCtxTime = nextHardwareFrame / dstRate;
+        if (streamStats.audibleStartMs === null && streamStats.requestStartPerfMs > 0) {
+          streamStats.audibleStartMs =
+            performance.now() - streamStats.requestStartPerfMs + Math.max(0, (streamPlayStartCtxTime - nowSec) * 1000);
+        }
+        if (synthBtn.classList.contains('streaming')) {
+          synthBtnLabel.textContent = 'Playing Stream...';
+        }
+        const initialSrcCushion = Math.round((hwPcm.length / dstRate) * SAMPLE_RATE);
+        if (initialSrcCushion < streamStats.minBufferedSamples) {
+          streamStats.minBufferedSamples = initialSrcCushion;
+        }
+      } else if (nextHardwareFrame < nowFrame) {
+        // Hardware buffer drained before next chunk arrived: smooth 8ms cosine fade-in + re-cushion
+        streamStats.underrunCount += 1;
+        streamStats.minBufferedSamples = 0;
+        const fadeLen = Math.min(Math.round(0.008 * dstRate), hwPcm.length);
+        for (let i = 0; i < fadeLen; i++) {
+          hwPcm[i] *= 0.5 * (1.0 - Math.cos((Math.PI * (i + 0.5)) / fadeLen));
+        }
+        nextHardwareFrame = Math.ceil((nowSec + 0.14) * dstRate);
+      } else {
+        const aheadSec = (nextHardwareFrame - nowFrame) / dstRate;
+        const aheadSrcSamples = Math.round(aheadSec * SAMPLE_RATE);
+        if (aheadSrcSamples < streamStats.minBufferedSamples) {
+          streamStats.minBufferedSamples = aheadSrcSamples;
+        }
+      }
+
+      const buf = audioCtx.createBuffer(1, hwPcm.length, dstRate);
+      buf.copyToChannel(hwPcm, 0);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(audioCtx.destination);
+
+      const startAt = nextHardwareFrame / dstRate;
+      nextHardwareFrame += hwPcm.length;
+      nextPlayTime = nextHardwareFrame / dstRate;
+      totalScheduledSec = Math.max(totalScheduledSec, nextPlayTime - streamPlayStartCtxTime);
+      streamStats.bufferedSamples = Math.max(
+        0,
+        Math.round((nextPlayTime - audioCtx.currentTime) * SAMPLE_RATE)
+      );
+
+      activeSources.push(src);
+      src.onended = () => {
+        if (sessionIdSnap !== activePlaySessionId) return;
+        const idx = activeSources.indexOf(src);
+        if (idx >= 0) activeSources.splice(idx, 1);
+        streamStats.playedSamples = Math.min(
+          streamStats.totalPushedSamples,
+          streamStats.playedSamples + batchSrcSamples
+        );
+        streamStats.bufferedSamples = Math.max(
+          0,
+          Math.round((nextPlayTime - (audioCtx ? audioCtx.currentTime : 0)) * SAMPLE_RATE)
+        );
+        if (activeSources.length === 0 && mobileQueue.length === 0 && (mobileEosReceived || currentPendingReq === null)) {
+          streamStats.playedSamples = streamStats.totalPushedSamples;
+          if (!Number.isFinite(streamStats.minBufferedSamples)) {
+            streamStats.minBufferedSamples = streamStats.totalPushedSamples;
+          }
+          streamStats.endedCount += 1;
+          finishLiveStreamPlayback();
+        }
+      };
+      src.start(startAt);
+      startPlayheadLoop();
+    }
+
+    function markMobileStreamEos(sessionId, blobUrl) {
+      if (sessionId !== activePlaySessionId) return;
+      mobileEosReceived = true;
+      flushMobileBufferQueue();
+      if (activeSources.length > 0) {
+        pendingAudioSrcUrl = blobUrl;
+        synthBtnLabel.textContent = 'Playing Stream...';
+      } else {
+        isStreamAudioActive = false;
+        streamStats.isPlaying = false;
+        pendingAudioSrcUrl = null;
+        if (blobUrl) assignAudioPlayerBlob(blobUrl);
+        synthBtn.classList.remove('streaming');
+        synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
+        stopBtn.disabled = true;
+        resolvePlaybackWaiters();
+      }
     }
 
     let audioWorkletModulePromise = null;
@@ -1921,9 +2187,17 @@
       if (!Ctx) return null;
       if (!audioCtx) {
         try {
-          audioCtx = new Ctx({ latencyHint: 'interactive' });
+          audioCtx = new Ctx({ latencyHint: IS_MOBILE_DEVICE ? 'playback' : 0.04 });
         } catch {
           audioCtx = new Ctx();
+        }
+        if (IS_MOBILE_DEVICE && !keepAliveSource && typeof audioCtx.createConstantSource === 'function') {
+          try {
+            keepAliveSource = audioCtx.createConstantSource();
+            keepAliveSource.offset.value = 0.0000001;
+            keepAliveSource.connect(audioCtx.destination);
+            keepAliveSource.start();
+          } catch {}
         }
       }
       const resumePromise =
@@ -1934,11 +2208,17 @@
             ])
           : Promise.resolve();
 
+      if (USE_NATIVE_BUFFER_SCHEDULER) {
+        streamStats.engine = 'native-buffersource';
+        await resumePromise;
+        return audioCtx;
+      }
+
       if (!workletReady && !workletFailed && audioCtx.audioWorklet) {
         if (!audioWorkletModulePromise) {
           audioWorkletModulePromise = (async () => {
             try {
-              await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js?v=5.0.4');
+              await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js?v=5.0.5');
               workletNode = new AudioWorkletNode(audioCtx, 'ninada-stream-processor', {
                 numberOfInputs: 0,
                 numberOfOutputs: 1,
@@ -2007,120 +2287,121 @@
       streamStats.underrunCount = 0;
       streamStats.playedSamples = 0;
       streamStats.bufferedSamples = 0;
-      streamStats.minBufferedSamples = 0;
+      streamStats.minBufferedSamples = USE_NATIVE_BUFFER_SCHEDULER ? Infinity : 0;
       streamStats.totalPushedSamples = 0;
       streamStats.watermarkSamples = initialWatermark;
       streamStats.maxRafGapMs = 0;
       streamStats.isPlaying = true;
       isStreamAudioActive = true;
+      mobileQueue = [];
+      mobileQueuedSrcSamples = 0;
+      mobilePlaybackStarted = false;
+      mobileInitialLeadSec = 0.05;
+      mobileEosReceived = false;
+      nextHardwareFrame = 0;
+      nextPlayTime = 0;
+      totalScheduledSec = 0;
+      nativeResampler.hist.fill(0);
+      nativeResampler.primed = false;
+      nativeResampler.phase = 0.0;
+      nativeResampler.drainRemaining = 2;
       if (workletReady && workletNode) {
         workletNode.port.postMessage({
           type: 'reset',
           sessionId: activePlaySessionId,
           sampleRate: SAMPLE_RATE,
           watermarkSamples: initialWatermark,
-          recoveryWatermarkSec: 0.35,
+          recoveryWatermarkSec: 0.45,
         });
       }
       return activePlaySessionId;
     }
 
+    function computeAdaptiveWatermarkSamples(pcm, sampleRate, chunkMeta, alreadyStarted) {
+      if (!chunkMeta) return streamStats.watermarkSamples;
+      if (chunkMeta.index === 0) {
+        const c0Sec = Math.max(0.05, pcm.length / sampleRate);
+        const vocBackend = chunkMeta.vocoderBackend || streamStats.vocoderBackend || 'wasm';
+        streamStats.vocoderBackend = vocBackend;
+        if (chunkMeta.isFinal) {
+          return Math.min(pcm.length, Math.round(0.03 * sampleRate));
+        }
+        if (chunkMeta.tier && chunkMeta.tier !== 'neural_onnx') {
+          return Math.min(pcm.length, Math.round(0.05 * sampleRate));
+        }
+        if (vocBackend === 'webgpu') {
+          const voc0Sec = Math.max(0.008, Number(chunkMeta.vocoderMs || 0) / 1000);
+          const flowBlockSec = Math.max(0.012, (Number(chunkMeta.encFlowMs || 0) / 1000) * 0.45);
+          const voc112Sec = voc0Sec * (112 / 44);
+          const tArr1Sec = flowBlockSec + voc112Sec + 0.020;
+          const steadyRtf = (voc112Sec + flowBlockSec * 0.40) / 0.9387;
+          if (tArr1Sec + 0.115 <= c0Sec && steadyRtf <= 0.82) {
+            return Math.min(pcm.length, Math.round(0.10 * sampleRate));
+          }
+          return Math.round((c0Sec + 0.05) * sampleRate);
+        }
+        const bucket0 = Math.max(44, Number(chunkMeta.vocoderBucketFrames || 68));
+        const voc0Sec = Math.max(0.012, Number(chunkMeta.vocoderMs || 0) / 1000);
+        // Chunk 0 includes one-time model warmup & pre-computes 128 flow frames, so Bridge Chunk 1 runs 0ms flow!
+        const warmVocPerFrame = (voc0Sec * 0.74) / bucket0;
+        const bridgeVocSec = warmVocPerFrame * 84;
+        const steadyVocSec = warmVocPerFrame * 120;
+        const steadyRtf = (steadyVocSec + 0.042) / 1.024;
+        // Multi-threaded mobile WASM starts on Chunk 0 (< 900ms); 1-thread WebView flushes on Chunk 1 (~1.24s cushion in < 1.7s)
+        if (streamStats.threads > 1 && steadyRtf <= 0.98) {
+          if (bridgeVocSec + 0.045 <= c0Sec + 0.05) {
+            mobileInitialLeadSec = 0.05;
+            return Math.min(pcm.length, Math.round(0.10 * sampleRate));
+          }
+          if (bridgeVocSec + 0.035 <= c0Sec + 0.16) {
+            mobileInitialLeadSec = 0.16;
+            return Math.min(pcm.length, Math.round(0.10 * sampleRate));
+          }
+        }
+        mobileInitialLeadSec = 0.05;
+        return Math.round((c0Sec + 0.08) * sampleRate);
+      }
+
+      if (
+        chunkMeta.index === 1 &&
+        !chunkMeta.isFinal &&
+        chunkMeta.tier === 'neural_onnx' &&
+        !alreadyStarted
+      ) {
+        const nextPushedSec = (streamStats.totalPushedSamples + pcm.length) / sampleRate;
+        // Flush Chunk 0 + Chunk 1 (~1.1-1.24s cushion) immediately so even 1-thread WebViews start in < 1.6s
+        return Math.min(streamStats.watermarkSamples, Math.round((nextPushedSec - 0.02) * sampleRate));
+      }
+      return streamStats.watermarkSamples;
+    }
+
     function pushLivePcmChunk(pcm, sampleRate = SAMPLE_RATE, chunkMeta = null) {
       if (!audioCtx || audioCtx.state !== 'running') return;
-      if (workletReady && workletNode) {
-        // Sub-second closed-form streaming watermark calibrated for 3-way split WebGPU [44, 112] & mobile WASM [44, 96]:
-        // starts playback immediately on Chunk 0 when steady synthesis outpaces drain, or on Chunk 1 (< 0.8s) on mobile WASM.
-        // Never locks in a multi-second watermark from cold Chunk 0 JIT!
-        if (chunkMeta && chunkMeta.index === 0) {
-          const c0Sec = Math.max(0.05, pcm.length / sampleRate);
-          const vocBackend = chunkMeta.vocoderBackend || streamStats.vocoderBackend || 'wasm';
-          streamStats.vocoderBackend = vocBackend;
-          let adaptedWatermark;
-          if (chunkMeta.isFinal) {
-            adaptedWatermark = Math.min(pcm.length, Math.round(0.03 * sampleRate));
-          } else if (chunkMeta.tier && chunkMeta.tier !== 'neural_onnx') {
-            adaptedWatermark = Math.min(pcm.length, Math.round(0.05 * sampleRate));
-          } else if (vocBackend === 'webgpu') {
-            const voc0Sec = Math.max(0.008, Number(chunkMeta.vocoderMs || 0) / 1000);
-            const flowBlockSec = Math.max(0.012, (Number(chunkMeta.encFlowMs || 0) / 1000) * 0.45);
-            const voc112Sec = voc0Sec * (112 / 44);
-            const tArr1Sec = flowBlockSec + voc112Sec + 0.020;
-            const steadyRtf = (voc112Sec + flowBlockSec * 0.40) / 0.9387;
-            if (tArr1Sec + 0.115 <= c0Sec && steadyRtf <= 0.82) {
-              adaptedWatermark = Math.min(pcm.length, Math.round(0.10 * sampleRate));
-            } else {
-              adaptedWatermark = Math.round((c0Sec + 0.05) * sampleRate);
-            }
-          } else {
-            const voc44Sec = Math.max(0.012, Number(chunkMeta.vocoderMs || 0) / 1000);
-            const voc96Sec = voc44Sec * (96 / 44);
-            const flowBlockSec = Math.max(0.012, (Number(chunkMeta.encFlowMs || 0) / 1000) * 0.65);
-            // Chunk 0 pre-computes 64 flow frames so Chunk 1 (bucket 44, 20 valid frames) runs with 0 ms flow overhead
-            const tArr1Sec = voc44Sec + 0.018;
-            const tArr2Sec = tArr1Sec + flowBlockSec + voc96Sec + 0.022;
-            const c0PlusC1Sec = c0Sec + 0.2133;
-            const steadyRtf = (voc96Sec + flowBlockSec * 0.38) / 0.768;
 
-            if (tArr1Sec + 0.115 <= c0Sec && tArr2Sec + 0.125 <= c0PlusC1Sec && steadyRtf <= 0.80) {
-              adaptedWatermark = Math.min(pcm.length, Math.round(0.12 * sampleRate));
-            } else {
-              // Defer multi-chunk RTF calibration to warm Chunk 1 so cold Chunk 0 JIT never triggers a long wait
-              adaptedWatermark = Math.round((c0Sec + 0.05) * sampleRate);
-            }
-          }
-          streamStats.watermarkSamples = adaptedWatermark;
+      if (USE_NATIVE_BUFFER_SCHEDULER) {
+        const updatedWm = computeAdaptiveWatermarkSamples(pcm, sampleRate, chunkMeta, mobilePlaybackStarted);
+        streamStats.watermarkSamples = updatedWm;
+        const copy = pcm.slice();
+        streamStats.totalPushedSamples += copy.length;
+        mobileQueue.push({ pcm: copy, sampleRate });
+        mobileQueuedSrcSamples += copy.length;
+        flushMobileBufferQueue();
+        return;
+      }
+
+      if (workletReady && workletNode) {
+        const updatedWm = computeAdaptiveWatermarkSamples(
+          pcm,
+          sampleRate,
+          chunkMeta,
+          streamStats.playedSamples > 0
+        );
+        if (updatedWm !== streamStats.watermarkSamples || (chunkMeta && chunkMeta.index === 0)) {
+          streamStats.watermarkSamples = updatedWm;
           workletNode.port.postMessage({
             type: 'watermark',
-            watermarkSamples: adaptedWatermark,
+            watermarkSamples: updatedWm,
           });
-        } else if (
-          chunkMeta &&
-          chunkMeta.index >= 1 &&
-          chunkMeta.index <= 2 &&
-          !chunkMeta.isFinal &&
-          chunkMeta.tier === 'neural_onnx' &&
-          streamStats.playedSamples === 0 &&
-          workletReady &&
-          workletNode
-        ) {
-          // Calibrate pre-play cushion from warm Chunk 1/2 vocoder speed; hard-cap at <= 1.26s audio (< 1.85s wall-clock)
-          const nextPushedSec = (streamStats.totalPushedSamples + pcm.length) / sampleRate;
-          const vocBackend = chunkMeta.vocoderBackend || streamStats.vocoderBackend || 'wasm';
-          const vocSec = Math.max(0.010, Number(chunkMeta.vocoderMs || 0) / 1000);
-          const bucketF = Number(chunkMeta.vocoderBucketFrames || (vocBackend === 'webgpu' ? 112 : 44));
-          const steadyVocSec =
-            vocBackend === 'webgpu'
-              ? vocSec * (112 / Math.max(44, bucketF))
-              : vocSec * (96 / Math.max(44, bucketF));
-          const steadyAudioSec = vocBackend === 'webgpu' ? 0.9387 : 0.768;
-          const flowShareSec = vocBackend === 'webgpu' ? 0.035 : 0.055 * (steadyVocSec / 0.35);
-          const warmSteadyRtf = (steadyVocSec + flowShareSec) / steadyAudioSec;
-
-          if (warmSteadyRtf > 0.92) {
-            const estTot = Math.max(
-              nextPushedSec + 0.25,
-              Number(chunkMeta.estimatedTotalSec || chunkMeta.clauseDurationSec || 2.4)
-            );
-            const cCount = Math.max(1, Number(chunkMeta.clauseCount || 1));
-            const remClauses = Math.max(0, cCount - 1 - Number(chunkMeta.clauseIndex || 0));
-            const neededSec =
-              (Math.max(0, warmSteadyRtf - 0.91) * estTot + remClauses * 0.14 + 0.24) /
-              Math.max(0.92, warmSteadyRtf);
-            const maxPrebufferAudioSec = 0.52;
-            const targetSec = Math.min(
-              maxPrebufferAudioSec,
-              estTot * 0.85,
-              Math.max(nextPushedSec - 0.02, neededSec)
-            );
-            const updatedWatermarkSamples = Math.round(targetSec * sampleRate);
-            if (updatedWatermarkSamples > streamStats.watermarkSamples) {
-              streamStats.watermarkSamples = updatedWatermarkSamples;
-              workletNode.port.postMessage({
-                type: 'watermark',
-                watermarkSamples: updatedWatermarkSamples,
-              });
-            }
-          }
         }
         const copy = pcm.slice();
         streamStats.totalPushedSamples += copy.length;
@@ -2834,7 +3115,7 @@
 
     // Dedicated off-main-thread Web Worker for ONNX Runtime WebGPU / WASM SIMD
     const workerUrlSuffix = window.location.search ? '&' + window.location.search.slice(1) : '';
-    let synthWorker = new Worker('./synth-worker.mjs?v=5.0.4' + workerUrlSuffix, { type: 'module' });
+    let synthWorker = new Worker('./synth-worker.mjs?v=5.0.5' + workerUrlSuffix, { type: 'module' });
     let nextReqSeq = 1;
     let currentPendingReq = null;
 
@@ -3002,7 +3283,9 @@
           setDownloadEnabled(true);
 
           const audioRunning = Boolean(audioCtx && audioCtx.state === 'running');
-          if (req.autoPlay && audioRunning && isStreamAudioActive && workletReady && workletNode) {
+          if (req.autoPlay && audioRunning && isStreamAudioActive && USE_NATIVE_BUFFER_SCHEDULER) {
+            markMobileStreamEos(req.playSessionId, currentBlobUrl);
+          } else if (req.autoPlay && audioRunning && isStreamAudioActive && workletReady && workletNode) {
             pendingAudioSrcUrl = currentBlobUrl;
             workletNode.port.postMessage({ type: 'eos', sessionId: req.playSessionId });
             synthBtnLabel.textContent = 'Playing Stream...';
@@ -3109,14 +3392,23 @@
       await ensureAudioContext({ resumeNow: true });
       if (audioCtx && audioCtx.state === 'running') {
         beginLiveAudioSession(playSessionId, Math.round(0.02 * SAMPLE_RATE));
-        const pcm = cached.pcm;
-        const sliceStep = 12000;
-        for (let off = 0; off < pcm.length; off += sliceStep) {
-          pushLivePcmChunk(pcm.subarray(off, Math.min(pcm.length, off + sliceStep)), cached.sampleRate, null);
-        }
-        if (workletReady && workletNode) {
-          pendingAudioSrcUrl = cached.blobUrl;
-          workletNode.port.postMessage({ type: 'eos', sessionId: playSessionId });
+        if (USE_NATIVE_BUFFER_SCHEDULER) {
+          pushLivePcmChunk(cached.pcm, cached.sampleRate, {
+            index: 0,
+            isFinal: true,
+            tier: cached.summary?.tier || 'neural_onnx',
+          });
+          markMobileStreamEos(playSessionId, cached.blobUrl);
+        } else {
+          const pcm = cached.pcm;
+          const sliceStep = 12000;
+          for (let off = 0; off < pcm.length; off += sliceStep) {
+            pushLivePcmChunk(pcm.subarray(off, Math.min(pcm.length, off + sliceStep)), cached.sampleRate, null);
+          }
+          if (workletReady && workletNode) {
+            pendingAudioSrcUrl = cached.blobUrl;
+            workletNode.port.postMessage({ type: 'eos', sessionId: playSessionId });
+          }
         }
       }
       const instantSummary = {
@@ -3129,7 +3421,7 @@
 
     function respawnSynthWorker(targetLang, effVoice) {
       try { synthWorker.terminate(); } catch {}
-      synthWorker = new Worker('./synth-worker.mjs?v=5.0.4' + workerUrlSuffix, { type: 'module' });
+      synthWorker = new Worker('./synth-worker.mjs?v=5.0.5' + workerUrlSuffix, { type: 'module' });
       synthWorker.addEventListener('error', onSynthWorkerError);
       synthWorker.addEventListener('message', onSynthWorkerMessage);
       synthWorker.postMessage({ type: 'init', lang: targetLang, voice: effVoice });
@@ -3243,7 +3535,7 @@
         synthBtn.classList.add('streaming');
         synthBtnLabel.textContent = 'Streaming...';
         stopBtn.disabled = false;
-        if (workletReady && audioCtx && audioCtx.state === 'running') {
+        if ((workletReady || USE_NATIVE_BUFFER_SCHEDULER) && audioCtx && audioCtx.state === 'running') {
           beginLiveAudioSession(playSessionId);
         } else {
           audioInitPromise = ensureAudioContext({ resumeNow: true }).then(() => {

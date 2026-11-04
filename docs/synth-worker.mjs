@@ -1,4 +1,4 @@
-import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.4';
+import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.5';
 
 const HF_REPO = 'gnumanth/ninada';
 const SUPPORTED_LANGS = ['en', 'sa', 'kn', 'hi', 'ta', 'te', 'ml', 'mr', 'bn', 'gu', 'pa', 'or'];
@@ -62,15 +62,19 @@ function unwrapOrtNamespace(ortNs) {
 
 function configureOrtWasmEnv(ortInstance, { forWebGpuHybrid = false } = {}) {
   if (!ortInstance?.env?.wasm) return;
-  const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
+  const isCoi =
+    typeof crossOriginIsolated !== 'undefined' &&
+    Boolean(crossOriginIsolated) &&
+    WORKER_PARAMS.get('coi') !== '0';
   ortInstance.env.wasm.wasmPaths = new URL('./ort/', import.meta.url).href;
   ortInstance.env.wasm.proxy = false;
   if (forWebGpuHybrid) {
     // Hybrid mode runs vocoder on WebGPU and compact prior/flow on <=2 WASM threads (avoids mobile little-core contention)
     ortInstance.env.wasm.numThreads = isCoi ? 2 : 1;
   } else {
+    const maxThreads = IS_MOBILE_OR_LOW_MEM ? 3 : 4;
     ortInstance.env.wasm.numThreads = isCoi
-      ? Math.min(4, Math.max(2, (self.navigator?.hardwareConcurrency || 4) - 1))
+      ? Math.min(maxThreads, Math.max(2, (self.navigator?.hardwareConcurrency || 4) - 1))
       : 1;
   }
 }
@@ -185,7 +189,7 @@ async function getModelsManifest() {
       fallbackLanguages[lc] = buildFallbackLangSpec(lc);
     }
     try {
-      const res = await fetch('./models_manifest.json?v=5.0.4', { cache: 'no-cache' });
+      const res = await fetch('./models_manifest.json?v=5.0.5', { cache: 'no-cache' });
       if (res.ok) {
         const json = await res.json();
         if (json?.cacheName) {
@@ -629,7 +633,10 @@ async function ensureLangReady(rawLang = 'en', { voice = 'male', emitReady = tru
     if (!ort || !ort.InferenceSession) {
       throw new Error('ONNX Runtime WASM unavailable');
     }
-    const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
+    const isCoi =
+    typeof crossOriginIsolated !== 'undefined' &&
+    Boolean(crossOriginIsolated) &&
+    WORKER_PARAMS.get('coi') !== '0';
     const activeThreads = ort?.env?.wasm?.numThreads || 1;
     const activeVocBackend = entry.session?.vocoderBackend || entry.vocoderBackend || 'wasm';
 
@@ -758,7 +765,8 @@ self.addEventListener('message', (ev) => {
           tier,
           firstChunkFrames: Number(msg.firstChunkFrames || defaultFirstFrames),
           chunkFrames: Number(msg.chunkFrames || defaultChunkFrames),
-          firstBucketFrames: 44,
+          firstBucketFrames: finalVocoderBackend === 'webgpu' ? 44 : workerThreads <= 1 ? 52 : 68,
+          mobileWasmStreaming: finalVocoderBackend !== 'webgpu',
           firstLatentFrames: Number(msg.firstLatentFrames || 68),
           singleThread: finalVocoderBackend !== 'webgpu' && (!workerIsCoi || workerThreads <= 1),
           yieldBetweenWindows: true,
