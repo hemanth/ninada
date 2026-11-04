@@ -1,4 +1,4 @@
-import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.3';
+import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.4';
 
 const HF_REPO = 'gnumanth/ninada';
 const SUPPORTED_LANGS = ['en', 'sa', 'kn', 'hi', 'ta', 'te', 'ml', 'mr', 'bn', 'gu', 'pa', 'or'];
@@ -31,6 +31,7 @@ const WORKER_PARAMS = (() => {
   }
 })();
 const FORCE_NO_GPU = WORKER_PARAMS.get('gpu') === '0';
+const FORCE_GPU = WORKER_PARAMS.get('gpu') === '1';
 
 let activeCacheName = DEFAULT_MODEL_CACHE_NAME;
 let manifestPromise = null;
@@ -38,8 +39,12 @@ let cachesPruned = false;
 
 let ort = null;
 let ortBackendMode = 'none'; // 'webgpu' | 'wasm' | 'none'
-let webGpuDisabled = FORCE_NO_GPU;
+// On Android Chrome & iOS Safari, WebGPU compiles ~600 HiFi-GAN WGSL/Vulkan shaders per shape ([44] + [112] = 6-10s stall!),
+// whereas 4-thread ARM Neon WASM SIMD compiles in ~90ms and streams speech in ~350-650ms with 0 underruns.
+let webGpuDisabled = FORCE_NO_GPU || (IS_MOBILE_OR_LOW_MEM && !FORCE_GPU);
 let ortResolvePromise = null;
+// Kick off ORT WASM runtime initialization immediately at Worker module load (t=0ms)
+resolveWorkerOrt().catch(() => {});
 
 // Active InferenceSession LRU keyed by `${lang}:${voiceKey}` (`sa:male`, `kn:male`, `kn:female`, ...)
 const warmSessions = new Map();
@@ -180,7 +185,7 @@ async function getModelsManifest() {
       fallbackLanguages[lc] = buildFallbackLangSpec(lc);
     }
     try {
-      const res = await fetch('./models_manifest.json?v=5.0.3', { cache: 'no-cache' });
+      const res = await fetch('./models_manifest.json?v=5.0.4', { cache: 'no-cache' });
       if (res.ok) {
         const json = await res.json();
         if (json?.cacheName) {
@@ -476,11 +481,20 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
     } catch {}
   }
 
-  const manifest = await getModelsManifest();
-  await pruneStaleModelCaches();
-  const langSpec = manifest.languages[lc] || buildFallbackLangSpec(lc);
-
   const isFemale = normVoice === 'female';
+  let langSpec;
+  if (!isFemale && LOCAL_BUNDLED_LANGS.has(lc)) {
+    // Zero-RTT fast path for bundled specialists (e.g. boot EN): start model read/fetch immediately at t=0ms!
+    langSpec = buildFallbackLangSpec(lc);
+    getModelsManifest().catch(() => {});
+  } else {
+    const manifest = await getModelsManifest();
+    langSpec = manifest.languages[lc] || buildFallbackLangSpec(lc);
+  }
+  setTimeout(() => {
+    pruneStaleModelCaches().catch(() => {});
+  }, 1500);
+
   const cacheKey = isFemale ? langSpec.femaleCacheKey : langSpec.cacheKey;
   const urls = isFemale ? langSpec.femaleUrls : langSpec.urls;
   const expectedBytes = Number(isFemale ? langSpec.femaleExpectedBytes : langSpec.expectedBytes) || 0;
@@ -506,13 +520,16 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
       }
     : null;
 
-  let modelRes = await fetchOrLoadAsset(
-    cacheKey,
-    urls,
-    expectedBytes,
-    (arr) => isValidOnnxBuffer(arr, expectedBytes),
-    reportProgress
-  );
+  let [, modelRes] = await Promise.all([
+    resolveWorkerOrt(),
+    fetchOrLoadAsset(
+      cacheKey,
+      urls,
+      expectedBytes,
+      (arr) => isValidOnnxBuffer(arr, expectedBytes),
+      reportProgress
+    ),
+  ]);
 
   // If female specialist is offline/unreachable, fall back cleanly to the native Male specialist for this language
   if ((!modelRes || !modelRes.bytes) && isFemale) {
@@ -597,37 +614,22 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
   return entry;
 }
 
-async function ensureLangReady(rawLang = 'sa', { voice = 'male', emitReady = true } = {}) {
-  const lc = SUPPORTED_LANGS.includes(rawLang) ? rawLang : 'sa';
+async function ensureLangReady(rawLang = 'en', { voice = 'male', emitReady = true } = {}) {
+  const lc = SUPPORTED_LANGS.includes(rawLang) ? rawLang : 'en';
   const normVoice = normalizeVoiceKey(voice);
 
-  await resolveWorkerOrt();
-
-  if (!ort || !ort.InferenceSession) {
-    if (!voiceEngine) voiceEngine = await ninada(lc);
-    currentLoadedLang = lc;
-    currentLoadedVoice = normVoice;
-    lastReadyPayload = {
-      type: 'ready',
-      lang: lc,
-      voice: normVoice,
-      isNeural: false,
-      isStreamingNeural: false,
-      vocoderBackend: 'none',
-      totalMB: 0,
-      fromCache: false,
-      cachedPersisted: false,
-      cacheBackend: null,
-      reason: 'ONNX Runtime WASM unavailable',
-    };
-    if (emitReady) self.postMessage(lastReadyPayload);
-    return voiceEngine;
+  // Start ORT WASM init and specialist model fetch/cache read concurrently when warming a new slot
+  const slotKey = `${lc}:${normVoice}`;
+  if (warmSessions.has(slotKey)) {
+    await resolveWorkerOrt();
   }
-
-  const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
 
   try {
     const entry = await loadOrGetWarmSession(lc, normVoice, { emitProgress: emitReady });
+    if (!ort || !ort.InferenceSession) {
+      throw new Error('ONNX Runtime WASM unavailable');
+    }
+    const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
     const activeThreads = ort?.env?.wasm?.numThreads || 1;
     const activeVocBackend = entry.session?.vocoderBackend || entry.vocoderBackend || 'wasm';
 

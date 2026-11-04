@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Ninada: In-Browser Text to Speech for Indian English &amp; Indian Languages</title>
-  <meta name="description" content="Ninada v5.0.3: Sub-second in-browser 24 kHz streaming text to speech for Indian English, Classical Sanskrit, Hindi, Kannada, Marathi, Bengali, Tamil, Telugu, Malayalam, Gujarati, Punjabi, and Odia, running privately in the browser with offline caching." />
+  <meta name="description" content="Ninada v5.0.4: Sub-second in-browser 24 kHz streaming text to speech for Indian English, Classical Sanskrit, Hindi, Kannada, Marathi, Bengali, Tamil, Telugu, Malayalam, Gujarati, Punjabi, and Odia, running privately in the browser with offline caching." />
   <link rel="canonical" href="https://hemanth.github.io/ninada/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Ninada" />
@@ -71,8 +71,8 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-  <link rel="modulepreload" href="./ninada.mjs?v=5.0.3" />
-  <link rel="modulepreload" href="./synth-worker.mjs?v=5.0.3" />
+  <link rel="modulepreload" href="./ninada.mjs?v=5.0.4" />
+  <link rel="modulepreload" href="./synth-worker.mjs?v=5.0.4" />
   <link rel="modulepreload" href="./ort/ort.wasm.min.mjs" />
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" crossorigin="anonymous" />
   <noscript><link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" /></noscript>
@@ -1294,7 +1294,7 @@
   </div>
 
   <script type="module">
-    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.0.3';
+    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.0.4';
     const IS_MOBILE_DEVICE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
     const IS_LOW_MEM_DEVICE = Boolean(
       IS_MOBILE_DEVICE || (navigator.deviceMemory && navigator.deviceMemory <= 4)
@@ -1938,7 +1938,7 @@
         if (!audioWorkletModulePromise) {
           audioWorkletModulePromise = (async () => {
             try {
-              await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js?v=5.0.3');
+              await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js?v=5.0.4');
               workletNode = new AudioWorkletNode(audioCtx, 'ninada-stream-processor', {
                 numberOfInputs: 0,
                 numberOfOutputs: 1,
@@ -2834,7 +2834,7 @@
 
     // Dedicated off-main-thread Web Worker for ONNX Runtime WebGPU / WASM SIMD
     const workerUrlSuffix = window.location.search ? '&' + window.location.search.slice(1) : '';
-    let synthWorker = new Worker('./synth-worker.mjs?v=5.0.3' + workerUrlSuffix, { type: 'module' });
+    let synthWorker = new Worker('./synth-worker.mjs?v=5.0.4' + workerUrlSuffix, { type: 'module' });
     let nextReqSeq = 1;
     let currentPendingReq = null;
 
@@ -3129,7 +3129,7 @@
 
     function respawnSynthWorker(targetLang, effVoice) {
       try { synthWorker.terminate(); } catch {}
-      synthWorker = new Worker('./synth-worker.mjs?v=5.0.3' + workerUrlSuffix, { type: 'module' });
+      synthWorker = new Worker('./synth-worker.mjs?v=5.0.4' + workerUrlSuffix, { type: 'module' });
       synthWorker.addEventListener('error', onSynthWorkerError);
       synthWorker.addEventListener('message', onSynthWorkerMessage);
       synthWorker.postMessage({ type: 'init', lang: targetLang, voice: effVoice });
