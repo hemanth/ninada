@@ -6,6 +6,7 @@ from .engine import (
     encode_wav_bytes,
     speak,
     split_prosodic_clauses,
+    split_studio_sentence_blocks,
     stream,
     synthesize_klatt_pcm,
 )
@@ -38,7 +39,7 @@ from .studio_g2p import (
     studio_text_to_ids,
 )
 
-__version__ = "5.0.0"
+__version__ = "5.0.1"
 
 __all__ = [
     "__version__",
@@ -52,6 +53,7 @@ __all__ = [
     "speak",
     "stream",
     "split_prosodic_clauses",
+    "split_studio_sentence_blocks",
     "encode_wav_bytes",
     "synthesize_klatt_pcm",
     "VOCAB_TOKENS",

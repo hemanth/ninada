@@ -13,7 +13,13 @@ import re
 import unicodedata
 from typing import Any
 
-from .g2p import detect_script_and_lang, iast_to_devanagari, to_native_model_text
+from .g2p import (
+    delete_hindi_schwa,
+    delete_hindi_schwa_word,
+    detect_script_and_lang,
+    iast_to_devanagari,
+    to_native_model_text,
+)
 
 STUDIO_HOP_LENGTH = 256
 STUDIO_SAMPLE_RATE = 24000
@@ -144,7 +150,18 @@ _EN_ABBREVS = (
     (re.compile(r"\bms\.", re.IGNORECASE), "miss"),
     (re.compile(r"\bdr\.", re.IGNORECASE), "doctor"),
     (re.compile(r"\bprof\.", re.IGNORECASE), "professor"),
+    (re.compile(r"\bst\.", re.IGNORECASE), "saint"),
     (re.compile(r"\bvs\.", re.IGNORECASE), "versus"),
+    (re.compile(r"\binc\.", re.IGNORECASE), "incorporated"),
+    (re.compile(r"\bcorp\.", re.IGNORECASE), "corporation"),
+    (re.compile(r"\bltd\.", re.IGNORECASE), "limited"),
+    (re.compile(r"\bco\.", re.IGNORECASE), "company"),
+    (re.compile(r"\bjr\.", re.IGNORECASE), "junior"),
+    (re.compile(r"\bsr\.", re.IGNORECASE), "senior"),
+    (re.compile(r"\bdept\.", re.IGNORECASE), "department"),
+    (re.compile(r"\buniv\.", re.IGNORECASE), "university"),
+    (re.compile(r"\bno\.", re.IGNORECASE), "number"),
+    (re.compile(r"\bapprox\.", re.IGNORECASE), "approximately"),
     (re.compile(r"\betc\.", re.IGNORECASE), "et cetera"),
     (re.compile(r"\be\.g\.", re.IGNORECASE), "for example"),
     (re.compile(r"\bi\.e\.", re.IGNORECASE), "that is"),
@@ -170,6 +187,12 @@ def _en_int_to_words(n: int) -> str:
     if n < 1_000_000:
         k, r = divmod(n, 1000)
         return f"{_en_int_to_words(k)} thousand" if r == 0 else f"{_en_int_to_words(k)} thousand {_en_int_to_words(r)}"
+    if n < 1_000_000_000:
+        m, r = divmod(n, 1_000_000)
+        return f"{_en_int_to_words(m)} million" if r == 0 else f"{_en_int_to_words(m)} million {_en_int_to_words(r)}"
+    if n < 1_000_000_000_000:
+        b, r = divmod(n, 1_000_000_000)
+        return f"{_en_int_to_words(b)} billion" if r == 0 else f"{_en_int_to_words(b)} billion {_en_int_to_words(r)}"
     return " ".join(_EN_ONES[int(d)] for d in str(n))
 
 
@@ -186,17 +209,86 @@ def _en_ordinal_to_words(n: int) -> str:
 
 
 def _normalize_english_text(t: str) -> str:
-    for pat, rep in _EN_ABBREVS:
-        t = pat.sub(rep, t)
-    t = t.replace("&", " and ").replace("%", " percent ").replace("₹", " rupees ").replace("$", " dollars ")
-    t = re.sub(r"(?<=\d),(?=\d{3}\b)", "", t)
+    t = re.sub(r"(?<=\d)\s*kHz\b", " kilohertz", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?<=\d)\s*MHz\b", " megahertz", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?<=\d)\s*GHz\b", " gigahertz", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bkHz\b", "kilohertz", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bMHz\b", "megahertz", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bGHz\b", "gigahertz", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?<=\d)\s*Hz\b", " hertz", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?<=\d)\s*ms\b", " milliseconds", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?<=\d)\s*MB\b", " megabytes", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?<=\d)\s*GB\b", " gigabytes", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?<=\d)\s*KB\b", " kilobytes", t, flags=re.IGNORECASE)
     t = re.sub(
-        r"\b(\d{1,6})(st|nd|rd|th)\b",
+        r"\b(\d{1,12})(st|nd|rd|th)\b",
         lambda m: _en_ordinal_to_words(int(m.group(1))),
         t,
         flags=re.IGNORECASE,
     )
-    t = re.sub(r"\b(\d{1,6})\b", lambda m: _en_int_to_words(int(m.group(1))), t)
+    t = re.sub(r"([a-z])([A-Z])", r"\1 \2", t)
+    t = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", t)
+    t = re.sub(r"([A-Za-z])(\d)", r"\1 \2", t)
+    t = re.sub(r"(\d)([A-Za-z])", r"\1 \2", t)
+    for pat, rep in _EN_ABBREVS:
+        t = pat.sub(rep, t)
+    t = re.sub(r"(?<=\d),(?=\d{3}\b)", "", t)
+
+    def _expand_curr_dec(m: re.Match[str]) -> str:
+        sym = m.group(1)
+        dollars = int(m.group(2))
+        cents = int(m.group(3))
+        curr_sing, curr_plur, sub_sing, sub_plur = {
+            "$": ("dollar", "dollars", "cent", "cents"),
+            "€": ("euro", "euros", "cent", "cents"),
+            "₹": ("rupee", "rupees", "paise", "paise"),
+        }[sym]
+        parts = []
+        if dollars > 0 or cents == 0:
+            c_name = curr_sing if dollars == 1 else curr_plur
+            parts.append(f"{_en_int_to_words(dollars)} {c_name}")
+        if cents > 0:
+            s_name = sub_sing if cents == 1 else sub_plur
+            if parts:
+                parts.append(f"and {_en_int_to_words(cents)} {s_name}")
+            else:
+                parts.append(f"{_en_int_to_words(cents)} {s_name}")
+        return " ".join(parts)
+
+    def _expand_curr_int(m: re.Match[str]) -> str:
+        sym = m.group(1)
+        val = int(m.group(2))
+        curr_sing, curr_plur = {
+            "$": ("dollar", "dollars"),
+            "€": ("euro", "euros"),
+            "₹": ("rupee", "rupees"),
+        }[sym]
+        c_name = curr_sing if val == 1 else curr_plur
+        return f"{_en_int_to_words(val)} {c_name}"
+
+    t = re.sub(r"([\$€₹])(\d+)\.(\d{2})\b", _expand_curr_dec, t)
+    t = re.sub(r"([\$€₹])(\d+)\b", _expand_curr_int, t)
+    t = t.replace("&", " and ").replace("%", " percent ").replace("₹", " rupees ").replace("$", " dollars ").replace("€", " euros ")
+
+    def _expand_dotted(m: re.Match[str]) -> str:
+        s = m.group(0)
+        parts = s.split(".")
+        if len(parts) == 2:
+            whole = _en_int_to_words(int(parts[0]))
+            frac_words = " ".join(_EN_ONES[int(d)] for d in parts[1])
+            return f"{whole} point {frac_words}"
+        out_parts = []
+        for p in parts:
+            if p == "0":
+                out_parts.append("zero")
+            elif len(p) > 1 and p.startswith("0"):
+                out_parts.append(" ".join(_EN_ONES[int(d)] for d in p))
+            else:
+                out_parts.append(_en_int_to_words(int(p)))
+        return " point ".join(out_parts)
+
+    t = re.sub(r"\b\d+(?:\.\d+)+\b", _expand_dotted, t)
+    t = re.sub(r"\b(\d{1,12})\b", lambda m: _en_int_to_words(int(m.group(1))), t)
     return t
 
 
@@ -232,11 +324,18 @@ def clean_studio_text(text: str, lang: str) -> str:
             if lc == "sa":
                 t = iast_to_devanagari(t)
             else:
-                t = to_native_model_text(t, lang=lc)
+                det_sc = detect_script_and_lang(t, default_lang=lc)[0]
+                dev = iast_to_devanagari(t) if det_sc in ("iast", "latin") else t
+                t = to_native_model_text(t, lang=lc, detected_script=det_sc, phonemic_dev=dev)
 
     if lc == "sa":
         t = re.sub(r"[\u0951-\u0954\u1cd0-\u1cff]", "", t)
-        t = t.replace("॥", ".").replace("।", ",")
+        t = re.sub(r"\s*ऽ+", "ऽ", t)
+        t = t.replace("||", "॥").replace("|", "।")
+
+    if lc == "hi":
+        t = re.sub(r"[\u0951-\u0954\u1cd0-\u1cff]", "", t)
+        t = t.replace("||", "।").replace("|", "।").replace("।।", "।")
 
     if lc == "mr":
         t = re.sub(r"[\u0951-\u0954\u1cd0-\u1cff]", "", t)
@@ -337,3 +436,16 @@ def studio_text_to_ids(text: str, lang: str | None = None) -> tuple[list[int], s
         interleaved.append(int(cid))
         interleaved.append(blank_id)
     return interleaved, lc, cleaned
+
+
+__all__ = [
+    "STUDIO_HOP_LENGTH",
+    "STUDIO_SAMPLE_RATE",
+    "STUDIO_SPECS",
+    "STUDIO_VOCABS",
+    "clean_studio_text",
+    "studio_text_to_ids",
+    "delete_hindi_schwa",
+    "delete_hindi_schwa_word",
+]
+

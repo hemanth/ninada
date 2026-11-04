@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ninada — Sanskrit, Indian English &amp; Pan-Indic Streaming Voice Studio</title>
-  <meta name="description" content="Ninada v5.0: Natural, real-time 24 kHz streaming speech synthesis for Classical Sanskrit, Indian English, Hindi, Kannada, Marathi, Bengali, Tamil, Telugu, Malayalam, Gujarati, Punjabi, and Odia — running privately in the browser with offline caching." />
+  <title>Ninada: In-Browser Text to Speech for Indian English &amp; Indian Languages</title>
+  <meta name="description" content="Ninada v5.0.1: In-browser 24 kHz streaming text to speech for Classical Sanskrit, Indian English, Hindi, Kannada, Marathi, Bengali, Tamil, Telugu, Malayalam, Gujarati, Punjabi, and Odia, running privately in the browser with offline caching." />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23121210'/%3E%3Cpath d='M7 16h3l2.5-7 4 14 3.5-10 2.5 3H25' fill='none' stroke='%23fbfaf7' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-  <link rel="modulepreload" href="./ninada.mjs?v=5.0.0" />
-  <link rel="modulepreload" href="./synth-worker.mjs?v=5.0.0" />
+  <link rel="modulepreload" href="./ninada.mjs?v=5.0.1" />
+  <link rel="modulepreload" href="./synth-worker.mjs?v=5.0.1" />
   <link rel="modulepreload" href="./ort/ort.wasm.min.mjs" />
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" crossorigin="anonymous" />
   <noscript><link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" /></noscript>
@@ -325,7 +325,7 @@
       border: 1px solid var(--line);
     }
 
-    @media (max-width: 620px) {
+    @media (max-width: 360px) {
       .controls-grid { grid-template-columns: 1fr; }
     }
 
@@ -738,8 +738,38 @@
     }
 
     @media (max-width: 620px) {
+      html, body {
+        overflow-x: hidden;
+      }
       .shell {
         padding: 20px 14px 52px;
+      }
+      .masthead {
+        gap: 14px;
+        padding-bottom: 16px;
+        margin-bottom: 18px;
+      }
+      .kicker {
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        line-height: 1.4;
+        align-items: flex-start;
+      }
+      .kicker .status-dot {
+        margin-top: 4px;
+        flex-shrink: 0;
+      }
+      .subtitle {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .masthead-badges {
+        gap: 6px;
+        width: 100%;
+      }
+      .masthead-badges .pill-stat {
+        font-size: 10.5px;
+        padding: 5px 8px;
       }
       .panel {
         padding: 14px;
@@ -750,6 +780,85 @@
         max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      .lang-tabs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .lang-btn {
+        width: 100%;
+        justify-content: space-between;
+        padding: 8px 9px;
+        font-size: 12px;
+        min-height: 40px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .lang-btn .lang-native {
+        font-size: 11.5px;
+      }
+      textarea#textInput {
+        min-height: 92px;
+        padding: 11px 12px;
+        font-size: 17.5px;
+        line-height: 1.52;
+        margin-bottom: 12px;
+      }
+      textarea#textInput.latin-script {
+        font-size: 16px;
+        line-height: 1.5;
+      }
+      .controls-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        padding: 10px;
+        margin-bottom: 12px;
+      }
+      .control-field {
+        min-width: 0;
+      }
+      .control-field label {
+        font-size: 10px;
+        margin-bottom: 4px;
+      }
+      .control-field select {
+        width: 100%;
+        min-width: 0;
+        font-size: 11.5px;
+        padding: 7px 6px;
+      }
+      .action-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 7px;
+      }
+      .action-row .btn-primary {
+        grid-column: 1 / -1;
+        width: 100%;
+        justify-content: center;
+        min-height: 44px;
+      }
+      .action-row .btn-secondary {
+        width: 100%;
+        justify-content: center;
+        min-height: 40px;
+        padding: 8px 6px;
+        font-size: 11.5px;
+        gap: 5px;
+        white-space: nowrap;
+      }
+      .telemetry-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px;
+      }
+      .metric-val {
+        font-size: 12.5px;
+        word-break: break-word;
+      }
+      canvas#waveCanvas {
+        height: 120px;
       }
       .install-strip {
         flex-direction: column;
@@ -803,6 +912,65 @@
       .ln {
         font-size: 9.8px;
       }
+      .progress-track {
+        min-width: 120px;
+        max-width: 100%;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .shell {
+        padding: 16px 10px 48px;
+      }
+      .panel {
+        padding: 12px;
+      }
+      .panel-header {
+        gap: 6px 10px;
+      }
+      .action-row {
+        gap: 8px;
+      }
+      .btn-primary, .btn-secondary {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .lang-tabs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .lang-btn {
+        min-height: 40px;
+        padding: 8px 9px;
+        font-size: 12px;
+        width: 100%;
+        justify-content: space-between;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .preset-chip {
+        min-height: 36px;
+        padding: 6px 10px;
+      }
+      .progress-track {
+        min-width: 100px;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .controls-grid {
+        grid-template-columns: 1fr;
+      }
+      .action-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .action-row #downloadLink {
+        grid-column: 1 / -1;
+      }
     }
 
     /* High-contrast accessible studio syntax tokens on #131311 carbon */
@@ -832,11 +1000,11 @@
       <div>
         <div class="kicker">
           <span id="modelDot" class="status-dot loading"></span>
-          <span id="modelStatusKicker">NINADA // SANSKRIT, INDIAN ENGLISH &amp; PAN-INDIC STREAMING VOICE STUDIO</span>
+          <span id="modelStatusKicker">NINADA // IN-BROWSER STREAMING TEXT TO SPEECH</span>
         </div>
         <h1>Ninada<span class="title-dev" id="devTitle"></span></h1>
         <p class="subtitle">
-          Natural, studio-clarity speech for Classical Sanskrit, Indian English, and ten Indian languages — streaming live right in your browser, Node.js, and Python with offline caching.
+          In-browser 24 kHz text to speech for Classical Sanskrit, Indian English, and ten Indian languages, running privately on your device in WebAssembly, Node.js, and Python with offline caching.
         </p>
         <div class="install-strip" aria-label="Package install commands">
           <div class="install-pill">
@@ -945,8 +1113,8 @@
             <input id="rateSlider" type="range" min="0.65" max="1.45" step="0.05" value="1.00" disabled />
           </div>
           <div class="control-field">
-            <label for="noiseSlider"><span>EXPRESSIVENESS</span><span id="noiseVal">0.60</span></label>
-            <input id="noiseSlider" type="range" min="0.00" max="0.85" step="0.02" value="0.60" disabled />
+            <label for="noiseSlider"><span>EXPRESSIVENESS</span><span id="noiseVal">0.40</span></label>
+            <input id="noiseSlider" type="range" min="0.00" max="0.85" step="0.02" value="0.40" disabled />
           </div>
         </div>
 
@@ -972,7 +1140,7 @@
 
       <section class="panel">
         <div class="panel-header">
-          <h2 class="panel-title">02 / Live Streaming Waveform &amp; Telemetry</h2>
+          <h2 class="panel-title">02 / Streaming Waveform &amp; Telemetry</h2>
           <span id="activeTierBadge" class="pill-stat">INITIALIZING</span>
         </div>
 
@@ -983,19 +1151,19 @@
         <div class="telemetry-grid">
           <div class="metric-box">
             <div class="metric-label">TIME TO FIRST AUDIO (TTFA)</div>
-            <div class="metric-val" id="metricTtfa">—</div>
+            <div class="metric-val" id="metricTtfa">--</div>
           </div>
           <div class="metric-box">
             <div class="metric-label">STREAM / REAL-TIME FACTOR</div>
-            <div class="metric-val" id="metricRtf">—</div>
+            <div class="metric-val" id="metricRtf">--</div>
           </div>
           <div class="metric-box">
             <div class="metric-label">AUDIO DURATION &amp; CHUNKS</div>
-            <div class="metric-val" id="metricDuration">—</div>
+            <div class="metric-val" id="metricDuration">--</div>
           </div>
           <div class="metric-box">
             <div class="metric-label">AKSHARAS / TOKENS</div>
-            <div class="metric-val" id="metricTokens">—</div>
+            <div class="metric-val" id="metricTokens">--</div>
           </div>
         </div>
 
@@ -1014,8 +1182,8 @@
 
     <section class="panel code-showcase" aria-label="Ninada Streaming SDK and CLI Code">
       <div class="panel-header">
-        <h2 class="panel-title">04 / Developer SDK &amp; CLI — Live Syntax-Highlighted Recipes</h2>
-        <span id="sdkLangBadge" class="pill-stat">LIVE SYNC · SA · STUDIO MALE</span>
+        <h2 class="panel-title">04 / Developer SDK &amp; CLI: Syntax-Highlighted Recipes</h2>
+        <span id="sdkLangBadge" class="pill-stat">SDK SYNC · SA · STUDIO MALE</span>
       </div>
 
       <div class="code-toolbar">
@@ -1063,7 +1231,8 @@
   </div>
 
   <script type="module">
-    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.0.0';
+    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.0.1';
+    const IS_MOBILE_DEVICE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 
     const NATIVE_NAMES = {
       sa: '\u0938\u0902\u0938\u094d\u0915\u0943\u0924\u092e\u094d',
@@ -1235,66 +1404,218 @@
 
     const PRESETS_BY_LANG = {
       sa: [
-        { label: 'Sanskrit \u00b7 Madhvacharya', lang: 'sa', text: '\u092a\u094d\u0930\u091c\u094d\u091e\u093e\u092a\u0942\u0930\u094d\u0935\u0915\u0935\u094d\u092f\u093e\u092a\u093e\u0930\u0935\u0924\u094d\u0924\u094d\u0935\u0902 \u091c\u0940\u0935\u0924\u094d\u0935\u092e\u094d \u0964 \u092f\u0925\u093e\u0930\u094d\u0925\u091c\u094d\u091e\u093e\u0928\u0902 \u092a\u094d\u0930\u092e\u093e\u0923\u092e\u094d \u0965' },
-        { label: 'Sanskrit \u00b7 Kalidasa Raghuvamsha', lang: 'sa', text: '\u0935\u093e\u0917\u0930\u094d\u0925\u093e\u0935\u093f\u0935 \u0938\u0902\u092a\u0943\u0915\u094d\u0924\u094c \u0935\u093e\u0917\u0930\u094d\u0925\u092a\u094d\u0930\u0924\u093f\u092a\u0924\u094d\u0924\u092f\u0947 \u0964 \u091c\u0917\u0924\u0903 \u092a\u093f\u0924\u0930\u094c \u0935\u0928\u094d\u0926\u0947 \u092a\u093e\u0930\u094d\u0935\u0924\u0940\u092a\u0930\u092e\u0947\u0936\u094d\u0935\u0930\u094c \u0965' },
-        { label: 'Sanskrit \u00b7 Rigveda & Vedanta', lang: 'sa', text: '\u090b\u0924\u0902 \u091a \u0938\u0924\u094d\u092f\u0902 \u091a\u093e\u092d\u0940\u0926\u094d\u0927\u093e\u0924\u094d \u0924\u092a\u0938\u094b\u093d\u0927\u094d\u092f\u091c\u093e\u092f\u0924 \u0964 \u0924\u0924\u094b \u0930\u093e\u0924\u094d\u0930\u094d\u092f\u091c\u093e\u092f\u0924 \u0924\u0924\u0903 \u0938\u092e\u0941\u0926\u094d\u0930\u094b \u0905\u0930\u094d\u0923\u0935\u0903 \u0965' },
-        { label: 'Sanskrit \u00b7 IAST Streaming', lang: 'sa', text: 'karma\u1e47yev\u0101dhik\u0101raste m\u0101 phale\u1e63u kad\u0101cana | m\u0101 karmaphalaheturbh\u016brm\u0101 te sa\u1e45go\'stvakarmani || yogastha\u1e25 kuru karm\u0101\u1e47i sa\u1e45ga\u1e43 tyaktv\u0101 dhana\u00f1jaya |' },
+        {
+          label: 'Sanskrit \u00b7 In-Browser TTS',
+          lang: 'sa',
+          text: 'निनादः संजालपटले एव चलितं प्रत्यक्षं पाठवाचकं ध्वनियन्त्रम् अस्ति । इदं लिखितं संस्कृतपाठं स्पष्टया स्वाभाविकया च वाण्या सद्यः उच्चारयति ॥',
+        },
+        {
+          label: 'Sanskrit \u00b7 Offline Browser Voice',
+          lang: 'sa',
+          text: 'बाह्यसर्वरं विना इदं ध्वनियन्त्रं तव ब्राउजर् मध्ये एव सुरक्षितरूपेण कार्यं करोति । एकवारं सञ्चितं मॉडल् जालसम्पर्कं विना अपि निर्विघ्नं वदति ॥',
+        },
+        {
+          label: 'Sanskrit \u00b7 Streaming Passage',
+          lang: 'sa',
+          text: 'यदा त्वं पाठं लिखसि तदा निनादः प्रथमवाक्यांशं क्षणेन ध्वनिरूपेण प्रवाहयति । अनेन दीर्घपाठः अपि विना विलम्बं सुस्पष्टं श्रूयते ॥',
+        },
+        {
+          label: 'Sanskrit \u00b7 IAST Browser TTS',
+          lang: 'sa',
+          text: 'nin\u0101da\u1e25 tava braujar madhye eva calita\u1e43 pratyak\u1e63a\u1e43 p\u0101\u1e6dhav\u0101caka\u1e43 dhvaniyantram asti | b\u0101hyasarvara\u1e43 vin\u0101 ida\u1e43 likhita\u1e43 p\u0101\u1e6dha\u1e43 spa\u1e63\u1e6day\u0101 v\u0101\u1e47y\u0101 sadya\u1e25 prav\u0101hayati ||',
+        },
       ],
       kn: [
-        { label: 'Kannada \u00b7 Studio', lang: 'kn', text: '\u0c95\u0ca8\u0ccd\u0ca8\u0ca1 \u0cad\u0cbe\u0cb7\u0cc6\u0caf \u0ca8\u0cc8\u0cb8\u0cb0\u0ccd\u0c97\u0cbf\u0c95 \u0ca7\u0ccd\u0cb5\u0ca8\u0cbf \u0cb8\u0c82\u0cb6\u0ccd\u0cb2\u0cc7\u0cb7\u0ca3\u0cc6\u0c97\u0cc6 \u0cb8\u0ccd\u0cb5\u0cbe\u0c97\u0ca4. \u0ca8\u0cbf\u0ca8\u0cbe\u0ca6 \u0ca4\u0c82\u0ca4\u0ccd\u0cb0\u0c9c\u0ccd\u0c9e\u0cbe\u0ca8\u0cb5\u0cc1 \u0cb8\u0ccd\u0caa\u0cb7\u0ccd\u0c9f \u0cae\u0ca4\u0ccd\u0ca4\u0cc1 \u0cb8\u0cc1\u0c82\u0ca6\u0cb0\u0cb5\u0cbe\u0ca6 \u0c89\u0c9a\u0ccd\u0c9a\u0cbe\u0cb0\u0ca3\u0cc6\u0caf\u0ca8\u0ccd\u0ca8\u0cc1 \u0ca8\u0cc0\u0ca1\u0cc1\u0ca4\u0ccd\u0ca4\u0ca6\u0cc6.' },
-        { label: 'Kannada \u00b7 Sarvajna Tripadi', lang: 'kn', text: '\u0c8e\u0cb2\u0ccd\u0cb2\u0cbe\u0ca6\u0cb0\u0cc2 \u0c87\u0cb0\u0cc1 \u0c8e\u0c82\u0ca4\u0cbe\u0ca6\u0cb0\u0cc2 \u0c87\u0cb0\u0cc1 \u0c8e\u0c82\u0ca6\u0cc6\u0c82\u0ca6\u0cbf\u0c97\u0cc2 \u0ca8\u0cc0 \u0c95\u0ca8\u0ccd\u0ca8\u0ca1\u0cb5\u0cbe\u0c97\u0cbf\u0cb0\u0cc1 \u0964 \u0c95\u0ca8\u0ccd\u0ca8\u0ca1\u0cb5\u0cc7 \u0cb8\u0ca4\u0ccd\u0caf \u0c95\u0ca8\u0ccd\u0ca8\u0ca1\u0cb5\u0cc7 \u0ca8\u0cbf\u0ca4\u0ccd\u0caf \u0965' },
-        { label: 'Kannada \u00b7 Sahitya', lang: 'kn', text: '\u0cae\u0ca8\u0cc1\u0c9c\u0cae\u0ca4 \u0cb5\u0cbf\u0cb6\u0ccd\u0cb5\u0caa\u0ca5 \u0cb8\u0cb0\u0ccd\u0cb5\u0ccb\u0ca6\u0caf \u0cb8\u0cae\u0ca8\u0ccd\u0cb5\u0caf \u0caa\u0cc2\u0cb0\u0ccd\u0ca3\u0ca6\u0cc3\u0cb7\u0ccd\u0c9f\u0cbf \u0c87\u0ca6\u0cc1 \u0c95\u0cc1\u0cb5\u0cc6\u0c82\u0caa\u0cc1 \u0c85\u0cb5\u0cb0 \u0cb8\u0c82\u0ca6\u0cc7\u0cb6.' },
-        { label: 'Kannada \u00b7 Streaming Passage', lang: 'kn', text: '\u0c95\u0cb0\u0ccd\u0ca8\u0cbe\u0c9f\u0c95\u0cb5\u0cc1 \u0cb6\u0ccd\u0cb0\u0cc0\u0cae\u0c82\u0ca4 \u0cb8\u0cbe\u0cb9\u0cbf\u0ca4\u0ccd\u0caf \u0cae\u0ca4\u0ccd\u0ca4\u0cc1 \u0cb8\u0c82\u0c97\u0cc0\u0ca4 \u0caa\u0cb0\u0c82\u0caa\u0cb0\u0cc6\u0caf\u0ca8\u0ccd\u0ca8\u0cc1 \u0cb9\u0cca\u0c82\u0ca6\u0cbf\u0ca6\u0cc6. \u0caa\u0c82\u0caa, \u0cb0\u0ca8\u0ccd\u0ca8, \u0caa\u0cc1\u0cb0\u0c82\u0ca6\u0cb0\u0ca6\u0cbe\u0cb8\u0cb0\u0cc1 \u0cae\u0ca4\u0ccd\u0ca4\u0cc1 \u0c95\u0cc1\u0cb5\u0cc6\u0c82\u0caa\u0cc1 \u0c95\u0ca8\u0ccd\u0ca8\u0ca1 \u0ca8\u0cbe\u0ca1\u0cbf\u0ca8 \u0cb0\u0ca4\u0ccd\u0ca8\u0c97\u0cb3\u0cc1. \u0c88 \u0ca7\u0ccd\u0cb5\u0ca8\u0cbf \u0ca4\u0c82\u0ca4\u0ccd\u0cb0\u0c9c\u0ccd\u0c9e\u0cbe\u0ca8\u0cb5\u0cc1 \u0cac\u0ccd\u0cb0\u0ccc\u0cb8\u0cb0\u0ccd \u0c92\u0cb3\u0c97\u0cc6 \u0ca8\u0cc7\u0cb0\u0cb5\u0cbe\u0c97\u0cbf \u0c95\u0cbe\u0cb0\u0ccd\u0caf\u0ca8\u0cbf\u0cb0\u0ccd\u0cb5\u0cb9\u0cbf\u0cb8\u0cc1\u0ca4\u0ccd\u0ca4\u0ca6\u0cc6.' },
+        {
+          label: 'Kannada \u00b7 In-Browser TTS',
+          lang: 'kn',
+          text: 'ನಿನಾದವು ನಿಮ್ಮ ಬ್ರೌಸರ್ ಒಳಗೆ ನೇರವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುವ ಪಠ್ಯದಿಂದ ಧ್ವನಿ ತಂತ್ರಜ್ಞಾನವಾಗಿದೆ. ಯಾವುದೇ ಹೊರಗಿನ ಸರ್ವರ್ ಇಲ್ಲದೆ ಇದು ಸ್ಪಷ್ಟ ಕನ್ನಡ ಧ್ವನಿಯನ್ನು ತಕ್ಷಣ ಸ್ಟ್ರೀಮ್ ಮಾಡುತ್ತದೆ.',
+        },
+        {
+          label: 'Kannada \u00b7 Offline Browser Voice',
+          lang: 'kn',
+          text: 'ಈ ಇನ್ ಬ್ರೌಸರ್ ಟೆಕ್ಸ್ಟ್ ಟು ಸ್ಪೀಚ್ ಎಂಜಿನ್ ನಿಮ್ಮ ಸಾಧನದಲ್ಲಿಯೇ ಖಾಸಗಿಯಾಗಿ ನಡೆಯುತ್ತದೆ. ಒಮ್ಮೆ ಸಂಗ್ರಹವಾದ ನಂತರ ಇಂಟರ್ನೆಟ್ ಇಲ್ಲದೆಯೂ ಸರಾಗವಾಗಿ ಮಾತನಾಡುತ್ತದೆ.',
+        },
+        {
+          label: 'Kannada \u00b7 Streaming Passage',
+          lang: 'kn',
+          text: 'ನೀವು ಬರೆದ ಪಠ್ಯವನ್ನು ನಿನಾದವು ಬ್ರೌಸರ್ ಒಳಗೇ ಕ್ಷಣಾರ್ಧದಲ್ಲಿ ಸಹಜವಾದ ಧ್ವನಿಯಾಗಿ ಪರಿವರ್ತಿಸುತ್ತದೆ. ಪ್ರತಿಯೊಂದು ವಾಕ್ಯವೂ ತಡೆಯಿಲ್ಲದೆ ಸುಗಮವಾಗಿ ಕೇಳಿಸುತ್ತದೆ. ಈ ಧ್ವನಿ ತಂತ್ರಜ್ಞಾನವು ಮೊಬೈಲ್ ಮತ್ತು ಗಣಕಯಂತ್ರಗಳಲ್ಲಿ ನೇರವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ.',
+        },
+        {
+          label: 'Kannada \u00b7 Private Voice Studio',
+          lang: 'kn',
+          text: 'ಬ್ರೌಸರ್ ಒಳಗೆ ನಡೆಯುವ ಧ್ವನಿ ಸಂಶ್ಲೇಷಣೆಯು ಸಂಪೂರ್ಣ ಗೌಪ್ಯತೆಯನ್ನು ಕಾಪಾಡುತ್ತದೆ. ವೆಬ್ ಅಸೆಂಬ್ಲಿ ಮೂಲಕ ಕನ್ನಡ ವಾಕ್ಯಗಳು ಸ್ಪಷ್ಟ ಉಚ್ಚಾರಣೆಯೊಂದಿಗೆ ಮೂಡಿಬರುತ್ತವೆ.',
+        },
       ],
       hi: [
-        { label: 'Hindi \u00b7 Studio', lang: 'hi', text: '\u0928\u092e\u0938\u094d\u0924\u0947 \u092d\u093e\u0930\u0924, \u0928\u093f\u0928\u093e\u0926 \u092c\u0939\u0941\u092d\u093e\u0937\u0940 \u0924\u0902\u0924\u094d\u0930\u093f\u0915\u093e \u0935\u093e\u0915\u094d \u0938\u0902\u0936\u094d\u0932\u0947\u0937\u0923 \u092a\u094d\u0930\u0923\u093e\u0932\u0940 \u092e\u0947\u0902 \u0906\u092a\u0915\u093e \u0938\u094d\u0935\u093e\u0917\u0924 \u0939\u0948 \u0964' },
-        { label: 'Hindi \u00b7 Kabir Doha', lang: 'hi', text: '\u092c\u0921\u093c\u093e \u0939\u0941\u0906 \u0924\u094b \u0915\u094d\u092f\u093e \u0939\u0941\u0906, \u091c\u0948\u0938\u0947 \u092a\u0947\u0921\u093c \u0916\u091c\u0942\u0930 \u0964 \u092a\u0902\u0925\u0940 \u0915\u094b \u091b\u093e\u092f\u093e \u0928\u0939\u0940\u0902, \u092b\u0932 \u0932\u093e\u0917\u0947 \u0905\u0924\u093f \u0926\u0942\u0930 \u0965' },
-        { label: 'Hindi \u00b7 Streaming Passage', lang: 'hi', text: '\u092d\u093e\u0930\u0924\u0940\u092f \u092d\u093e\u0937\u093e\u0913\u0902 \u0915\u0940 \u0927\u094d\u0935\u0928\u094d\u092f\u093e\u0924\u094d\u092e\u0915 \u0938\u0902\u0930\u091a\u0928\u093e \u0905\u0924\u094d\u092f\u0902\u0924 \u0935\u0948\u091c\u094d\u091e\u093e\u0928\u093f\u0915 \u0914\u0930 \u0938\u0941\u0938\u094d\u092a\u0937\u094d\u091f \u0939\u0948 \u0964 \u092f\u0939 \u092a\u094d\u0930\u0923\u093e\u0932\u0940 \u092c\u093f\u0928\u093e \u0915\u093f\u0938\u0940 \u092c\u093e\u0939\u0930\u0940 \u0938\u0930\u094d\u0935\u0930 \u0915\u0947 \u0938\u0940\u0927\u0947 \u0906\u092a\u0915\u0947 \u092c\u094d\u0930\u093e\u0909\u091c\u093c\u0930 \u092e\u0947\u0902 \u0927\u093e\u0930\u093e\u092a\u094d\u0930\u0935\u093e\u0939 \u0935\u093e\u0923\u0940 \u0909\u0924\u094d\u092a\u0928\u094d\u0928 \u0915\u0930\u0924\u0940 \u0939\u0948 \u0964' },
+        {
+          label: 'Hindi \u00b7 In-Browser TTS',
+          lang: 'hi',
+          text: 'निनाद सीधे आपके ब्राउज़र में चलने वाला टेक्स्ट टू स्पीच इंजन है । बिना किसी बाहरी सर्वर के यह लिखित पाठ को तुरंत स्वाभाविक वाणी में स्ट्रीम करता है ।',
+        },
+        {
+          label: 'Hindi \u00b7 Offline Browser Voice',
+          lang: 'hi',
+          text: 'यह इन ब्राउज़र वाक् संश्लेषण प्रणाली पूरी तरह आपके उपकरण पर सुरक्षित रूप से चलती है । एक बार कैश होने के बाद यह ऑफ़लाइन भी स्पष्ट आवाज़ देती है ।',
+        },
+        {
+          label: 'Hindi \u00b7 Streaming Passage',
+          lang: 'hi',
+          text: 'आप जैसे ही कोई वाक्य चुनते हैं, निनाद ब्राउज़र के भीतर ही पहले वाक्य से सुगम ऑडियो स्ट्रीमिंग शुरू कर देता है । इससे लंबे अनुच्छेद भी बिना रुकावट के स्पष्ट सुनाई देते हैं ।',
+        },
       ],
       ta: [
-        { label: 'Tamil \u00b7 Studio', lang: 'ta', text: '\u0ba4\u0bae\u0bbf\u0bb4\u0bcd \u0bae\u0bca\u0bb4\u0bbf\u0baf\u0bbf\u0ba9\u0bcd \u0b87\u0baf\u0bb1\u0bcd\u0b95\u0bc8 \u0b92\u0bb2\u0bbf \u0b89\u0bb0\u0bc1\u0bb5\u0bbe\u0b95\u0bcd\u0b95\u0ba4\u0bcd\u0ba4\u0bbf\u0bb1\u0bcd\u0b95\u0bc1 \u0ba8\u0bb2\u0bcd\u0bb5\u0bb0\u0bb5\u0bc1. \u0ba8\u0bbf\u0ba8\u0bbe\u0ba4\u0bae\u0bcd \u0ba4\u0bc6\u0bb3\u0bbf\u0bb5\u0bbe\u0ba9 \u0b89\u0b9a\u0bcd\u0b9a\u0bb0\u0bbf\u0baa\u0bcd\u0baa\u0bc8 \u0bb5\u0bb4\u0b99\u0bcd\u0b95\u0bc1\u0b95\u0bbf\u0bb1\u0ba4\u0bc1.' },
-        { label: 'Tamil \u00b7 Tirukkural', lang: 'ta', text: '\u0b85\u0b95\u0bb0 \u0bae\u0bc1\u0ba4\u0bb2 \u0b8e\u0bb4\u0bc1\u0ba4\u0bcd\u0ba4\u0bc6\u0bb2\u0bcd\u0bb2\u0bbe\u0bae\u0bcd \u0b86\u0ba4\u0bbf \u0baa\u0b95\u0bb5\u0ba9\u0bcd \u0bae\u0bc1\u0ba4\u0bb1\u0bcd\u0bb1\u0bc7 \u0b89\u0bb2\u0b95\u0bc1. \u0b95\u0bb1\u0bcd\u0b95 \u0b95\u0b9a\u0b9f\u0bb1\u0b95\u0bcd \u0b95\u0bb1\u0bcd\u0baa\u0bb5\u0bc8 \u0b95\u0bb1\u0bcd\u0bb1\u0baa\u0bbf\u0ba9\u0bcd \u0ba8\u0bbf\u0bb1\u0bcd\u0b95 \u0b85\u0ba4\u0bb1\u0bcd\u0b95\u0bc1\u0ba4\u0bcd \u0ba4\u0b95.' },
-        { label: 'Tamil \u00b7 Streaming Passage', lang: 'ta', text: '\u0b9a\u0bc6\u0bae\u0bcd\u0bae\u0bca\u0bb4\u0bbf\u0baf\u0bbe\u0ba9 \u0ba4\u0bae\u0bbf\u0bb4\u0bcd \u0b87\u0bb2\u0b95\u0bcd\u0b95\u0bbf\u0baf \u0bb5\u0bb3\u0bae\u0bc1\u0bae\u0bcd \u0b87\u0b9a\u0bc8 \u0ba8\u0baf\u0bae\u0bc1\u0bae\u0bcd \u0b95\u0bca\u0ba3\u0bcd\u0b9f\u0ba4\u0bc1. \u0b87\u0ba8\u0bcd\u0ba4 \u0ba8\u0bb0\u0bae\u0bcd\u0baa\u0bbf\u0baf\u0bb2\u0bcd \u0b92\u0bb2\u0bbf \u0b85\u0bae\u0bc8\u0baa\u0bcd\u0baa\u0bc1 \u0b89\u0bb2\u0bbe\u0bb5\u0bbf\u0baf\u0bbf\u0bb2\u0bcd \u0ba8\u0bc7\u0bb0\u0b9f\u0bbf\u0baf\u0bbe\u0b95\u0ba4\u0bcd \u0ba4\u0b9f\u0bc8\u0baf\u0bbf\u0ba9\u0bcd\u0bb1\u0bbf \u0b87\u0baf\u0b99\u0bcd\u0b95\u0bc1\u0b95\u0bbf\u0bb1\u0ba4\u0bc1.' },
+        {
+          label: 'Tamil \u00b7 In-Browser TTS',
+          lang: 'ta',
+          text: 'நிநாதம் உங்கள் உலாவியில் நேரடியாக இயங்கும் உரை முதல் ஒலி இயந்திரமாகும். எந்த வெளிப்புற சேவையகமும் இன்றி தமிழ் உரையை உடனடியாகத் தெளிவான குரலில் ஒலிக்கச் செய்கிறது.',
+        },
+        {
+          label: 'Tamil \u00b7 Offline Browser Voice',
+          lang: 'ta',
+          text: 'இந்த உலாவி வழி குரல் உருவாக்க நுட்பம் உங்கள் சாதனத்திலேயே பாதுகாப்பாக இயங்குகிறது. ஒருமுறை சேமிக்கப்பட்ட பின் இணையம் இல்லாமலும் தடையின்றிப் பேசுகிறது.',
+        },
+        {
+          label: 'Tamil \u00b7 Streaming Passage',
+          lang: 'ta',
+          text: 'நீங்கள் உள்ளிடும் தமிழ் வாக்கியங்களை நிநாதம் உலாவியின் உள்ளேயே உடனுக்குடன் ஒலி ஓடையாக வழங்குகிறது. முழுப் பத்தியும் முடியும் வரை காத்திருக்கத் தேவையில்லை.',
+        },
       ],
       te: [
-        { label: 'Telugu \u00b7 Studio', lang: 'te', text: '\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 \u0c2d\u0c3e\u0c37\u0c3e \u0c27\u0c4d\u0c35\u0c28\u0c3f \u0c38\u0c02\u0c36\u0c4d\u0c32\u0c47\u0c37\u0c23 \u0c2a\u0c4d\u0c30\u0c2f\u0c4b\u0c17\u0c36\u0c3e\u0c32\u0c15\u0c41 \u0c38\u0c4d\u0c35\u0c3e\u0c17\u0c24\u0c02. \u0c28\u0c3f\u0c28\u0c3e\u0c26 \u0c38\u0c4d\u0c2a\u0c37\u0c4d\u0c1f\u0c2e\u0c48\u0c28 \u0c09\u0c1a\u0c4d\u0c1a\u0c3e\u0c30\u0c23\u0c28\u0c41 \u0c05\u0c02\u0c26\u0c3f\u0c38\u0c4d\u0c24\u0c41\u0c02\u0c26\u0c3f.' },
-        { label: 'Telugu \u00b7 Vemana Padyam', lang: 'te', text: '\u0c26\u0c47\u0c36\u0c2d\u0c3e\u0c37\u0c32\u0c02\u0c26\u0c41 \u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 \u0c32\u0c46\u0c38\u0c4d\u0c38 \u0c05\u0c28\u0c3f \u0c36\u0c4d\u0c30\u0c40\u0c15\u0c43\u0c37\u0c4d\u0c23\u0c26\u0c47\u0c35\u0c30\u0c3e\u0c2f\u0c32\u0c41 \u0c15\u0c4a\u0c28\u0c3f\u0c2f\u0c3e\u0c21\u0c3e\u0c30\u0c41. \u0c09\u0c2a\u0c4d\u0c2a\u0c41 \u0c15\u0c2a\u0c4d\u0c2a\u0c41\u0c30\u0c02\u0c2c\u0c41 \u0c28\u0c4a\u0c15\u0c4d\u0c15 \u0c2a\u0c4b\u0c32\u0c3f\u0c15\u0c28\u0c41\u0c02\u0c21\u0c41.' },
-        { label: 'Telugu \u00b7 Streaming Passage', lang: 'te', text: '\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 \u0c2d\u0c3e\u0c37\u0c32\u0c4b\u0c28\u0c3f \u0c05\u0c15\u0c4d\u0c37\u0c30\u0c3e\u0c32 \u0c2e\u0c3e\u0c27\u0c41\u0c30\u0c4d\u0c2f\u0c02 \u0c38\u0c02\u0c17\u0c40\u0c24\u0c3e\u0c28\u0c3f\u0c15\u0c3f \u0c0e\u0c02\u0c24\u0c4b \u0c05\u0c28\u0c41\u0c15\u0c42\u0c32\u0c2e\u0c48\u0c28\u0c26\u0c3f. \u0c08 \u0c35\u0c4d\u0c2f\u0c35\u0c38\u0c4d\u0c25 \u0c2c\u0c4d\u0c30\u0c4c\u0c1c\u0c30\u0c4d \u0c32\u0c4b\u0c28\u0c47 \u0c35\u0c47\u0c17\u0c02\u0c17\u0c3e \u0c27\u0c4d\u0c35\u0c28\u0c3f\u0c28\u0c3f \u0c2a\u0c4d\u0c30\u0c35\u0c3e\u0c39\u0c02\u0c32\u0c3e \u0c05\u0c02\u0c26\u0c3f\u0c38\u0c4d\u0c24\u0c41\u0c02\u0c26\u0c3f.' },
+        {
+          label: 'Telugu \u00b7 In-Browser TTS',
+          lang: 'te',
+          text: 'నినాద మీ బ్రౌజర్ లోనే నేరుగా పనిచేసే టెక్స్ట్ టు స్పీచ్ ఇంజిన్. ఎలాంటి బాహ్య సర్వర్ లేకుండా తెలుగు వచనాన్ని వెంటనే సహజమైన గొంతుతో స్ట్రీమ్ చేస్తుంది.',
+        },
+        {
+          label: 'Telugu \u00b7 Offline Browser Voice',
+          lang: 'te',
+          text: 'ఈ ఇన్ బ్రౌజర్ వాయిస్ సిస్టమ్ పూర్తిగా మీ పరికరంలోనే సురక్షితంగా నడుస్తుంది. ఒక్కసారి క్యాష్ అయిన తర్వాత ఆఫ్‌లైన్ లో కూడా స్పష్టంగా మాట్లాడుతుంది.',
+        },
+        {
+          label: 'Telugu \u00b7 Streaming Passage',
+          lang: 'te',
+          text: 'మీరు ఏ తెలుగు వాక్యాన్ని ఇచ్చినా నినాద బ్రౌజర్ లోపలే తక్షణమే ఆడియో స్ట్రీమింగ్ ప్రారంభిస్తుంది. మొత్తం పేరా పూర్తయ్యే వరకు వేచి ఉండాల్సిన అవసరం లేదు.',
+        },
       ],
       ml: [
-        { label: 'Malayalam \u00b7 Studio', lang: 'ml', text: '\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02 \u0d2d\u0d3e\u0d37\u0d3e \u0d36\u0d2c\u0d4d\u0d26 \u0d38\u0d02\u0d2f\u0d4b\u0d1c\u0d28 \u0d2a\u0d30\u0d40\u0d15\u0d4d\u0d37\u0d23\u0d36\u0d3e\u0d32\u0d2f\u0d3f\u0d32\u0d47\u0d15\u0d4d\u0d15\u0d4d \u0d38\u0d4d\u0d35\u0d3e\u0d17\u0d24\u0d02. \u0d28\u0d3f\u0d28\u0d3e\u0d26\u0d02 \u0d38\u0d4d\u0d35\u0d3e\u0d2d\u0d3e\u0d35\u0d3f\u0d15\u0d2e\u0d3e\u0d2f \u0d36\u0d2c\u0d4d\u0d26\u0d02 \u0d28\u0d7d\u0d15\u0d41\u0d28\u0d4d\u0d28\u0d41.' },
-        { label: 'Malayalam \u00b7 Sahitya', lang: 'ml', text: '\u0d2e\u0d32\u0d2f\u0d3e\u0d33 \u0d2d\u0d3e\u0d37\u0d2f\u0d41\u0d1f\u0d46 \u0d05\u0d15\u0d4d\u0d37\u0d30\u0d38\u0d4d\u0d2b\u0d41\u0d1f\u0d24\u0d2f\u0d41\u0d02 \u0d24\u0d3e\u0d33\u0d2c\u0d4b\u0d27\u0d35\u0d41\u0d02 \u0d05\u0d24\u0d40\u0d35 \u0d38\u0d41\u0d28\u0d4d\u0d26\u0d30\u0d2e\u0d3e\u0d23\u0d4d.' },
-        { label: 'Malayalam \u00b7 Streaming Passage', lang: 'ml', text: '\u0d15\u0d47\u0d30\u0d33\u0d24\u0d4d\u0d24\u0d3f\u0d28\u0d4d\u0d31\u0d46 \u0d38\u0d3e\u0d39\u0d3f\u0d24\u0d4d\u0d2f \u0d2a\u0d3e\u0d30\u0d2e\u0d4d\u0d2a\u0d30\u0d4d\u0d2f\u0d35\u0d41\u0d02 \u0d38\u0d02\u0d38\u0d4d\u0d15\u0d43\u0d24 \u0d38\u0d4d\u0d35\u0d3e\u0d27\u0d40\u0d28\u0d35\u0d41\u0d02 \u0d2e\u0d32\u0d2f\u0d3e\u0d33 \u0d2d\u0d3e\u0d37\u0d2f\u0d46 \u0d38\u0d2e\u0d4d\u0d2a\u0d28\u0d4d\u0d28\u0d2e\u0d3e\u0d15\u0d4d\u0d15\u0d41\u0d28\u0d4d\u0d28\u0d41. \u0d08 \u0d36\u0d2c\u0d4d\u0d26 \u0d38\u0d02\u0d35\u0d3f\u0d27\u0d3e\u0d28\u0d02 \u0d2c\u0d4d\u0d30\u0d57\u0d38\u0d31\u0d3f\u0d7d \u0d28\u0d47\u0d30\u0d3f\u0d1f\u0d4d\u0d1f\u0d4d \u0d2a\u0d4d\u0d30\u0d35\u0d7c\u0d24\u0d4d\u0d24\u0d3f\u0d15\u0d4d\u0d15\u0d41\u0d28\u0d4d\u0d28\u0d41.' },
+        {
+          label: 'Malayalam \u00b7 In-Browser TTS',
+          lang: 'ml',
+          text: 'നിങ്ങളുടെ ബ്രൗസറിൽ നേരിട്ട് പ്രവർത്തിക്കുന്ന ടെക്സ്റ്റ് ടു സ്പീച്ച് എഞ്ചിനാണ് നിനാദം. ബാഹ്യ സെർവറുകൾ ഇല്ലാതെ മലയാളം വാചകങ്ങൾ ഉടനടി സ്വാഭാവിക ശബ്ദത്തിൽ സ്ട്രീം ചെയ്യുന്നു.',
+        },
+        {
+          label: 'Malayalam \u00b7 Offline Browser Voice',
+          lang: 'ml',
+          text: 'ഈ ഇൻ ബ്രൗസർ ശബ്ദ സംവിധാനം പൂർണ്ണമായും നിങ്ങളുടെ ഉപകരണത്തിൽ സുരക്ഷിതമായി പ്രവർത്തിക്കുന്നു. ഒരിക്കൽ കാഷ് ചെയ്താൽ ഓഫ്‌ലൈനായും വ്യക്തമായി സംസാരിക്കുന്നു.',
+        },
+        {
+          label: 'Malayalam \u00b7 Streaming Passage',
+          lang: 'ml',
+          text: 'നിങ്ങൾ നൽകുന്ന മലയാളം വാചകങ്ങൾ ബ്രൗസറിനുള്ളിൽ തന്നെ നിമിഷങ്ങൾക്കകം ഓഡിയോയായി കേൾക്കാം. മുഴുവൻ ഖണ്ഡികയും തീരുന്നതുവരെ കാത്തിരിക്കേണ്ടതില്ല.',
+        },
       ],
       en: [
-        { label: 'English \u00b7 Studio', lang: 'en', text: 'Welcome to Ninada, a real-time studio voice engine for Indian English and eleven Indian languages running privately in your browser.' },
-        { label: 'English \u00b7 Science & Computing', lang: 'en', text: 'Sub-clause latent streaming synthesizes the opening phrase in milliseconds while the AudioWorklet ring buffer maintains glitch-free twenty-four kilohertz playback.' },
-        { label: 'English \u00b7 Streaming Passage', lang: 'en', text: 'Indian linguistic heritage spans classical Sanskrit, Dravidian, and Indo-Aryan traditions with remarkable phonetic precision. Ninada pairs compact twenty-eight megabyte neural specialists with offline browser caching so speech synthesis stays instant, expressive, and completely private.' },
+        {
+          label: 'English \u00b7 In-Browser TTS',
+          lang: 'en',
+          text: 'Ninada is an in-browser text to speech engine for Indian English and eleven Indian languages. Audio streams directly on your device in real time with zero server calls.',
+        },
+        {
+          label: 'English \u00b7 Private Offline Voice',
+          lang: 'en',
+          text: 'This text to speech studio runs completely inside your web browser using WebAssembly and AudioWorklet streaming. Once cached, voices work offline with full privacy.',
+        },
+        {
+          label: 'English \u00b7 Streaming Passage',
+          lang: 'en',
+          text: 'Type any sentence and hear smooth speech stream inside your browser while upcoming sentences synthesize in the background. Compact twenty-eight megabyte voice models keep synthesis clear, natural, and completely private on phones and laptops.',
+        },
       ],
       mr: [
-        { label: 'Marathi \u00b7 Studio', lang: 'mr', text: '\u0928\u092e\u0938\u094d\u0915\u093e\u0930, \u0928\u093f\u0928\u093e\u0926 \u092e\u0930\u093e\u0920\u0940 \u0927\u094d\u0935\u0928\u0940 \u0938\u0902\u0936\u094d\u0932\u0947\u0937\u0923 \u092a\u094d\u0930\u0923\u093e\u0932\u0940\u092e\u0927\u094d\u092f\u0947 \u0906\u092a\u0932\u0947 \u092e\u0928\u0903\u092a\u0942\u0930\u094d\u0935\u0915 \u0938\u094d\u0935\u093e\u0917\u0924 \u0906\u0939\u0947.' },
-        { label: 'Marathi \u00b7 Sant Dnyaneshwar', lang: 'mr', text: '\u092e\u093e\u091d\u093e \u092e\u0930\u0939\u093e\u091f\u093e\u091a\u093f\u092c\u094b\u0932\u0941 \u0915\u094c\u0924\u0941\u0915\u0947 \u0964 \u092a\u0930\u093f \u0905\u092e\u0943\u0924\u093e\u0924\u0947\u0939\u093f \u092a\u0948\u091c\u093e \u091c\u093f\u0902\u0915\u0947 \u0965' },
-        { label: 'Marathi \u00b7 Streaming Passage', lang: 'mr', text: '\u092e\u0930\u093e\u0920\u0940 \u092d\u093e\u0937\u0947\u091a\u0940 \u0938\u093e\u0939\u093f\u0924\u094d\u092f \u0906\u0923\u093f \u0938\u0902\u0917\u0940\u0924 \u092a\u0930\u0902\u092a\u0930\u093e \u0905\u0924\u094d\u092f\u0902\u0924 \u0938\u092e\u0943\u0926\u094d\u0927 \u0906\u0939\u0947. \u0939\u0947 \u0924\u0902\u0924\u094d\u0930\u091c\u094d\u091e\u093e\u0928 \u0925\u0947\u091f \u0924\u0941\u092e\u091a\u094d\u092f\u093e \u092c\u094d\u0930\u093e\u0909\u091d\u0930\u092e\u0927\u094d\u092f\u0947 \u0928\u0948\u0938\u0930\u094d\u0917\u093f\u0915 \u0906\u0923\u093f \u0938\u094d\u092a\u0937\u094d\u091f \u0906\u0935\u093e\u091c \u0928\u093f\u0930\u094d\u092e\u093e\u0923 \u0915\u0930\u0924\u0947.' },
+        {
+          label: 'Marathi \u00b7 In-Browser TTS',
+          lang: 'mr',
+          text: 'निनाद हे थेट तुमच्या ब्राउझरमध्ये चालणारे टेक्स्ट टू स्पीच इंजिन आहे. कोणत्याही बाह्य सर्व्हरशिवाय हे लिखित मजकूर लगेच नैसर्गिक आवाजात स्ट्रीम करते.',
+        },
+        {
+          label: 'Marathi \u00b7 Offline Browser Voice',
+          lang: 'mr',
+          text: 'ही इन ब्राउझर ध्वनी प्रणाली पूर्णपणे तुमच्या डिव्हाइसवर सुरक्षितपणे चालते. एकदा कॅश झाल्यावर इंटरनेटशिवायही स्पष्ट आवाज देते.',
+        },
+        {
+          label: 'Marathi \u00b7 Streaming Passage',
+          lang: 'mr',
+          text: 'तुम्ही दिलेला मराठी मजकूर ब्राउझरमध्येच क्षणार्धात सलग आवाजात ऐकू येतो. संपूर्ण परिच्छेद तयार होण्याची वाट न पाहता थेट स्ट्रीमिंग सुरू होते.',
+        },
       ],
       bn: [
-        { label: 'Bengali \u00b7 Studio', lang: 'bn', text: '\u09a8\u09ae\u09b8\u09cd\u0995\u09be\u09b0, \u09a8\u09bf\u09a8\u09be\u09a6 \u09ac\u09be\u0982\u09b2\u09be \u09a7\u09cd\u09ac\u09a8\u09bf \u09b8\u0982\u09b6\u09cd\u09b2\u09c7\u09b7\u09a3 \u09aa\u09cd\u09b0\u09af\u09c1\u0995\u09cd\u09a4\u09bf\u09a4\u09c7 \u0986\u09aa\u09a8\u09be\u0995\u09c7 \u09b8\u09cd\u09ac\u09be\u0997\u09a4 \u099c\u09be\u09a8\u09be\u0987\u0964' },
-        { label: 'Bengali \u00b7 Sahitya', lang: 'bn', text: '\u0986\u09b2\u09cb \u0986\u09ae\u09be\u09b0 \u0986\u09b2\u09cb \u0993\u0997\u09cb, \u0986\u09b2\u09cb \u09ad\u09c1\u09ac\u09a8 \u09ad\u09b0\u09be\u0964' },
-        { label: 'Bengali \u00b7 Streaming Passage', lang: 'bn', text: '\u09ac\u09be\u0982\u09b2\u09be \u09ad\u09be\u09b7\u09be\u09b0 \u09a7\u09cd\u09ac\u09a8\u09bf\u09ae\u09be\u09a7\u09c1\u09b0\u09cd\u09af \u098f\u09ac\u0982 \u09b8\u09be\u09b9\u09bf\u09a4\u09cd\u09af \u0990\u09a4\u09bf\u09b9\u09cd\u09af \u09ac\u09bf\u09b6\u09cd\u09ac\u099c\u09c1\u09dc\u09c7 \u09b8\u09ae\u09be\u09a6\u09c3\u09a4\u0964 \u098f\u0987 \u09aa\u09cd\u09b0\u09af\u09c1\u0995\u09cd\u09a4\u09bf \u09b8\u09b0\u09be\u09b8\u09b0\u09bf \u09ac\u09cd\u09b0\u09be\u0989\u099c\u09be\u09b0\u09c7 \u09b8\u09cd\u09ac\u09be\u09ad\u09be\u09ac\u09bf\u0995 \u0995\u09a3\u09cd\u09a0\u09b8\u09cd\u09ac\u09b0 \u09a4\u09c8\u09b0\u09bf \u0995\u09b0\u09c7\u0964' },
+        {
+          label: 'Bengali \u00b7 In-Browser TTS',
+          lang: 'bn',
+          text: 'নিনাদ হলো সরাসরি আপনার ব্রাউজারে চলা একটি টেক্সট টু স্পিচ ইঞ্জিন। কোনো বাহ্যিক সার্ভার ছাড়াই এটি লেখা পাঠ্যকে সঙ্গে সঙ্গে স্বাভাবিক কণ্ঠস্বরে স্ট্রিম করে।',
+        },
+        {
+          label: 'Bengali \u00b7 Offline Browser Voice',
+          lang: 'bn',
+          text: 'এই ইন ব্রাউজার কণ্ঠস্বর প্রযুক্তি সম্পূর্ণ ব্যক্তিগতভাবে আপনার ডিভাইসে চলে। একবার ক্যাশ হয়ে গেলে ইন্টারনেট ছাড়াই স্পষ্ট বাংলা উচ্চারণ শোনা যায়।',
+        },
+        {
+          label: 'Bengali \u00b7 Streaming Passage',
+          lang: 'bn',
+          text: 'যেকোনো বাংলা বাক্য লিখলেই নিনাদ ব্রাউজারের ভেতরে সঙ্গে সঙ্গে অডিও স্ট্রিমিং শুরু করে। পুরো অনুচ্ছেদ শেষ হওয়ার জন্য অপেক্ষা করতে হয় না।',
+        },
       ],
       gu: [
-        { label: 'Gujarati \u00b7 Studio', lang: 'gu', text: '\u0aa8\u0aae\u0ab8\u0acd\u0aa4\u0ac7, \u0aa8\u0abf\u0aa8\u0abe\u0aa6 \u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0 \u0aa7\u0acd\u0ab5\u0aa8\u0abf \u0ab8\u0a82\u0ab6\u0acd\u0ab2\u0ac7\u0ab7\u0aa3 \u0aaa\u0acd\u0ab0\u0aa3\u0abe\u0ab2\u0ac0\u0aae\u0abe\u0a82 \u0a86\u0aaa\u0aa8\u0ac1\u0a82 \u0ab9\u0abe\u0ab0\u0acd\u0aa6\u0abf\u0a95 \u0ab8\u0acd\u0ab5\u0abe\u0a97\u0aa4 \u0a9b\u0ac7.' },
-        { label: 'Gujarati \u00b7 Narsinh Mehta', lang: 'gu', text: '\u0ab5\u0ac8\u0ab7\u0acd\u0aa3\u0ab5 \u0a9c\u0aa8 \u0aa4\u0acb \u0aa4\u0ac7\u0aa8\u0ac7 \u0a95\u0ab9\u0abf\u0a8f, \u0a9c\u0ac7 \u0aaa\u0ac0\u0aa1 \u0aaa\u0ab0\u0abe\u0aaf\u0ac0 \u0a9c\u0abe\u0aa3\u0ac7 \u0ab0\u0ac7.' },
-        { label: 'Gujarati \u00b7 Streaming Passage', lang: 'gu', text: '\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0 \u0aad\u0abe\u0ab7\u0abe\u0aa8\u0ac0 \u0ab8\u0abe\u0ab9\u0abf\u0aa4\u0acd\u0aaf\u0abf\u0a95 \u0aaa\u0ab0\u0a82\u0aaa\u0ab0\u0abe \u0a85\u0aa8\u0ac7 \u0ab2\u0aaf\u0aac\u0aa6\u0acd\u0aa7 \u0a89\u0a9a\u0acd\u0a9a\u0abe\u0ab0\u0aa3 \u0a85\u0aa4\u0acd\u0aaf\u0a82\u0aa4 \u0ab8\u0ac1\u0a82\u0aa6\u0ab0 \u0a9b\u0ac7. \u0a86 \u0aa4\u0a82\u0aa4\u0acd\u0ab0\u0a9c\u0acd\u0a9e\u0abe\u0aa8 \u0aac\u0acd\u0ab0\u0abe\u0a89\u0a9d\u0ab0\u0aae\u0abe\u0a82 \u0aa4\u0aa4\u0acd\u0a95\u0abe\u0ab3 \u0a95\u0ac1\u0aa6\u0ab0\u0aa4\u0ac0 \u0a85\u0ab5\u0abe\u0a9c \u0aaa\u0ac0\u0ab0\u0ab8\u0ac7 \u0a9b\u0ac7.' },
+        {
+          label: 'Gujarati \u00b7 In-Browser TTS',
+          lang: 'gu',
+          text: 'નિનાદ સીધું તમારા બ્રાઉઝરમાં ચાલતું ટેક્સ્ટ ટુ સ્પીચ એન્જિન છે. કોઈપણ બાહ્ય સર્વર વિના તે ગુજરાતી લખાણને તરત જ કુદરતી અવાજમાં સ્ટ્રીમ કરે છે.',
+        },
+        {
+          label: 'Gujarati \u00b7 Offline Browser Voice',
+          lang: 'gu',
+          text: 'આ ઇન બ્રાઉઝર અવાજ પ્રણાલી સંપૂર્ણપણે તમારા ઉપકરણ પર સુરક્ષિત રીતે ચાલે છે. એકવાર કૅશ થયા પછી ઇન્ટરનેટ વિના પણ સ્પષ્ટ અવાજ આપે છે.',
+        },
+        {
+          label: 'Gujarati \u00b7 Streaming Passage',
+          lang: 'gu',
+          text: 'તમે લખેલા ગુજરાતી વાક્યોને નિનાદ બ્રાઉઝરની અંદર જ ક્ષણવારમાં સ્પષ્ટ ઑડિયો તરીકે સંભળાવે છે. આખો ફકરો બનવાની રાહ જોવી પડતી નથી.',
+        },
       ],
       pa: [
-        { label: 'Punjabi \u00b7 Studio', lang: 'pa', text: '\u0a38\u0a24\u0a3f \u0a38\u0a4d\u0a30\u0a40 \u0a05\u0a15\u0a3e\u0a32, \u0a28\u0a3f\u0a28\u0a3e\u0a26 \u0a2a\u0a70\u0a1c\u0a3e\u0a2c\u0a40 \u0a27\u0a41\u0a28\u0a40 \u0a2a\u0a4d\u0a30\u0a23\u0a3e\u0a32\u0a40 \u0a35\u0a3f\u0a71\u0a1a \u0a24\u0a41\u0a39\u0a3e\u0a21\u0a3e \u0a28\u0a3f\u0a71\u0a18\u0a3e \u0a38\u0a4d\u0a35\u0a3e\u0a17\u0a24 \u0a39\u0a48\u0964' },
-        { label: 'Punjabi \u00b7 Sahitya', lang: 'pa', text: '\u0a05\u0a35\u0a32\u0a3f \u0a05\u0a32\u0a39 \u0a28\u0a42\u0a30\u0a41 \u0a09\u0a2a\u0a3e\u0a07\u0a06, \u0a15\u0a41\u0a26\u0a30\u0a24\u0a3f \u0a15\u0a47 \u0a38\u0a2d \u0a2c\u0a70\u0a26\u0a47\u0964' },
-        { label: 'Punjabi \u00b7 Streaming Passage', lang: 'pa', text: '\u0a2a\u0a70\u0a1c\u0a3e\u0a2c\u0a40 \u0a2d\u0a3e\u0a38\u0a3c\u0a3e \u0a26\u0a40 \u0a2e\u0a3f\u0a20\u0a3e\u0a38 \u0a05\u0a24\u0a47 \u0a32\u0a4b\u0a15 \u0a38\u0a3e\u0a39\u0a3f\u0a24 \u0a2c\u0a39\u0a41\u0a24 \u0a05\u0a2e\u0a40\u0a30 \u0a39\u0a28\u0964 \u0a07\u0a39 \u0a24\u0a15\u0a28\u0a40\u0a15 \u0a2c\u0a3f\u0a28\u0a3e\u0a02 \u0a15\u0a3f\u0a38\u0a47 \u0a2c\u0a3e\u0a39\u0a30\u0a40 \u0a38\u0a30\u0a35\u0a30 \u0a26\u0a47 \u0a38\u0a3f\u0a71\u0a27\u0a3e \u0a2c\u0a4d\u0a30\u0a3e\u0a0a\u0a1c\u0a3c\u0a30 \u0a35\u0a3f\u0a71\u0a1a \u0a15\u0a41\u0a26\u0a30\u0a24\u0a40 \u0a06\u0a35\u0a3e\u0a1c\u0a3c \u0a2a\u0a48\u0a26\u0a3e \u0a15\u0a30\u0a26\u0a40 \u0a39\u0a48\u0964' },
+        {
+          label: 'Punjabi \u00b7 In-Browser TTS',
+          lang: 'pa',
+          text: 'ਨਿਨਾਦ ਸਿੱਧਾ ਤੁਹਾਡੇ ਬ੍ਰਾਊਜ਼ਰ ਵਿੱਚ ਚੱਲਣ ਵਾਲਾ ਟੈਕਸਟ ਟੂ ਸਪੀਚ ਇੰਜਣ ਹੈ। ਬਿਨਾਂ ਕਿਸੇ ਬਾਹਰੀ ਸਰਵਰ ਦੇ ਇਹ ਪੰਜਾਬੀ ਲਿਖਤ ਨੂੰ ਤੁਰੰਤ ਕੁਦਰਤੀ ਆਵਾਜ਼ ਵਿੱਚ ਸਟ੍ਰੀਮ ਕਰਦਾ ਹੈ।',
+        },
+        {
+          label: 'Punjabi \u00b7 Offline Browser Voice',
+          lang: 'pa',
+          text: 'ਇਹ ਇਨ ਬ੍ਰਾਊਜ਼ਰ ਆਵਾਜ਼ ਪ੍ਰਣਾਲੀ ਪੂਰੀ ਤਰ੍ਹਾਂ ਤੁਹਾਡੇ ਡਿਵਾਈਸ ਉੱਤੇ ਸੁਰੱਖਿਅਤ ਢੰਗ ਨਾਲ ਚੱਲਦੀ ਹੈ। ਇੱਕ ਵਾਰ ਕੈਸ਼ ਹੋਣ ਮਗਰੋਂ ਆਫ਼ਲਾਈਨ ਵੀ ਸਪਸ਼ਟ ਬੋਲਦੀ ਹੈ।',
+        },
+        {
+          label: 'Punjabi \u00b7 Streaming Passage',
+          lang: 'pa',
+          text: 'ਤੁਸੀਂ ਜਿਵੇਂ ਹੀ ਕੋਈ ਪੰਜਾਬੀ ਵਾਕ ਲਿਖਦੇ ਹੋ, ਨਿਨਾਦ ਬ੍ਰਾਊਜ਼ਰ ਦੇ ਅੰਦਰ ਹੀ ਤੁਰੰਤ ਆਡੀਓ ਸਟ੍ਰੀਮਿੰਗ ਸ਼ੁਰੂ ਕਰ ਦਿੰਦਾ ਹੈ। ਪੂਰਾ ਪੈਰਾ ਬਣਨ ਦੀ ਉਡੀਕ ਨਹੀਂ ਕਰਨੀ ਪੈਂਦੀ।',
+        },
       ],
       or: [
-        { label: 'Odia \u00b7 Studio', lang: 'or', text: '\u0b28\u0b2e\u0b38\u0b4d\u0b15\u0b3e\u0b30, \u0b28\u0b3f\u0b28\u0b3e\u0b26 \u0b13\u0b21\u0b3c\u0b3f\u0b06 \u0b27\u0b4d\u0b2c\u0b28\u0b3f \u0b38\u0b02\u0b36\u0b4d\u0b33\u0b47\u0b37\u0b23 \u0b2a\u0b4d\u0b30\u0b23\u0b3e\u0b33\u0b40\u0b15\u0b41 \u0b06\u0b2a\u0b23\u0b19\u0b4d\u0b15\u0b41 \u0b38\u0b4d\u0b2c\u0b3e\u0b17\u0b24\u0964' },
-        { label: 'Odia \u00b7 Sahitya', lang: 'or', text: '\u0b2c\u0b28\u0b4d\u0b26\u0b47 \u0b09\u0b24\u0b4d\u0b15\u0b33 \u0b1c\u0b28\u0b28\u0b40, \u0b1a\u0b3e\u0b30\u0b41 \u0b39\u0b3e\u0b38\u0b4d\u0b5f\u0b2e\u0b5f\u0b40 \u0b1a\u0b3e\u0b30\u0b41 \u0b2d\u0b3e\u0b37\u0b2e\u0b5f\u0b40\u0964' },
-        { label: 'Odia \u00b7 Streaming Passage', lang: 'or', text: '\u0b36\u0b3e\u0b38\u0b4d\u0b24\u0b4d\u0b30\u0b40\u0b5f \u0b13\u0b21\u0b3c\u0b3f\u0b06 \u0b2d\u0b3e\u0b37\u0b3e\u0b30 \u0b38\u0b3e\u0b39\u0b3f\u0b24\u0b4d\u0b5f \u0b13 \u0b38\u0b02\u0b38\u0b4d\u0b15\u0b43\u0b24\u0b3f \u0b05\u0b24\u0b4d\u0b5f\u0b28\u0b4d\u0b24 \u0b38\u0b2e\u0b43\u0b26\u0b4d\u0b27\u0964 \u0b0f\u0b39\u0b3f \u0b2a\u0b4d\u0b30\u0b2f\u0b41\u0b15\u0b4d\u0b24\u0b3f \u0b38\u0b3f\u0b27\u0b3e\u0b38\u0b33\u0b16 \u0b2c\u0b4d\u0b30\u0b3e\u0b09\u0b1c\u0b30\u0b30\u0b47 \u0b38\u0b4d\u0b2a\u0b37\u0b4d\u0b1f \u0b0f\u0b2c\u0b02 \u0b38\u0b4d\u0b2c\u0b3e\u0b2d\u0b3e\u0b2c\u0b3f\u0b15 \u0b38\u0b4d\u0b2c\u0b30 \u0b38\u0b43\u0b37\u0b4d\u0b1f\u0b3f \u0b15\u0b30\u0b47\u0964' },
+        {
+          label: 'Odia \u00b7 In-Browser TTS',
+          lang: 'or',
+          text: 'ନିନାଦ ସିଧାସଳଖ ଆପଣଙ୍କ ବ୍ରାଉଜରରେ ଚାଲୁଥିବା ଏକ ଟେକ୍ସଟ୍ ଟୁ ସ୍ପିଚ୍ ଇଞ୍ଜିନ୍। କୌଣସି ବାହ୍ୟ ସର୍ଭର ବିନା ଏହା ଓଡ଼ିଆ ଲେଖାକୁ ତୁରନ୍ତ ସ୍ୱାଭାବିକ କଣ୍ଠସ୍ୱରରେ ଷ୍ଟ୍ରିମ୍ କରେ।',
+        },
+        {
+          label: 'Odia \u00b7 Offline Browser Voice',
+          lang: 'or',
+          text: 'ଏହି ଇନ୍ ବ୍ରାଉଜର୍ ଧ୍ୱନି ପ୍ରଣାଳୀ ସମ୍ପୂର୍ଣ୍ଣ ସୁରକ୍ଷିତ ଭାବେ ଆପଣଙ୍କ ଡିଭାଇସରେ ଚାଲେ। ଥରେ କ୍ୟାସ୍ ହୋଇଗଲେ ଇଣ୍ଟରନେଟ୍ ବିନା ମଧ୍ୟ ସ୍ପଷ୍ଟ ସ୍ୱର ପ୍ରଦାନ କରେ।',
+        },
+        {
+          label: 'Odia \u00b7 Streaming Passage',
+          lang: 'or',
+          text: 'ଆପଣ ଯେକୌଣସି ଓଡ଼ିଆ ବାକ୍ୟ ଲେଖିଲେ ନିନାଦ ବ୍ରାଉଜର୍ ଭିତରେ ସଙ୍ଗେ ସଙ୍ଗେ ଅଡିଓ ଷ୍ଟ୍ରିମିଂ ଆରମ୍ଭ କରେ। ସମ୍ପୂର୍ଣ୍ଣ ଅନୁଚ୍ଛେଦ ଶେଷ ହେବା ପର୍ଯ୍ୟନ୍ତ ଅପେକ୍ଷା କରିବାକୁ ପଡ଼େ ନାହିଁ।',
+        },
       ],
     };
 
@@ -1415,6 +1736,7 @@
       underrunCount: 0,
       playedSamples: 0,
       bufferedSamples: 0,
+      minBufferedSamples: 0,
       totalPushedSamples: 0,
       watermarkSamples: 0,
       maxRafGapMs: 0,
@@ -1542,7 +1864,7 @@
         if (!audioWorkletModulePromise) {
           audioWorkletModulePromise = (async () => {
             try {
-              await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js?v=5.0.0');
+              await audioCtx.audioWorklet.addModule('./pcm-stream-worklet.js?v=5.0.1');
               workletNode = new AudioWorkletNode(audioCtx, 'ninada-stream-processor', {
                 numberOfInputs: 0,
                 numberOfOutputs: 1,
@@ -1554,13 +1876,27 @@
                 if (m.type === 'progress') {
                   streamStats.playedSamples = m.playedSourceSamples;
                   streamStats.bufferedSamples = m.bufferedSourceSamples;
+                  if (typeof m.minBufferedSamples === 'number') {
+                    streamStats.minBufferedSamples = m.minBufferedSamples;
+                  }
                   streamStats.underrunCount = m.underrunCount;
+                  if (m.playedSourceSamples > 0 && synthBtn.classList.contains('streaming')) {
+                    synthBtnLabel.textContent = 'Playing Stream...';
+                  }
                 } else if (m.type === 'underrun') {
                   streamStats.underrunCount = m.underrunCount;
                   streamStats.playedSamples = m.playedSourceSamples;
+                  streamStats.minBufferedSamples = 0;
+                  workletNode.port.postMessage({
+                    type: 'watermark',
+                    watermarkSamples: Math.round((IS_MOBILE_DEVICE ? 1.25 : 0.85) * SAMPLE_RATE),
+                  });
                 } else if (m.type === 'ended') {
                   streamStats.playedSamples = m.playedSourceSamples;
                   streamStats.underrunCount = m.underrunCount;
+                  if (typeof m.minBufferedSamples === 'number') {
+                    streamStats.minBufferedSamples = m.minBufferedSamples;
+                  }
                   streamStats.endedCount += 1;
                   finishLiveStreamPlayback();
                 }
@@ -1587,12 +1923,16 @@
       } else {
         activePlaySessionId += 1;
       }
-      const initialWatermark = window.crossOriginIsolated
-        ? Math.round(0.035 * SAMPLE_RATE)
-        : Math.round(0.16 * SAMPLE_RATE);
+      const initialWatermark =
+        IS_MOBILE_DEVICE && tierSelect.value !== 'klatt'
+          ? Math.round(2.15 * SAMPLE_RATE)
+          : window.crossOriginIsolated
+          ? Math.round(0.18 * SAMPLE_RATE)
+          : Math.round(0.35 * SAMPLE_RATE);
       streamStats.underrunCount = 0;
       streamStats.playedSamples = 0;
       streamStats.bufferedSamples = 0;
+      streamStats.minBufferedSamples = 0;
       streamStats.totalPushedSamples = 0;
       streamStats.watermarkSamples = initialWatermark;
       streamStats.maxRafGapMs = 0;
@@ -1604,6 +1944,7 @@
           sessionId: activePlaySessionId,
           sampleRate: SAMPLE_RATE,
           watermarkSamples: initialWatermark,
+          recoveryWatermarkSec: IS_MOBILE_DEVICE ? 1.25 : 0.85,
         });
       }
       return activePlaySessionId;
@@ -1612,53 +1953,94 @@
     function pushLivePcmChunk(pcm, sampleRate = SAMPLE_RATE, chunkMeta = null) {
       if (!audioCtx || audioCtx.state !== 'running') return;
       if (workletReady && workletNode) {
-        // Closed-form discrete streaming watermark: start immediately when synthesis keeps ahead of real-time,
-        // or compute exact minimum pre-roll cushion on slow/single-thread mobile CPUs for zero underruns.
+        // Closed-form discrete streaming watermark:
+        // - Mobile neural ONNX buffers a clean upfront cushion (~2.15s+ or exact conservation-of-samples deficit)
+        //   so continuous speech plays smoothly from start to finish with zero mid-sentence or inter-sentence stalls.
+        // - Desktop starts immediately when synthesis outpaces playback and scales dynamically in 1-thread fallback.
         if (chunkMeta && chunkMeta.index === 0) {
           const c0Sec = Math.max(0.05, pcm.length / sampleRate);
           let adaptedWatermark;
           if (chunkMeta.isFinal) {
-            adaptedWatermark = Math.min(pcm.length, Math.round(0.02 * sampleRate));
+            adaptedWatermark = Math.min(pcm.length, Math.round(0.03 * sampleRate));
+          } else if (chunkMeta.tier && chunkMeta.tier !== 'neural_onnx') {
+            adaptedWatermark = Math.min(pcm.length, Math.round(0.05 * sampleRate));
           } else {
-            const vocWinSec = Math.max(0.18, Number(chunkMeta.vocoderWindowAudioSec || c0Sec));
+            const vocWinSec = Math.max(0.30, Number(chunkMeta.vocoderWindowAudioSec || 0.8533));
             const vocRtf = Math.max(
-              0.05,
+              0.04,
               (Number(chunkMeta.vocoderMs || chunkMeta.latencyMs || 0) / 1000) / vocWinSec
             );
-            const nextWinSec = Math.max(0.35, Number(chunkMeta.nextWindowSec || 0.62));
+            const pipeRtf = Math.max(
+              vocRtf,
+              (Number(chunkMeta.latencyMs || chunkMeta.ttfaMs || 0) / 1000) / c0Sec
+            );
+            const nextWinSec = Math.max(0.45, Number(chunkMeta.nextWindowSec || 0.8533));
             const clauseCount = Math.max(1, Number(chunkMeta.clauseCount || 1));
             const estTotalSec = Math.max(
               c0Sec + 0.3,
               Number(chunkMeta.estimatedTotalSec || chunkMeta.clauseDurationSec || 2.2)
             );
-            const effRtf = vocRtf * (clauseCount > 1 ? 1.14 : 1.0);
 
-            if (vocRtf * nextWinSec + 0.035 <= c0Sec && effRtf <= 0.88) {
-              adaptedWatermark = Math.min(pcm.length, Math.round(0.03 * sampleRate));
+            // Static [1, 192, 80] vocoder with halo=12 yields 56 steady frames (80 / 56 = 1.43x overlap factor).
+            if (IS_MOBILE_DEVICE) {
+              const effMobileRtf = Math.max(vocRtf * 1.43, pipeRtf * 0.96) * 1.15;
+              const interClauseSec = Math.max(0, clauseCount - 1) * 0.34;
+              const safetyFloorSec = 0.65;
+              const neededSec =
+                (Math.max(0, effMobileRtf - 0.92) * estTotalSec + interClauseSec + safetyFloorSec) /
+                Math.max(0.85, effMobileRtf);
+              const minMobileBufferSec = clauseCount > 1 ? 2.15 : 1.95;
+              const targetSec =
+                estTotalSec <= 2.4
+                  ? estTotalSec * 0.92
+                  : Math.min(estTotalSec * 0.92, Math.max(minMobileBufferSec, neededSec));
+              adaptedWatermark = Math.round(targetSec * sampleRate);
             } else {
-              const trailingPauseSec = 0.48;
-              const interPauseSec = (clauseCount - 1) * 0.16;
-              const neuralTotalSec = Math.max(
-                c0Sec + 0.25,
-                estTotalSec - trailingPauseSec - interPauseSec
+              const clauseFactor = (clauseCount >= 3 || estTotalSec >= 5.0) ? 1.26 : (clauseCount > 1 ? 1.10 : 1.0);
+              const effSteadyRtf = Math.max(
+                vocRtf * 1.43 * clauseFactor,
+                pipeRtf * (clauseCount > 1 ? 1.10 : 0.95)
               );
-              const lastChunkSec = 0.54;
-              const marginSec = clauseCount > 1 ? 0.56 : 0.18;
-              const wNextSec =
-                effRtf <= 0.97 ? Math.min(1.25, vocRtf * nextWinSec + 0.06) : c0Sec;
-              const wTotalSec =
-                effRtf > 0.97
-                  ? Math.max(
-                      c0Sec,
-                      ((effRtf - 0.98) * neuralTotalSec +
-                        lastChunkSec +
-                        marginSec -
-                        interPauseSec) /
-                        effRtf
-                    )
-                  : c0Sec;
-              const targetWatermarkSec = Math.min(4.0, Math.max(c0Sec, wNextSec, wTotalSec));
-              adaptedWatermark = Math.round(targetWatermarkSec * sampleRate);
+              const tArr1Sec = vocRtf * nextWinSec + 0.035;
+              const tArr2Sec = tArr1Sec + vocRtf * 0.8533 + 0.025;
+              const c0PlusC1Sec = c0Sec + 0.5973;
+              const ABSOLUTE_WATERMARK_FLOOR_SEC = 0.18;
+
+              if (
+                clauseCount === 1 &&
+                estTotalSec < 3.0 &&
+                tArr1Sec + 0.14 <= c0Sec &&
+                tArr2Sec + 0.12 <= c0PlusC1Sec &&
+                effSteadyRtf <= 0.70
+              ) {
+                adaptedWatermark = Math.max(
+                  Math.round(ABSOLUTE_WATERMARK_FLOOR_SEC * sampleRate),
+                  Math.min(pcm.length, Math.round(0.20 * sampleRate))
+                );
+              } else if (effSteadyRtf < 0.85) {
+                let preRollSec = Math.max(
+                  ABSOLUTE_WATERMARK_FLOOR_SEC,
+                  Math.max(c0Sec + 0.08, tArr2Sec + 0.18 - 0.5973)
+                );
+                if (clauseCount > 1 || estTotalSec >= 3.0 || effSteadyRtf >= 0.60) {
+                  preRollSec = Math.max(preRollSec, 0.95);
+                }
+                if (clauseCount >= 4 || estTotalSec >= 6.0) {
+                  preRollSec = Math.max(preRollSec, 1.25);
+                }
+                adaptedWatermark = Math.round(preRollSec * sampleRate);
+              } else {
+                const interClauseSec = Math.max(0, clauseCount - 1) * 0.25;
+                const neededSec =
+                  (Math.max(0, effSteadyRtf - 0.92) * estTotalSec + interClauseSec + 0.45) /
+                  Math.max(0.85, effSteadyRtf);
+                const baseCushionSec = (clauseCount >= 3 || estTotalSec >= 5.0) ? 1.25 : 0.95;
+                const targetWatermarkSec = Math.min(
+                  estTotalSec * 0.92,
+                  Math.max(c0Sec + 0.25, Math.max(baseCushionSec, neededSec))
+                );
+                adaptedWatermark = Math.round(targetWatermarkSec * sampleRate);
+              }
             }
           }
           streamStats.watermarkSamples = adaptedWatermark;
@@ -1666,6 +2048,45 @@
             type: 'watermark',
             watermarkSamples: adaptedWatermark,
           });
+        } else if (
+          chunkMeta &&
+          chunkMeta.index <= (IS_MOBILE_DEVICE ? 5 : 3) &&
+          !chunkMeta.isFinal &&
+          chunkMeta.tier === 'neural_onnx' &&
+          streamStats.playedSamples === 0 &&
+          workletReady &&
+          workletNode
+        ) {
+          // Dynamic pre-play replenishment: while worklet is buffering, measure empirical RTF across
+          // early chunks and raise cushion if CPU contention or multi-clause overhead requires more headroom.
+          const nextPushedSec = (streamStats.totalPushedSamples + pcm.length) / sampleRate;
+          const elapsedSec = (performance.now() - (currentPendingReq?.t0 || performance.now())) / 1000;
+          if (nextPushedSec > 0.5 && elapsedSec > 0.1) {
+            const margin = IS_MOBILE_DEVICE ? 1.12 : 1.04;
+            const measuredRtf = (elapsedSec / nextPushedSec) * margin;
+            if (IS_MOBILE_DEVICE || measuredRtf >= 0.85) {
+              const estTot = Math.max(nextPushedSec + 0.3, Number(chunkMeta.estimatedTotalSec || 2.5));
+              const cCount = Math.max(1, Number(chunkMeta.clauseCount || 1));
+              const remClauses = Math.max(0, cCount - 1 - Number(chunkMeta.clauseIndex || 0));
+              const perClauseSec = IS_MOBILE_DEVICE ? 0.34 : 0.25;
+              const floorSec = IS_MOBILE_DEVICE ? 0.65 : 0.45;
+              const neededSec =
+                (Math.max(0, measuredRtf - 0.92) * estTot + remClauses * perClauseSec + floorSec) /
+                Math.max(0.85, measuredRtf);
+              const targetSec = Math.min(
+                estTot * 0.92,
+                IS_MOBILE_DEVICE ? neededSec : Math.max(nextPushedSec + 0.20, Math.max(1.15, neededSec))
+              );
+              const updatedWatermarkSamples = Math.round(targetSec * sampleRate);
+              if (updatedWatermarkSamples > streamStats.watermarkSamples) {
+                streamStats.watermarkSamples = updatedWatermarkSamples;
+                workletNode.port.postMessage({
+                  type: 'watermark',
+                  watermarkSamples: updatedWatermarkSamples,
+                });
+              }
+            }
+          }
         }
         const copy = pcm.slice();
         streamStats.totalPushedSamples += copy.length;
@@ -1754,10 +2175,14 @@
       modelDot.classList.remove('ready');
       modelDot.classList.add('loading');
       loaderFill.style.width = '8%';
-      loaderLabel.textContent = `Loading ${targetLang.toUpperCase()} native studio voice...`;
+      loaderLabel.textContent = `Loading ${targetLang.toUpperCase()} in-browser voice...`;
       activeTierBadge.textContent = `LOADING \u00b7 ${targetLang.toUpperCase()}`;
       setStudioControlsLocked(true);
-      synthWorker.postMessage({ type: 'load_lang', lang: targetLang, voice: effVoice });
+      if (IS_MOBILE_DEVICE && typeof respawnSynthWorker === 'function') {
+        respawnSynthWorker(targetLang, effVoice);
+      } else {
+        synthWorker.postMessage({ type: 'load_lang', lang: targetLang, voice: effVoice });
+      }
     }
 
     langBtns.forEach((b) => {
@@ -1791,7 +2216,7 @@
       if (codeFilenameEl) codeFilenameEl.textContent = tabInfo.file;
       if (codeFileHintEl) codeFileHintEl.textContent = tabInfo.hint;
       if (sdkLangBadgeEl) {
-        sdkLangBadgeEl.textContent = `LIVE SYNC \u00b7 ${activeLang.toUpperCase()} \u00b7 ${curVoice.toUpperCase()}`;
+        sdkLangBadgeEl.textContent = `SDK SYNC \u00b7 ${activeLang.toUpperCase()} \u00b7 ${curVoice.toUpperCase()}`;
       }
     }
 
@@ -2358,7 +2783,8 @@
     await ensureCrossOriginIsolation();
 
     // Dedicated off-main-thread Web Worker for ONNX Runtime WASM SIMD
-    const synthWorker = new Worker('./synth-worker.mjs?v=5.0.0', { type: 'module' });
+    const workerUrlSuffix = window.location.search ? '&' + window.location.search.slice(1) : '';
+    let synthWorker = new Worker('./synth-worker.mjs?v=5.0.1' + workerUrlSuffix, { type: 'module' });
     let nextReqSeq = 1;
     let currentPendingReq = null;
 
@@ -2366,10 +2792,10 @@
     const workerReadyPromise = new Promise((res) => { readyResolve = res; });
 
     let workerFailed = false;
-    synthWorker.addEventListener('error', () => {
+    const onSynthWorkerError = () => {
       workerFailed = true;
       loaderFill.style.width = '100%';
-      loaderLabel.textContent = 'Web Worker unavailable on device — running Zero-Dep Klatt Tier-2';
+      loaderLabel.textContent = 'Web Worker unavailable on device: running Zero-Dep Klatt Tier-2';
       activeTierBadge.textContent = 'TIER 2 \u00b7 KLATT ZERO-DEP';
       setStudioControlsLocked(false);
       window.__ninadaReady = true;
@@ -2381,9 +2807,10 @@
         const wavBytesArr = encodeWavBuffer(pcm, SAMPLE_RATE);
         req.resolve({ tier: 'klatt_zero_dep', isNeural: false, lang: activeLang, samples: pcm.length, wavBytes: wavBytesArr.byteLength });
       }
-    });
+    };
+    synthWorker.addEventListener('error', onSynthWorkerError);
 
-    synthWorker.addEventListener('message', (ev) => {
+    const onSynthWorkerMessage = (ev) => {
       const msg = ev.data || {};
 
       if (msg.type === 'progress') {
@@ -2476,7 +2903,8 @@
 
         if (!req.waveUpdateScheduled) {
           req.waveUpdateScheduled = true;
-          requestAnimationFrame(() => {
+          const scheduleWaveUpdate = IS_MOBILE_DEVICE ? (fn) => setTimeout(fn, 110) : requestAnimationFrame;
+          scheduleWaveUpdate(() => {
             req.waveUpdateScheduled = false;
             if (currentPendingReq === req) {
               updateWaveBarsFromChunks(req.chunks, req.totalSamples);
@@ -2585,7 +3013,16 @@
         stopBtn.disabled = true;
         if (req) req.reject(new Error(msg.message || 'Worker synthesis error'));
       }
-    });
+    };
+    synthWorker.addEventListener('message', onSynthWorkerMessage);
+
+    function respawnSynthWorker(targetLang, effVoice) {
+      try { synthWorker.terminate(); } catch {}
+      synthWorker = new Worker('./synth-worker.mjs?v=5.0.1' + workerUrlSuffix, { type: 'module' });
+      synthWorker.addEventListener('error', onSynthWorkerError);
+      synthWorker.addEventListener('message', onSynthWorkerMessage);
+      synthWorker.postMessage({ type: 'init', lang: targetLang, voice: effVoice });
+    }
 
     function cancelActiveSynthesis() {
       if (currentPendingReq) {
@@ -2631,6 +3068,7 @@
         ttfaMs: null,
         resolve: null,
         reject: null,
+        t0: performance.now(),
       };
 
       if (autoPlay) {
@@ -2638,7 +3076,8 @@
         activePlaySessionId = playSessionId;
         reqRecord.playSessionId = playSessionId;
         synthBtn.classList.add('streaming');
-        synthBtnLabel.textContent = 'Streaming...';
+        synthBtnLabel.textContent =
+          IS_MOBILE_DEVICE && tierSelect.value !== 'klatt' ? 'Buffering Audio...' : 'Streaming...';
         stopBtn.disabled = false;
         if (workletReady && audioCtx && audioCtx.state === 'running') {
           beginLiveAudioSession(playSessionId);
@@ -2719,10 +3158,12 @@
     // Pre-compile AudioWorklet module in parallel while ONNX session initializes in Web Worker
     ensureAudioContext({ resumeNow: false }).catch(() => {});
     await workerReadyPromise;
-    // Short idle grace window so an immediate mobile user tap after unlock starts at 0ms queue delay
-    await new Promise((r) => setTimeout(r, 180));
-    if (!currentPendingReq && !isStreamAudioActive) {
-      await runSynthesis(false);
+    refreshInspection();
+    if (!IS_MOBILE_DEVICE) {
+      await new Promise((r) => setTimeout(r, 120));
+      if (!currentPendingReq && !isStreamAudioActive) {
+        await runSynthesis(false);
+      }
     }
   </script>
 </body>

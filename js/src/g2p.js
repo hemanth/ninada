@@ -131,7 +131,7 @@ function buildRangeVocab(lo, hi) {
   const letters = [];
   for (let cp = lo; cp < hi; cp++) {
     const ch = String.fromCodePoint(cp);
-    if (/[\p{L}\p{M}]/u.test(ch)) letters.push(ch);
+    if (/[\p{L}\p{M}\p{N}]/u.test(ch)) letters.push(ch);
   }
   letters.sort();
   return ['_', ...[..." ',.-?"], ...letters, '<unk>'];
@@ -367,6 +367,7 @@ export function iastToDevanagari(text) {
 
     if (prevCons) { out.push(VIRAMA); prevCons = false; }
     if (c === '-' || c === ',' || c === '.') out.push('-');
+    else if (c >= '0' && c <= '9') out.push(c);
     i += 1;
   }
   if (prevCons) out.push(VIRAMA);
@@ -378,11 +379,36 @@ const EN_DIGIT_DEV = {
   '5': 'फाइव', '6': 'सिक्स', '7': 'सेवन', '8': 'एट', '9': 'नाइन',
 };
 
-function englishToDevanagari(text) {
-  let s = String(text).normalize('NFC').trim().toLowerCase();
-  for (const [d, w] of Object.entries(EN_DIGIT_DEV)) {
+export const EN_DIGIT_WORDS = {
+  '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
+  '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine',
+};
+
+export const PA_DIGIT_DEV = {
+  '0': 'सिफ़र',
+  '1': 'इक्क',
+  '2': 'दो',
+  '3': 'तिन्न',
+  '4': 'चार',
+  '5': 'पंज',
+  '6': 'छे',
+  '7': 'सत्त',
+  '8': 'अट्ਠ',
+  '9': 'नौं',
+};
+
+export function englishToDevanagari(text) {
+  let s = String(text).normalize('NFC').trim();
+  s = s
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/([A-Za-z])(\d)/g, '$1 $2')
+    .replace(/(\d)([A-Za-z])/g, '$1 $2')
+    .toLowerCase();
+  for (const [d, w] of Object.entries(EN_DIGIT_WORDS)) {
     s = s.replace(new RegExp(`\\b${d}\\b`, 'g'), ` ${w} `);
   }
+  s = s.replace(/\s+/g, ' ').trim();
   s = s
     .replaceAll('tion', 'shan')
     .replaceAll('sion', 'zhan')
@@ -458,7 +484,7 @@ function englishToDevanagari(text) {
     let mv = false;
     for (const [rom, indep, matra] of enVows) {
       if (s.startsWith(rom, i)) {
-        if (rom === 'e' && i + 1 === n && prevC && out.length >= 2) {
+        if (rom === 'e' && prevC && out.length >= 2 && (i + 1 === n || /\s/.test(s[i + 1]) || /[,.?!]/.test(s[i + 1]))) {
           out.push(VIRAMA);
           prevC = false;
           i += 1;
@@ -507,8 +533,9 @@ export function brahmicToDevanagari(text) {
   norm = norm
     .replace(/\u0d4c/g, '\u0d57')
     .replaceAll('\u0a74', '\u0907\u0915 \u0913\u0902\u0915\u093e\u0930')
-    .replaceAll('\u09af\u09bc', '\u09df')
-    .replaceAll('\u0a71', '');
+    .replaceAll('\u09af\u09bc', '\u09df');
+  norm = norm.replace(/\u0a71([\u0a15-\u0a39\u0a59-\u0a5e]\u0a3c?)/g, '$1\u0a4d$1');
+  norm = norm.replaceAll('\u0a71', '');
   const specialCp = {
     0x09ce: '\u0924\u094d',
     0x09d7: '\u094c',
@@ -886,7 +913,11 @@ export function toNativeModelText(text, lang, detectedScript, phonemicDev) {
       native = native.replaceAll('\u0a74', '\u0a07\u0a71\u0a15 \u0a13\u0a05\u0a70\u0a15\u0a3e\u0a30');
     }
   } else {
-    native = devanagariToTargetScript(phonemicDev, lang);
+    if (/\d/.test(sRaw) && !/\p{L}/u.test(sRaw)) {
+      native = sRaw;
+    } else {
+      native = devanagariToTargetScript(phonemicDev, lang);
+    }
     if (lang === 'hi') {
       native = deleteHindiSchwa(native);
     } else if (lang === 'ml') {
@@ -908,9 +939,16 @@ export function toNativeModelText(text, lang, detectedScript, phonemicDev) {
     let mappedD = null;
     for (const [lo] of BRAHMIC_BASES) {
       if (cp >= lo + 0x66 && cp <= lo + 0x6F) {
-        mappedD = String(cp - (lo + 0x66));
+        if (lang === 'pa') {
+          mappedD = String.fromCodePoint(0x0a66 + (cp - (lo + 0x66)));
+        } else {
+          mappedD = String(cp - (lo + 0x66));
+        }
         break;
       }
+    }
+    if (mappedD === null && lang === 'pa' && ch >= '0' && ch <= '9') {
+      mappedD = String.fromCodePoint(0x0a66 + Number(ch));
     }
     normDigits.push(mappedD !== null ? mappedD : ch);
   }
@@ -1020,11 +1058,15 @@ export function textToIds(
 ) {
   const [detectedScript, detectedLang] = detectScriptAndLang(text, lang || 'sa');
   const activeLang = lang && LANGUAGE_IDS[lang] !== undefined ? lang : detectedLang;
-  const dev = activeLang === 'en' && detectedScript === 'latin'
+  let dev = activeLang === 'en' && detectedScript === 'latin'
     ? englishToDevanagari(text)
     : (detectedScript === 'iast' || detectedScript === 'latin')
     ? iastToDevanagari(text)
     : brahmicToDevanagari(text);
+  if (activeLang === 'pa') {
+    dev = [...dev].map((ch) => PA_DIGIT_DEV[ch] || ch).join('');
+    dev = brahmicToDevanagari(dev);
+  }
   const aksharas = segmentAksharas(dev);
   const phonemic = applyPhonologicalRules(dev, activeLang);
 

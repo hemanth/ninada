@@ -862,7 +862,7 @@ function buildRangeVocab(lo, hi) {
   const letters = [];
   for (let cp = lo; cp < hi; cp++) {
     const ch = String.fromCodePoint(cp);
-    if (/[\p{L}\p{M}]/u.test(ch)) letters.push(ch);
+    if (/[\p{L}\p{M}\p{N}]/u.test(ch)) letters.push(ch);
   }
   letters.sort();
   return ['_', ...[..." ',.-?"], ...letters, '<unk>'];
@@ -1098,6 +1098,7 @@ function iastToDevanagari(text) {
 
     if (prevCons) { out.push(VIRAMA); prevCons = false; }
     if (c === '-' || c === ',' || c === '.') out.push('-');
+    else if (c >= '0' && c <= '9') out.push(c);
     i += 1;
   }
   if (prevCons) out.push(VIRAMA);
@@ -1109,11 +1110,36 @@ const EN_DIGIT_DEV = {
   '5': 'फाइव', '6': 'सिक्स', '7': 'सेवन', '8': 'एट', '9': 'नाइन',
 };
 
+const EN_DIGIT_WORDS = {
+  '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
+  '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine',
+};
+
+const PA_DIGIT_DEV = {
+  '0': 'सिफ़र',
+  '1': 'इक्क',
+  '2': 'दो',
+  '3': 'तिन्न',
+  '4': 'चार',
+  '5': 'पंज',
+  '6': 'छे',
+  '7': 'सत्त',
+  '8': 'अट्ਠ',
+  '9': 'नौं',
+};
+
 function englishToDevanagari(text) {
-  let s = String(text).normalize('NFC').trim().toLowerCase();
-  for (const [d, w] of Object.entries(EN_DIGIT_DEV)) {
+  let s = String(text).normalize('NFC').trim();
+  s = s
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/([A-Za-z])(\d)/g, '$1 $2')
+    .replace(/(\d)([A-Za-z])/g, '$1 $2')
+    .toLowerCase();
+  for (const [d, w] of Object.entries(EN_DIGIT_WORDS)) {
     s = s.replace(new RegExp(`\\b${d}\\b`, 'g'), ` ${w} `);
   }
+  s = s.replace(/\s+/g, ' ').trim();
   s = s
     .replaceAll('tion', 'shan')
     .replaceAll('sion', 'zhan')
@@ -1189,7 +1215,7 @@ function englishToDevanagari(text) {
     let mv = false;
     for (const [rom, indep, matra] of enVows) {
       if (s.startsWith(rom, i)) {
-        if (rom === 'e' && i + 1 === n && prevC && out.length >= 2) {
+        if (rom === 'e' && prevC && out.length >= 2 && (i + 1 === n || /\s/.test(s[i + 1]) || /[,.?!]/.test(s[i + 1]))) {
           out.push(VIRAMA);
           prevC = false;
           i += 1;
@@ -1238,8 +1264,9 @@ function brahmicToDevanagari(text) {
   norm = norm
     .replace(/\u0d4c/g, '\u0d57')
     .replaceAll('\u0a74', '\u0907\u0915 \u0913\u0902\u0915\u093e\u0930')
-    .replaceAll('\u09af\u09bc', '\u09df')
-    .replaceAll('\u0a71', '');
+    .replaceAll('\u09af\u09bc', '\u09df');
+  norm = norm.replace(/\u0a71([\u0a15-\u0a39\u0a59-\u0a5e]\u0a3c?)/g, '$1\u0a4d$1');
+  norm = norm.replaceAll('\u0a71', '');
   const specialCp = {
     0x09ce: '\u0924\u094d',
     0x09d7: '\u094c',
@@ -1617,7 +1644,11 @@ function toNativeModelText(text, lang, detectedScript, phonemicDev) {
       native = native.replaceAll('\u0a74', '\u0a07\u0a71\u0a15 \u0a13\u0a05\u0a70\u0a15\u0a3e\u0a30');
     }
   } else {
-    native = devanagariToTargetScript(phonemicDev, lang);
+    if (/\d/.test(sRaw) && !/\p{L}/u.test(sRaw)) {
+      native = sRaw;
+    } else {
+      native = devanagariToTargetScript(phonemicDev, lang);
+    }
     if (lang === 'hi') {
       native = deleteHindiSchwa(native);
     } else if (lang === 'ml') {
@@ -1639,9 +1670,16 @@ function toNativeModelText(text, lang, detectedScript, phonemicDev) {
     let mappedD = null;
     for (const [lo] of BRAHMIC_BASES) {
       if (cp >= lo + 0x66 && cp <= lo + 0x6F) {
-        mappedD = String(cp - (lo + 0x66));
+        if (lang === 'pa') {
+          mappedD = String.fromCodePoint(0x0a66 + (cp - (lo + 0x66)));
+        } else {
+          mappedD = String(cp - (lo + 0x66));
+        }
         break;
       }
+    }
+    if (mappedD === null && lang === 'pa' && ch >= '0' && ch <= '9') {
+      mappedD = String.fromCodePoint(0x0a66 + Number(ch));
     }
     normDigits.push(mappedD !== null ? mappedD : ch);
   }
@@ -1751,11 +1789,15 @@ function textToIds(
 ) {
   const [detectedScript, detectedLang] = detectScriptAndLang(text, lang || 'sa');
   const activeLang = lang && LANGUAGE_IDS[lang] !== undefined ? lang : detectedLang;
-  const dev = activeLang === 'en' && detectedScript === 'latin'
+  let dev = activeLang === 'en' && detectedScript === 'latin'
     ? englishToDevanagari(text)
     : (detectedScript === 'iast' || detectedScript === 'latin')
     ? iastToDevanagari(text)
     : brahmicToDevanagari(text);
+  if (activeLang === 'pa') {
+    dev = [...dev].map((ch) => PA_DIGIT_DEV[ch] || ch).join('');
+    dev = brahmicToDevanagari(dev);
+  }
   const aksharas = segmentAksharas(dev);
   const phonemic = applyPhonologicalRules(dev, activeLang);
 
@@ -1871,6 +1913,8 @@ const { STUDIO_HOP_LENGTH, STUDIO_VOCABS, cleanStudioText, studioTextToIds } = (
  * Ninada v5.0 — Native Per-Language 24,000 Hz Studio VITS Character Tokenizer (Zero-Dep ESM).
  */
 
+
+{ deleteHindiSchwa, deleteHindiSchwaWord };
 
 const STUDIO_HOP_LENGTH = 256;
 const STUDIO_SAMPLE_RATE = 24000;
@@ -2004,7 +2048,18 @@ const EN_ABBREVS = [
   [/\bms\./gi, 'miss'],
   [/\bdr\./gi, 'doctor'],
   [/\bprof\./gi, 'professor'],
+  [/\bst\./gi, 'saint'],
   [/\bvs\./gi, 'versus'],
+  [/\binc\./gi, 'incorporated'],
+  [/\bcorp\./gi, 'corporation'],
+  [/\bltd\./gi, 'limited'],
+  [/\bco\./gi, 'company'],
+  [/\bjr\./gi, 'junior'],
+  [/\bsr\./gi, 'senior'],
+  [/\bdept\./gi, 'department'],
+  [/\buniv\./gi, 'university'],
+  [/\bno\./gi, 'number'],
+  [/\bapprox\./gi, 'approximately'],
   [/\betc\./gi, 'et cetera'],
   [/\be\.g\./gi, 'for example'],
   [/\bi\.e\./gi, 'that is'],
@@ -2035,6 +2090,16 @@ function enIntToWords(n) {
     const r = n % 1000;
     return r === 0 ? `${enIntToWords(k)} thousand` : `${enIntToWords(k)} thousand ${enIntToWords(r)}`;
   }
+  if (n < 1_000_000_000) {
+    const m = Math.floor(n / 1_000_000);
+    const r = n % 1_000_000;
+    return r === 0 ? `${enIntToWords(m)} million` : `${enIntToWords(m)} million ${enIntToWords(r)}`;
+  }
+  if (n < 1_000_000_000_000) {
+    const b = Math.floor(n / 1_000_000_000);
+    const r = n % 1_000_000_000;
+    return r === 0 ? `${enIntToWords(b)} billion` : `${enIntToWords(b)} billion ${enIntToWords(r)}`;
+  }
   return [...String(n)].map((d) => EN_ONES[Number(d)]).join(' ');
 }
 
@@ -2048,18 +2113,87 @@ function enOrdinalToWords(n) {
 }
 
 function normalizeEnglishText(t) {
-  let out = t;
+  let out = t
+    .replace(/(?<=\d)\s*kHz\b/gi, ' kilohertz')
+    .replace(/(?<=\d)\s*MHz\b/gi, ' megahertz')
+    .replace(/(?<=\d)\s*GHz\b/gi, ' gigahertz')
+    .replace(/\bkHz\b/gi, 'kilohertz')
+    .replace(/\bMHz\b/gi, 'megahertz')
+    .replace(/\bGHz\b/gi, 'gigahertz')
+    .replace(/(?<=\d)\s*Hz\b/gi, ' hertz')
+    .replace(/(?<=\d)\s*ms\b/gi, ' milliseconds')
+    .replace(/(?<=\d)\s*MB\b/gi, ' megabytes')
+    .replace(/(?<=\d)\s*GB\b/gi, ' gigabytes')
+    .replace(/(?<=\d)\s*KB\b/gi, ' kilobytes')
+    .replace(/\b(\d{1,12})(st|nd|rd|th)\b/gi, (_, num) => enOrdinalToWords(Number(num)))
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/([A-Za-z])(\d)/g, '$1 $2')
+    .replace(/(\d)([A-Za-z])/g, '$1 $2');
   for (const [pat, rep] of EN_ABBREVS) {
     out = out.replace(pat, rep);
   }
+  out = out.replace(/(?<=\d),(?=\d{3}\b)/g, '');
+
+  const currMap = {
+    $: ['dollar', 'dollars', 'cent', 'cents'],
+    '€': ['euro', 'euros', 'cent', 'cents'],
+    '₹': ['rupee', 'rupees', 'paise', 'paise'],
+  };
+
+  out = out.replace(/([$€₹])(\d+)\.(\d{2})\b/g, (_, sym, dStr, cStr) => {
+    const dollars = Number(dStr);
+    const cents = Number(cStr);
+    const [cSing, cPlur, sSing, sPlur] = currMap[sym] || ['dollar', 'dollars', 'cent', 'cents'];
+    const parts = [];
+    if (dollars > 0 || cents === 0) {
+      parts.push(`${enIntToWords(dollars)} ${dollars === 1 ? cSing : cPlur}`);
+    }
+    if (cents > 0) {
+      const sName = cents === 1 ? sSing : sPlur;
+      if (parts.length > 0) {
+        parts.push(`and ${enIntToWords(cents)} ${sName}`);
+      } else {
+        parts.push(`${enIntToWords(cents)} ${sName}`);
+      }
+    }
+    return parts.length > 0 ? parts.join(' ') : `zero ${cPlur}`;
+  });
+
+  out = out.replace(/([$€₹])(\d+)\b/g, (_, sym, valStr) => {
+    const val = Number(valStr);
+    const [cSing, cPlur] = currMap[sym] || ['dollar', 'dollars'];
+    return `${enIntToWords(val)} ${val === 1 ? cSing : cPlur}`;
+  });
+
   out = out
     .replaceAll('&', ' and ')
     .replaceAll('%', ' percent ')
     .replaceAll('₹', ' rupees ')
-    .replaceAll('$', ' dollars ');
-  out = out.replace(/(?<=\d),(?=\d{3}\b)/g, '');
-  out = out.replace(/\b(\d{1,6})(st|nd|rd|th)\b/gi, (_, num) => enOrdinalToWords(Number(num)));
-  out = out.replace(/\b(\d{1,6})\b/g, (_, num) => enIntToWords(Number(num)));
+    .replaceAll('$', ' dollars ')
+    .replaceAll('€', ' euros ');
+
+  out = out.replace(/\b\d+(?:\.\d+)+\b/g, (s) => {
+    const parts = s.split('.');
+    if (parts.length === 2) {
+      const whole = enIntToWords(Number(parts[0]));
+      const fracWords = [...parts[1]].map((d) => EN_ONES[Number(d)]).join(' ');
+      return `${whole} point ${fracWords}`;
+    }
+    const outParts = [];
+    for (const p of parts) {
+      if (p === '0') {
+        outParts.push('zero');
+      } else if (p.length > 1 && p.startsWith('0')) {
+        outParts.push([...p].map((d) => EN_ONES[Number(d)]).join(' '));
+      } else {
+        outParts.push(enIntToWords(Number(p)));
+      }
+    }
+    return outParts.join(' point ');
+  });
+
+  out = out.replace(/\b(\d{1,12})\b/g, (_, num) => enIntToWords(Number(num)));
   return out;
 }
 
@@ -2108,7 +2242,12 @@ function cleanStudioText(text, lang = 'sa') {
 
   if (lc === 'sa') {
     t = t.replace(/[\u0951-\u0954\u1cd0-\u1cff]/g, '');
-    t = t.replaceAll('॥', '.').replaceAll('।', ',');
+    t = t.replace(/\s*ऽ+/g, 'ऽ');
+    t = t.replaceAll('||', '॥').replaceAll('|', '।');
+  }
+  if (lc === 'hi') {
+    t = t.replace(/[\u0951-\u0954\u1cd0-\u1cff]/g, '');
+    t = t.replaceAll('||', '।').replaceAll('|', '।').replaceAll('।।', '।');
   }
   if (lc === 'mr') {
     t = t.replace(/[\u0951-\u0954\u1cd0-\u1cff]/g, '');
@@ -2364,19 +2503,21 @@ function synthesizeKlattPcm(text, { lang = null, rate = 1.0, f0Base = 132.0 } = 
     offset += ch.length;
   }
 
-  // Remove DC bias from cascaded resonators before peak scaling
+  // Remove DC bias from cascaded resonators before nominal gain scaling
   let sum = 0.0;
   for (let idx = 0; idx < out.length; idx++) sum += out[idx];
   const mean = sum / out.length;
   for (let idx = 0; idx < out.length; idx++) out[idx] -= mean;
 
-  let peak = 1e-5;
   for (let idx = 0; idx < out.length; idx++) {
-    const a = Math.abs(out[idx]);
-    if (a > peak) peak = a;
+    let y = 0.70 * out[idx];
+    if (y > 0.96) {
+      y = 0.96 + 0.03 * Math.tanh((y - 0.96) / 0.04);
+    } else if (y < -0.96) {
+      y = -0.96 - 0.03 * Math.tanh((-y - 0.96) / 0.04);
+    }
+    out[idx] = y;
   }
-  const gain = 0.82 / peak;
-  for (let idx = 0; idx < out.length; idx++) out[idx] *= gain;
 
   return { pcm: out, meta: { ...parsed, tier: 'klatt_zero_dep' } };
 }
@@ -2460,16 +2601,84 @@ function resolveLang(val) {
   return LANG_ALIASES[k] || 'sa';
 }
 
-function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
+function splitLongUnpunctuated(segment, effMax) {
+  const text = (segment || '').trim();
+  if (!text) return [];
+  if (text.length <= effMax) return [{ text, sentenceEnd: true }];
+
+  const subParts = text.split(/(?<=[,:;—–])\s+/g).filter((s) => s && s.trim());
+  if (subParts.length > 1) {
+    const packed = [];
+    let cur = '';
+    for (const rawSub of subParts) {
+      const s = rawSub.trim();
+      if (!cur) {
+        cur = s;
+      } else if (cur.length + 1 + s.length <= effMax) {
+        cur = `${cur} ${s}`;
+      } else {
+        const subChunks = splitLongUnpunctuated(cur, effMax);
+        for (const sc of subChunks) sc.sentenceEnd = false;
+        packed.push(...subChunks);
+        cur = s;
+      }
+    }
+    if (cur) {
+      packed.push(...splitLongUnpunctuated(cur, effMax));
+    }
+    if (
+      packed.length >= 2 &&
+      packed[packed.length - 1].text.split(' ').length <= 2 &&
+      packed[packed.length - 2].text.length + 1 + packed[packed.length - 1].text.length <= Math.ceil(effMax * 1.2)
+    ) {
+      const tail = packed.pop();
+      packed[packed.length - 1].text = `${packed[packed.length - 1].text} ${tail.text}`;
+      packed[packed.length - 1].sentenceEnd = tail.sentenceEnd;
+    }
+    return packed;
+  }
+
+  const words = text.split(' ').filter(Boolean);
+  const nChunks = Math.max(2, Math.ceil(text.length / Math.max(40, effMax)));
+  const targetChars = Math.ceil(text.length / nChunks);
+  const out = [];
+  let buf = '';
+  for (const w of words) {
+    if (!buf) {
+      buf = w;
+    } else if (buf.length + 1 + w.length <= targetChars || out.length === nChunks - 1) {
+      buf = `${buf} ${w}`;
+    } else {
+      out.push({ text: buf, sentenceEnd: false });
+      buf = w;
+    }
+  }
+  if (buf) out.push({ text: buf, sentenceEnd: true });
+  if (out.length >= 2 && out[out.length - 1].text.split(' ').length <= 2) {
+    const tail = out.pop();
+    out[out.length - 1].text = `${out[out.length - 1].text} ${tail.text}`;
+    out[out.length - 1].sentenceEnd = true;
+  } else if (out.length > 0) {
+    out[out.length - 1].sentenceEnd = true;
+  }
+  return out;
+}
+
+const ABBREV_PROTECT_RE = /\b(?:Dr|Mr|Mrs|Ms|Prof|St|vs|Inc|Corp|Ltd|Co|Jr|Sr|Dept|Univ|No|etc|e\.g|i\.e|ie|approx|Rs)\./gi;
+
+function buildStreamingClauses(text, maxChars = 100, fastFirstClause = false) {
   const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
   if (!cleaned) return [];
   const effMax = maxChars;
-  const rawParts = cleaned.split(/(?<=\|\||[\u0964\u0965|.?!;\n])\s+/g);
+  const protectedStr = cleaned.replace(ABBREV_PROTECT_RE, (m) => m.replace(/\./g, '\uE000'));
+  const rawParts = protectedStr.split(
+    /(?<=\|\|)(?:\s+|(?=[^\s|]))|(?<=[\u0964\u0965])(?:\s+|(?=[^\s\u0964\u0965]))|(?<=[\n?!;:]|(?<!\b(?:Dr|Mr|Mrs|Ms|Prof|St|vs|Inc|Corp|Ltd|Co|Jr|Sr|Dept|Univ|No|etc|e\.g|i\.e|ie|approx|Rs))\.)(?:\s+|(?=[^\s\d.?!;:,]))|(?<=[,;—–])\s+/gi
+  );
   const rawClauses = [];
   for (const part of rawParts) {
     const p = (part || '').trim();
     if (!p) continue;
-    if (/^[\u0964\u0965|.?!;,\s-]+$/.test(p)) {
+    if (/^[\u0964\u0965|.?!;,\s\-—–:\uE000]+$/.test(p)) {
       if (rawClauses.length > 0) rawClauses[rawClauses.length - 1].text += ` ${p}`;
       continue;
     }
@@ -2477,24 +2686,14 @@ function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
       rawClauses.push({ text: p, sentenceEnd: true });
       continue;
     }
-    const words = p.split(' ');
-    let buf = '';
-    for (const w of words) {
-      if (!buf) buf = w;
-      else if (buf.length + 1 + w.length <= effMax) buf = `${buf} ${w}`;
-      else {
-        const bufWithComma = /[,;—–:|\u0964\u0965.?!]$/.test(buf) ? buf : `${buf},`;
-        rawClauses.push({ text: bufWithComma, sentenceEnd: false });
-        buf = w;
-      }
-    }
-    if (buf) rawClauses.push({ text: buf, sentenceEnd: true });
+    rawClauses.push(...splitLongUnpunctuated(p, effMax));
   }
   const merged = [];
   for (const item of rawClauses) {
     if (
       merged.length > 0 &&
-      merged[merged.length - 1].text.length < 10 &&
+      (merged[merged.length - 1].text.length < 6 ||
+        (merged[merged.length - 1].text.length < 10 && !merged[merged.length - 1].text.includes(' '))) &&
       merged[merged.length - 1].text.length + 1 + item.text.length <= effMax
     ) {
       merged[merged.length - 1].text += ` ${item.text}`;
@@ -2503,7 +2702,20 @@ function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
       merged.push(item);
     }
   }
+  for (const item of merged) {
+    item.text = item.text.replace(/\uE000/g, '.');
+  }
   const result = merged.length > 0 ? merged : [{ text: cleaned, sentenceEnd: true }];
+
+  if (
+    result.length >= 2 &&
+    result[result.length - 1].text.trim().split(/\s+/).length <= 2 &&
+    /[,—–]\s*$/.test(result[result.length - 2].text)
+  ) {
+    const tail = result.pop();
+    result[result.length - 1].text = `${result[result.length - 1].text} ${tail.text}`;
+    result[result.length - 1].sentenceEnd = tail.sentenceEnd;
+  }
 
   if (fastFirstClause && result.length > 0 && result[0].text.length > 34) {
     const first = result[0];
@@ -2544,8 +2756,51 @@ function buildStreamingClauses(text, maxChars = 180, fastFirstClause = false) {
   return result;
 }
 
-function splitProsodicClauses(text, maxChars = 180) {
+function splitProsodicClauses(text, maxChars = 100) {
   return buildStreamingClauses(text, maxChars, false).map((c) => c.text);
+}
+
+function buildStudioSentenceBlocks(text, maxChars = 340) {
+  const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return [];
+  const effMax = Math.max(80, Number(maxChars || 340));
+  const protectedStr = cleaned.replace(ABBREV_PROTECT_RE, (m) => m.replace(/\./g, '\uE000'));
+  // Split strictly on full sentence boundaries (dandas, periods, ?, !, newlines).
+  // Never split on mid-sentence commas or semicolons so Studio VITS models phrase prosody natively.
+  const rawParts = protectedStr.split(
+    /(?<=\|\|)(?:\s+|(?=[^\s|]))|(?<=[\u0964\u0965])(?:\s+|(?=[^\s\u0964\u0965]))|(?<=[\n?!]|(?<!\b(?:Dr|Mr|Mrs|Ms|Prof|St|vs|Inc|Corp|Ltd|Co|Jr|Sr|Dept|Univ|No|etc|e\.g|i\.e|ie|approx|Rs))\.)(?:\s+|(?=[^\s\d.?!,]))/gi
+  );
+  const rawBlocks = [];
+  for (const part of rawParts) {
+    const p = (part || '').trim();
+    if (!p) continue;
+    if (/^[\u0964\u0965|.?!;,\s\-—–:\uE000]+$/.test(p)) {
+      if (rawBlocks.length > 0) rawBlocks[rawBlocks.length - 1].text += ` ${p}`;
+      continue;
+    }
+    if (p.length <= effMax) {
+      rawBlocks.push({ text: p, sentenceEnd: true });
+    } else {
+      rawBlocks.push(...splitLongUnpunctuated(p, effMax));
+    }
+  }
+  const merged = [];
+  for (const item of rawBlocks) {
+    if (
+      merged.length > 0 &&
+      merged[merged.length - 1].text.length < 10 &&
+      merged[merged.length - 1].text.length + 1 + item.text.length <= effMax
+    ) {
+      merged[merged.length - 1].text += ` ${item.text}`;
+      merged[merged.length - 1].sentenceEnd = item.sentenceEnd;
+    } else {
+      merged.push(item);
+    }
+  }
+  for (const item of merged) {
+    item.text = item.text.replace(/\uE000/g, '.');
+  }
+  return merged.length > 0 ? merged : [{ text: cleaned, sentenceEnd: true }];
 }
 
 function generateRoomTone(numSamples = 1920, seed = 1337) {
@@ -3268,12 +3523,20 @@ async function createOrtSession(ort, source, providers, useCache = true, webmlOp
     resolved = await fetchBrowserCachedBytes(resolved, useCache);
   }
   const useProviders = providers || (ort.env?.wasm ? ['wasm'] : ['cpu']);
-  const canUseArena = isNode || Boolean(typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated);
+  const isLowMemBrowser =
+    !isNode &&
+    typeof navigator !== 'undefined' &&
+    ((Number(navigator.deviceMemory) > 0 && Number(navigator.deviceMemory) <= 4) ||
+      /Android|iPhone|iPad|iPod|Mobile/i.test(String(navigator.userAgent || '')));
+  const canUseArena =
+    isNode ||
+    Boolean(typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated) ||
+    !isLowMemBrowser;
   const sessionOpts = {
     executionProviders: useProviders,
     graphOptimizationLevel: 'all',
     enableCpuMemArena: canUseArena,
-    enableMemPattern: canUseArena,
+    enableMemPattern: true,
   };
   if (resolved instanceof Uint8Array || resolved instanceof ArrayBuffer || ArrayBuffer.isView(resolved)) {
     return createSplitStudioVitsSession(ort, resolved, sessionOpts);
@@ -3606,10 +3869,13 @@ export default async function ninada(input = 'sa', opts = {}) {
       const isV4 = Boolean(v4InitialSess && TensorCtor);
       const is24k = !isV4 && tier !== 'klatt' && isUnified24kSession() && Boolean(ort);
       const fastFirst = is24k && callOpts.fastFirstClause !== false;
-      const clauses = buildStreamingClauses(text, callOpts.maxClauseChars || (isV4 || is24k ? 140 : 180), fastFirst);
+      const clauses = isV4
+        ? buildStudioSentenceBlocks(text, callOpts.maxClauseChars || 340)
+        : buildStreamingClauses(text, callOpts.maxClauseChars || (is24k ? 140 : 220), fastFirst);
       const tStart = nowMs();
       let ttfaMs = null;
       let chunkIndex = 0;
+      let sampleOffset = 0;
 
       let dcXPrev = 0.0;
       let dcYPrev = 0.0;
@@ -3625,6 +3891,8 @@ export default async function ninada(input = 'sa', opts = {}) {
               pcm: silent,
               sampleRate: SAMPLE_RATE,
               index: 0,
+              sampleOffset: 0,
+              sample_offset: 0,
               clauseIndex: 0,
               clauseCount: 1,
               isFinal: true,
@@ -3644,7 +3912,7 @@ export default async function ninada(input = 'sa', opts = {}) {
           return;
         }
 
-        const effNoise = Math.max(0.0, Math.min(1.2, Number(callOpts.noise ?? opts.noise ?? 0.60)));
+        const effNoise = Math.max(0.0, Math.min(1.2, Number(callOpts.noise ?? opts.noise ?? 0.40)));
         const effNoiseDp = Math.max(
           0.0,
           Math.min(
@@ -3656,13 +3924,32 @@ export default async function ninada(input = 'sa', opts = {}) {
         const firstChunkSamples = firstChunkFrames * HOP_LENGTH;
         const minTailSamples = 16 * STUDIO_HOP_LENGTH;
 
+        const precomputedStudio = clauses.map((item) => {
+          const parsedItem = textToIds(item.text, { lang });
+          if (!hasPronounceableContent(parsedItem)) {
+            return { parsed: parsedItem, studioIds: null, resolvedLc: parsedItem.lang, weight: 0 };
+          }
+          const st = studioTextToIds(item.text, parsedItem.lang);
+          return {
+            parsed: parsedItem,
+            studioIds: st.studioIds,
+            resolvedLc: st.lang,
+            weight: Math.max(8, st.studioIds.length + 18),
+          };
+        });
+        const totalStudioWeight = Math.max(
+          1,
+          precomputedStudio.reduce((acc, item) => acc + item.weight, 0)
+        );
+
         for (let cIdx = 0; cIdx < clauses.length; cIdx++) {
           if (signal?.aborted) return;
           const clauseItem = clauses[cIdx];
           const tClause = nowMs();
-          const parsed = textToIds(clauseItem.text, { lang });
+          const preItem = precomputedStudio[cIdx];
+          const parsed = preItem.parsed;
 
-          if (!hasPronounceableContent(parsed)) {
+          if (!preItem.studioIds) {
             const silent = generateRoomTone(Math.round(0.10 * SAMPLE_RATE), 1337 + cIdx);
             if (ttfaMs === null) ttfaMs = nowMs() - tStart;
             const chunkObj = attachLazyWav(
@@ -3670,6 +3957,8 @@ export default async function ninada(input = 'sa', opts = {}) {
                 pcm: silent,
                 sampleRate: SAMPLE_RATE,
                 index: chunkIndex++,
+                sampleOffset: sampleOffset,
+                sample_offset: sampleOffset,
                 clauseIndex: cIdx,
                 clauseCount: clauses.length,
                 isFinal: cIdx === clauses.length - 1,
@@ -3684,12 +3973,14 @@ export default async function ninada(input = 'sa', opts = {}) {
               },
               silent
             );
+            sampleOffset += silent.length;
             emit('chunk', chunkObj);
             yield chunkObj;
             continue;
           }
 
-          const { studioIds, lang: resolvedLc } = studioTextToIds(clauseItem.text, parsed.lang);
+          const studioIds = preItem.studioIds;
+          const resolvedLc = preItem.resolvedLc;
           let activeSess = (await resolveV4Session(resolvedLc, callOpts.voice || null)) || v4InitialSess;
           const idTensor = new TensorCtor('int64', BigInt64Array.from(studioIds.map(BigInt)), [1, studioIds.length]);
           const scalesTensor = new TensorCtor('float32', Float32Array.from([1.0 / effRate, effNoise, effNoiseDp]), [3]);
@@ -3721,64 +4012,48 @@ export default async function ninada(input = 'sa', opts = {}) {
             zTensor.dispose?.();
             dursTensor?.dispose?.();
 
-            const hasPause = cIdx < clauses.length - 1;
             const isFinalClause = cIdx === clauses.length - 1;
-            const pauseSec = hasPause ? (clauseItem.sentenceEnd ? 0.220 : 0.030) : 0.480;
+            const endsWithDouble = /(?:॥|\|\||।।|।\s*।|\.\s*\.)\s*$/.test(clauseItem.text || '');
+            // Studio VITS already emits ~230ms trailing + ~100ms leading breath at sentence boundaries;
+            // keep inter-sentence room-tone padding minimal (35ms) so multi-sentence transitions never lag.
+            const pauseSec = isFinalClause ? 0.120 : endsWithDouble ? 0.140 : 0.035;
             const pauseSamples = Math.round((pauseSec / effRate) * SAMPLE_RATE);
             const clauseTotalSamples = totalLatentFrames * STUDIO_HOP_LENGTH + pauseSamples;
-            const totalClauseChars = Math.max(
-              1,
-              clauses.reduce((acc, item) => acc + Math.max(1, (item.text || '').trim().length), 0)
-            );
-            const thisClauseChars = Math.max(1, (clauseItem.text || '').trim().length);
+            const thisStudioWeight = Math.max(1, preItem.weight);
             const estimatedTotalSec =
               clauses.length === 1
                 ? clauseTotalSamples / SAMPLE_RATE
-                : (clauseTotalSamples / SAMPLE_RATE) * (totalClauseChars / thisClauseChars);
+                : (clauseTotalSamples / SAMPLE_RATE) * (totalStudioWeight / thisStudioWeight);
 
-            const isSingleThread =
-              Boolean(callOpts.singleThread) ||
-              (ort?.env?.wasm?.numThreads === 1 && !isNodeEnv());
-            const haloLatent = 10;
-            const xfadeSamples = 256;
+            // Single static vocoder bucket [1, 192, 80] with 12-frame symmetric HiFi-GAN halo (>60 dB SNR vs monolithic):
+            // keeping one static input shape preserves ORT WASM memory-pattern planning and L2 cache locality on mobile.
+            const VOCODER_BUCKET = 80;
+            const haloLatent = 12;
+            const steadyLatent = VOCODER_BUCKET - 2 * haloLatent; // 56 valid frames (0.597s audio)
+            const xfadeSamples = 512;
             const firstLatent = Math.max(
-              20,
-              Math.min(40, Number(callOpts.firstLatentFrames || (isSingleThread ? 28 : 32)))
+              32,
+              Math.min(VOCODER_BUCKET - haloLatent, Number(callOpts.firstLatentFrames || (VOCODER_BUCKET - haloLatent)))
             );
 
             const fBounds = [];
             for (let fCur = 0; fCur < totalLatentFrames; ) {
               const remFrames = totalLatentFrames - fCur;
-              let stepF;
-              if (chunkIndex === 0 && fBounds.length === 0) {
-                stepF = firstLatent;
-              } else if (isSingleThread) {
-                if (isFinalClause && remFrames <= 112 && remFrames > 54) {
-                  stepF = Math.ceil(remFrames / 2);
-                } else if (isFinalClause && remFrames <= 54) {
-                  stepF = remFrames;
-                } else if (chunkIndex === 0 && fBounds.length === 1) {
-                  stepF = 124;
-                } else if (!isFinalClause) {
-                  stepF = 124;
-                } else {
-                  stepF = 98;
-                }
-              } else if (fBounds.length === 1) {
-                stepF = 40;
-              } else if (fBounds.length === 2) {
-                stepF = 56;
-              } else if (fBounds.length === 3) {
-                stepF = 72;
+              let fNext;
+              if (fCur === 0) {
+                fNext = totalLatentFrames <= VOCODER_BUCKET ? totalLatentFrames : Math.min(totalLatentFrames, firstLatent);
+              } else if (remFrames <= VOCODER_BUCKET - haloLatent) {
+                fNext = totalLatentFrames;
+              } else if (remFrames <= VOCODER_BUCKET - haloLatent + Math.floor(steadyLatent / 2)) {
+                fNext = fCur + Math.ceil(remFrames / 2);
               } else {
-                stepF = 96;
+                fNext = fCur + steadyLatent;
               }
-              let fNext = Math.min(totalLatentFrames, fCur + stepF);
-              if (totalLatentFrames - fNext < 20) fNext = totalLatentFrames;
               fBounds.push([fCur, fNext]);
               fCur = fNext;
             }
 
+            const zSliceBuf = new Float32Array(latentChannels * VOCODER_BUCKET);
             let prevRightHalo = null;
             const shouldYield = callOpts.yieldBetweenWindows !== false && !isNodeEnv();
 
@@ -3793,16 +4068,21 @@ export default async function ninada(input = 'sa', opts = {}) {
               const lHalo = Math.min(fStart, haloLatent);
               const rHalo = Math.min(totalLatentFrames - fEnd, haloLatent);
               const sliceStart = fStart - lHalo;
-              const sliceF = validF + lHalo + rHalo;
+              const rawSliceF = validF + lHalo + rHalo;
+              const bucketF = VOCODER_BUCKET;
 
-              const zSliceBuf = new Float32Array(latentChannels * sliceF);
               for (let ch = 0; ch < latentChannels; ch++) {
                 const srcOff = ch * totalLatentFrames + sliceStart;
-                zSliceBuf.set(zFlat.subarray(srcOff, srcOff + sliceF), ch * sliceF);
+                const dstOff = ch * bucketF;
+                zSliceBuf.set(zFlat.subarray(srcOff, srcOff + rawSliceF), dstOff);
+                if (rawSliceF < bucketF) {
+                  const edgeVal = zFlat[srcOff + rawSliceF - 1] || 0.0;
+                  zSliceBuf.fill(edgeVal, dstOff + rawSliceF, dstOff + bucketF);
+                }
               }
 
               const tVoc0 = nowMs();
-              const zSliceTensor = new TensorCtor('float32', zSliceBuf, [1, latentChannels, sliceF]);
+              const zSliceTensor = new TensorCtor('float32', zSliceBuf, [1, latentChannels, bucketF]);
               const vocOut = await activeSess.vocoderSession.run({
                 [activeSess.latentName]: zSliceTensor,
               });
@@ -3819,6 +4099,7 @@ export default async function ninada(input = 'sa', opts = {}) {
               const validStartSamp = lHalo * STUDIO_HOP_LENGTH;
               const validLenSamp = validF * STUDIO_HOP_LENGTH;
               const validEndSamp = validStartSamp + validLenSamp;
+              const unpaddedSamp = rawSliceF * STUDIO_HOP_LENGTH;
               const isLastSub = wIdx === fBounds.length - 1;
               const pcm = new Float32Array(validLenSamp + (isLastSub ? pauseSamples : 0));
 
@@ -3831,23 +4112,12 @@ export default async function ninada(input = 'sa', opts = {}) {
                 }
               }
 
-              if (!isLastSub && rawSlice.length >= validEndSamp + xfadeSamples) {
+              if (!isLastSub && unpaddedSamp >= validEndSamp + xfadeSamples) {
                 prevRightHalo = Float32Array.from(rawSlice.subarray(validEndSamp, validEndSamp + xfadeSamples));
               } else {
                 prevRightHalo = null;
               }
               wavTensor.dispose?.();
-
-              for (let i = 0; i < validLenSamp; i++) {
-                const x = pcm[i] || 0;
-                let y = x - dcXPrev + dcR * dcYPrev;
-                dcXPrev = x;
-                dcYPrev = y;
-                if (y > 0.96) y = 0.96 + 0.03 * Math.tanh((y - 0.96) / 0.04);
-                else if (y < -0.96) y = -0.96 - 0.03 * Math.tanh((-y - 0.96) / 0.04);
-                pcm[i] = y;
-              }
-              if (Math.abs(dcYPrev) < 1e-15) dcYPrev = 0.0;
 
               if (wIdx === 0 && validLenSamp > 192) {
                 for (let i = 0; i < 192; i++) {
@@ -3861,14 +4131,55 @@ export default async function ninada(input = 'sa', opts = {}) {
                 }
               }
 
+              if (isLastSub && pauseSamples > 0) {
+                pcm.set(generateRoomTone(pauseSamples, 1337 + cIdx), validLenSamp);
+              }
+
+              for (let i = 0; i < pcm.length; i++) {
+                const x = pcm[i] || 0;
+                let y = x - dcXPrev + dcR * dcYPrev;
+                dcXPrev = x;
+                dcYPrev = y;
+                if (y > 0.96) y = 0.96 + 0.03 * Math.tanh((y - 0.96) / 0.04);
+                else if (y < -0.96) y = -0.96 - 0.03 * Math.tanh((-y - 0.96) / 0.04);
+                pcm[i] = y;
+              }
+              if (Math.abs(dcYPrev) < 1e-15) dcYPrev = 0.0;
+
+              const tTaper = Math.min(64, Math.floor(pcm.length / 2));
+              if (tTaper > 0) {
+                if (wIdx === 0) {
+                  for (let k = 0; k < tTaper; k++) {
+                    const wIn = 0.5 * (1.0 - Math.cos((Math.PI * (k + 0.5)) / tTaper));
+                    pcm[k] *= wIn;
+                  }
+                }
+                if (isLastSub) {
+                  for (let k = 0; k < tTaper; k++) {
+                    const wOut = 0.5 * (1.0 - Math.cos((Math.PI * (k + 0.5)) / tTaper));
+                    pcm[pcm.length - 1 - k] *= wOut;
+                  }
+                }
+              }
+
+              if (pcm.length > 0) {
+                let sum = 0.0;
+                for (let i = 0; i < pcm.length; i++) sum += pcm[i];
+                const dcMean = sum / pcm.length;
+                if (Math.abs(dcMean) > 1e-6) {
+                  const nSamp = pcm.length;
+                  for (let i = 0; i < nSamp; i++) {
+                    const wDc = 1.0 - Math.cos((2.0 * Math.PI * (i + 0.5)) / nSamp);
+                    pcm[i] -= dcMean * wDc;
+                  }
+                }
+              }
+
               if (ttfaMs === null) ttfaMs = nowMs() - tStart;
 
               let nextWindowSec = 0;
               if (!isLastSub) {
-                const [nfS, nfE] = fBounds[wIdx + 1];
-                const nL = Math.min(nfS, haloLatent);
-                const nR = Math.min(totalLatentFrames - nfE, haloLatent);
-                nextWindowSec = ((nfE - nfS + nL + nR) * STUDIO_HOP_LENGTH) / SAMPLE_RATE;
+                nextWindowSec = (VOCODER_BUCKET * STUDIO_HOP_LENGTH) / SAMPLE_RATE;
               }
 
               const chunkObj = attachLazyWav(
@@ -3876,6 +4187,8 @@ export default async function ninada(input = 'sa', opts = {}) {
                   pcm,
                   sampleRate: SAMPLE_RATE,
                   index: chunkIndex++,
+                  sampleOffset: sampleOffset,
+                  sample_offset: sampleOffset,
                   clauseIndex: cIdx,
                   clauseCount: clauses.length,
                   isFinal: cIdx === clauses.length - 1 && isLastSub,
@@ -3884,7 +4197,8 @@ export default async function ninada(input = 'sa', opts = {}) {
                   estimatedTotalSec,
                   remainingClauseSec: ((totalLatentFrames - fEnd) * STUDIO_HOP_LENGTH) / SAMPLE_RATE,
                   nextWindowSec,
-                  vocoderWindowAudioSec: (sliceF * STUDIO_HOP_LENGTH) / SAMPLE_RATE,
+                  vocoderWindowAudioSec: (bucketF * STUDIO_HOP_LENGTH) / SAMPLE_RATE,
+                  vocoderBucketFrames: bucketF,
                   encFlowMs: wIdx === 0 ? encFlowMs : 0,
                   latencyMs: vocMs + (wIdx === 0 ? encFlowMs : 0),
                   vocoderMs: vocMs,
@@ -3897,6 +4211,7 @@ export default async function ninada(input = 'sa', opts = {}) {
                 },
                 pcm
               );
+              sampleOffset += pcm.length;
               emit('chunk', chunkObj);
               yield chunkObj;
             }
@@ -3949,10 +4264,14 @@ export default async function ninada(input = 'sa', opts = {}) {
 
           const rawWav = out.waveform.data;
           const dursArr = out.durations ? Array.from(out.durations.data, Number) : [];
-          const hasPause = cIdx < clauses.length - 1;
-          const pauseSec = hasPause ? (clauseItem.sentenceEnd ? 0.220 : 0.030) : 0.480;
+          const isFinalClause = cIdx === clauses.length - 1;
+          const endsWithDouble = /(?:॥|\|\||।।|।\s*।|\.\s*\.)\s*$/.test(clauseItem.text || '');
+          const pauseSec = isFinalClause ? 0.120 : (endsWithDouble ? 0.140 : 0.035);
           const pauseSamples = Math.round((pauseSec / effRate) * SAMPLE_RATE);
           const clausePcm = new Float32Array(rawWav.length + pauseSamples);
+          if (pauseSamples > 0) {
+            clausePcm.set(generateRoomTone(pauseSamples, 1337 + cIdx), rawWav.length);
+          }
 
           let dcMeanSum = 0.0;
           for (let i = 0; i < rawWav.length; i++) {
@@ -3967,18 +4286,25 @@ export default async function ninada(input = 'sa', opts = {}) {
           out.waveform?.dispose?.();
           out.durations?.dispose?.();
 
-          const dcMean = rawWav.length > 0 ? dcMeanSum / rawWav.length : 0.0;
-          let peak = 1e-5;
-          for (let i = 0; i < rawWav.length; i++) {
-            const v = clausePcm[i] - dcMean;
-            clausePcm[i] = v;
-            const a = Math.abs(v);
-            if (a > peak) peak = a;
+          if (rawWav.length > 0) {
+            const dcMean = dcMeanSum / rawWav.length;
+            if (Math.abs(dcMean) > 1e-6) {
+              const nSamp = rawWav.length;
+              for (let i = 0; i < nSamp; i++) {
+                const wDc = 1.0 - Math.cos((2.0 * Math.PI * (i + 0.5)) / nSamp);
+                clausePcm[i] -= dcMean * wDc;
+              }
+            }
           }
 
-          const gain = peak > 0.96 ? 0.92 / peak : 1.0;
-          if (gain !== 1.0) {
-            for (let i = 0; i < rawWav.length; i++) clausePcm[i] *= gain;
+          for (let i = 0; i < clausePcm.length; i++) {
+            let val = clausePcm[i];
+            if (val > 0.96) {
+              val = 0.96 + 0.03 * Math.tanh((val - 0.96) / 0.04);
+            } else if (val < -0.96) {
+              val = -0.96 - 0.03 * Math.tanh((-val - 0.96) / 0.04);
+            }
+            clausePcm[i] = val;
           }
           if (rawWav.length > 192) {
             for (let i = 0; i < 192; i++) {
@@ -4014,6 +4340,8 @@ export default async function ninada(input = 'sa', opts = {}) {
                 pcm,
                 sampleRate: SAMPLE_RATE,
                 index: chunkIndex++,
+                sampleOffset: sampleOffset,
+                sample_offset: sampleOffset,
                 clauseIndex: cIdx,
                 clauseCount: clauses.length,
                 isFinal: cIdx === clauses.length - 1 && isLastSub,
@@ -4030,6 +4358,7 @@ export default async function ninada(input = 'sa', opts = {}) {
               },
               pcm
             );
+            sampleOffset += pcm.length;
             emit('chunk', chunkObj);
             yield chunkObj;
           }
@@ -4050,6 +4379,8 @@ export default async function ninada(input = 'sa', opts = {}) {
               pcm: silent,
               sampleRate: SAMPLE_RATE,
               index: 0,
+              sampleOffset: 0,
+              sample_offset: 0,
               clauseIndex: 0,
               clauseCount: 1,
               isFinal: true,
@@ -4087,6 +4418,8 @@ export default async function ninada(input = 'sa', opts = {}) {
                 pcm: silent,
                 sampleRate: SAMPLE_RATE,
                 index: chunkIndex++,
+                sampleOffset: sampleOffset,
+                sample_offset: sampleOffset,
                 clauseIndex: cIdx,
                 clauseCount: clauses.length,
                 isFinal: cIdx === clauses.length - 1,
@@ -4101,6 +4434,7 @@ export default async function ninada(input = 'sa', opts = {}) {
               },
               silent
             );
+            sampleOffset += silent.length;
             emit('chunk', chunkObj);
             yield chunkObj;
             continue;
@@ -4186,6 +4520,8 @@ export default async function ninada(input = 'sa', opts = {}) {
                 pcm,
                 sampleRate: SAMPLE_RATE,
                 index: chunkIndex++,
+                sampleOffset: sampleOffset,
+                sample_offset: sampleOffset,
                 clauseIndex: cIdx,
                 clauseCount: clauses.length,
                 isFinal: cIdx === clauses.length - 1 && isLastSub,
@@ -4202,6 +4538,7 @@ export default async function ninada(input = 'sa', opts = {}) {
               },
               pcm
             );
+            sampleOffset += pcm.length;
             emit('chunk', chunkObj);
             yield chunkObj;
           }
@@ -4354,6 +4691,8 @@ export default async function ninada(input = 'sa', opts = {}) {
                 pcm,
                 sampleRate: SAMPLE_RATE,
                 index: chunkIndex++,
+                sampleOffset: sampleOffset,
+                sample_offset: sampleOffset,
                 clauseIndex: cIdx,
                 clauseCount: clauses.length,
                 isFinal: cIdx === clauses.length - 1 && isLastSub,
@@ -4369,6 +4708,7 @@ export default async function ninada(input = 'sa', opts = {}) {
               },
               pcm
             );
+            sampleOffset += pcm.length;
             emit('chunk', chunkObj);
             yield chunkObj;
           }
@@ -4411,6 +4751,8 @@ export default async function ninada(input = 'sa', opts = {}) {
               pcm,
               sampleRate: SAMPLE_RATE,
               index: chunkIndex++,
+              sampleOffset: sampleOffset,
+              sample_offset: sampleOffset,
               clauseIndex: cIdx,
               clauseCount: clauses.length,
               isFinal: cIdx === clauses.length - 1,
@@ -4425,6 +4767,7 @@ export default async function ninada(input = 'sa', opts = {}) {
             },
             pcm
           );
+          sampleOffset += pcm.length;
           emit('chunk', chunkObj);
           yield chunkObj;
         }
@@ -4440,18 +4783,52 @@ export default async function ninada(input = 'sa', opts = {}) {
         const pcm = new Float32Array(rawPcm.length);
         for (let idx = 0; idx < pcm.length; idx++) {
           const x = rawPcm[idx];
-          const y = x - dcXPrev + dcR * dcYPrev;
+          let y = x - dcXPrev + dcR * dcYPrev;
           dcXPrev = x;
           dcYPrev = y;
+          if (y > 0.96) y = 0.96 + 0.03 * Math.tanh((y - 0.96) / 0.04);
+          else if (y < -0.96) y = -0.96 - 0.03 * Math.tanh((-y - 0.96) / 0.04);
           pcm[idx] = y;
         }
         if (Math.abs(dcYPrev) < 1e-15) dcYPrev = 0.0;
+
+        // Nominal gain factor (matching python/src/ninada/engine.py:442)
+        for (let idx = 0; idx < pcm.length; idx++) {
+          pcm[idx] = 0.70 * pcm[idx];
+        }
+
+        // 64-sample raised-cosine chunk edge taper
+        const tTaper = Math.min(64, Math.floor(pcm.length / 2));
+        if (tTaper > 0) {
+          for (let k = 0; k < tTaper; k++) {
+            const wIn = 0.5 * (1.0 - Math.cos((Math.PI * (k + 0.5)) / tTaper));
+            pcm[k] *= wIn;
+            pcm[pcm.length - 1 - k] *= wIn;
+          }
+        }
+
+        // Windowed Hann DC removal (applied after taper to guarantee zero residual DC)
+        if (pcm.length > 0) {
+          let sum = 0.0;
+          for (let i = 0; i < pcm.length; i++) sum += pcm[i];
+          const dcMean = sum / pcm.length;
+          if (Math.abs(dcMean) > 1e-6) {
+            const nSamp = pcm.length;
+            for (let i = 0; i < nSamp; i++) {
+              const wDc = 1.0 - Math.cos((2.0 * Math.PI * (i + 0.5)) / nSamp);
+              pcm[i] -= dcMean * wDc;
+            }
+          }
+        }
+
         if (ttfaMs === null) ttfaMs = nowMs() - tStart;
         const chunkObj = attachLazyWav(
           {
             pcm,
             sampleRate: SAMPLE_RATE,
             index: chunkIndex++,
+            sampleOffset: sampleOffset,
+            sample_offset: sampleOffset,
             clauseIndex: cIdx,
             clauseCount: klattClauses.length,
             isFinal: cIdx === klattClauses.length - 1,
@@ -4466,6 +4843,7 @@ export default async function ninada(input = 'sa', opts = {}) {
           },
           pcm
         );
+        sampleOffset += pcm.length;
         emit('chunk', chunkObj);
         yield chunkObj;
       }
@@ -4497,20 +4875,6 @@ export default async function ninada(input = 'sa', opts = {}) {
         offset += c.length;
       }
 
-      let dcSum = 0.0;
-      for (let idx = 0; idx < pcm.length; idx++) dcSum += pcm[idx];
-      const mean = dcSum / pcm.length;
-      for (let idx = 0; idx < pcm.length; idx++) pcm[idx] -= mean;
-
-      let peak = 1e-5;
-      for (let i = 0; i < pcm.length; i++) {
-        const a = Math.abs(pcm[i]);
-        if (a > peak) peak = a;
-      }
-      if (peak > 0.98) {
-        const g = 0.95 / peak;
-        for (let i = 0; i < pcm.length; i++) pcm[i] *= g;
-      }
 
       const elapsedMs = nowMs() - t0;
       const durationSec = pcm.length / SAMPLE_RATE;
@@ -4556,6 +4920,7 @@ export {
   NATIVE_VOCABS,
   NATIVE_TOKEN_TO_ID,
   splitProsodicClauses,
+  buildStudioSentenceBlocks,
   detectScriptAndLang,
   iastToDevanagari,
   brahmicToDevanagari,
@@ -4572,4 +4937,6 @@ export {
   synthesizeKlattPcm,
   encodeWavBuffer,
   generateRoomTone,
+  deleteHindiSchwa,
+  deleteHindiSchwaWord,
 };

@@ -146,19 +146,21 @@ export function synthesizeKlattPcm(text, { lang = null, rate = 1.0, f0Base = 132
     offset += ch.length;
   }
 
-  // Remove DC bias from cascaded resonators before peak scaling
+  // Remove DC bias from cascaded resonators before nominal gain scaling
   let sum = 0.0;
   for (let idx = 0; idx < out.length; idx++) sum += out[idx];
   const mean = sum / out.length;
   for (let idx = 0; idx < out.length; idx++) out[idx] -= mean;
 
-  let peak = 1e-5;
   for (let idx = 0; idx < out.length; idx++) {
-    const a = Math.abs(out[idx]);
-    if (a > peak) peak = a;
+    let y = 0.70 * out[idx];
+    if (y > 0.96) {
+      y = 0.96 + 0.03 * Math.tanh((y - 0.96) / 0.04);
+    } else if (y < -0.96) {
+      y = -0.96 - 0.03 * Math.tanh((-y - 0.96) / 0.04);
+    }
+    out[idx] = y;
   }
-  const gain = 0.82 / peak;
-  for (let idx = 0; idx < out.length; idx++) out[idx] *= gain;
 
   return { pcm: out, meta: { ...parsed, tier: 'klatt_zero_dep' } };
 }

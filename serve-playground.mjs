@@ -72,7 +72,10 @@ const server = http.createServer((req, res) => {
   res.setHeader("Cache-Control", "no-cache");
   if (process.env.COOP_COEP !== "0") {
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-    res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+    res.setHeader(
+      "Cross-Origin-Embedder-Policy",
+      process.env.COEP_CREDENTIALLESS === "1" ? "credentialless" : "require-corp"
+    );
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   }
 
@@ -114,6 +117,7 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(resolved).pipe(res);
 });
 
-server.listen(PORT, "127.0.0.1", () => {
+const HOST = process.env.HOST || "0.0.0.0";
+server.listen(PORT, HOST, () => {
   console.log(`Ninada browser studio listening on http://127.0.0.1:${PORT}`);
 });

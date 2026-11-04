@@ -9,6 +9,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+try:
+    from scipy.signal import lfilter as _scipy_lfilter
+except Exception:
+    _scipy_lfilter = None
+
 from .g2p import LANGUAGE_IDS, text_to_ids
 from .studio_g2p import STUDIO_HOP_LENGTH, studio_text_to_ids
 
@@ -46,37 +51,139 @@ VOWEL_FORMANTS: dict[str, tuple[float, float, float, float]] = {
 }
 
 
-def split_prosodic_clauses(text: str, max_chars: int = 160) -> list[str]:
-    """Split arbitrarily long text into prosodic breath-group clauses (danda, punctuation, or word boundary)."""
+def _split_long_unpunctuated(segment: str, max_chars: int) -> list[str]:
+    """Split an over-length clause at natural comma/dash pauses or balanced word boundaries without orphan tails."""
+    text = segment.strip()
+    if len(text) <= max_chars:
+        return [text] if text else []
+
+    # Prefer natural secondary pause boundaries (comma, colon, dash) before resorting to word splits
+    sub_parts = re.split(r"(?<=[,:;—–])\s+", text)
+    if len(sub_parts) > 1:
+        packed: list[str] = []
+        cur = ""
+        for sp in sub_parts:
+            s = sp.strip()
+            if not s:
+                continue
+            if not cur:
+                cur = s
+            elif len(cur) + 1 + len(s) <= max_chars:
+                cur = f"{cur} {s}"
+            else:
+                packed.extend(_split_long_unpunctuated(cur, max_chars))
+                cur = s
+        if cur:
+            packed.extend(_split_long_unpunctuated(cur, max_chars))
+        if len(packed) >= 2 and len(packed[-1].split()) <= 2 and len(packed[-2]) + 1 + len(packed[-1]) <= int(max_chars * 1.2):
+            tail = packed.pop()
+            packed[-1] = f"{packed[-1]} {tail}"
+        return packed
+
+    words = text.split(" ")
+    n_chunks = max(2, math.ceil(len(text) / max(40, max_chars)))
+    target_chars = math.ceil(len(text) / n_chunks)
+    out: list[str] = []
+    buf = ""
+    for w in words:
+        if not buf:
+            buf = w
+        elif len(buf) + 1 + len(w) <= target_chars or len(out) == n_chunks - 1:
+            buf = f"{buf} {w}"
+        else:
+            out.append(buf)
+            buf = w
+    if buf:
+        out.append(buf)
+    if len(out) >= 2 and len(out[-1].split()) <= 2:
+        tail = out.pop()
+        out[-1] = f"{out[-1]} {tail}"
+    return out
+
+
+_ABBREV_PROTECT_RE = re.compile(
+    r"\b(?:Dr|Mr|Mrs|Ms|Prof|St|vs|Inc|Corp|Ltd|Co|Jr|Sr|Dept|Univ|No|etc|e\.g|i\.e|ie|approx|Rs)\.",
+    re.IGNORECASE,
+)
+
+
+def split_prosodic_clauses(text: str, max_chars: int = 100) -> list[str]:
+    """Split arbitrarily long text into prosodic breath-group clauses (danda, punctuation, or balanced phrase boundary)."""
     cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
     if not cleaned:
         return []
-    raw_parts = re.split(r"(?<=\|\|)\s+|(?<=[\u0964\u0965|.?!;\n])\s+", cleaned)
-    clauses: list[str] = []
+    protected = _ABBREV_PROTECT_RE.sub(lambda m: m.group(0).replace(".", "\uE000"), cleaned)
+    raw_parts = re.split(
+        r"(?<=\|\|)(?:\s+|(?=[^\s|]))"
+        r"|(?<=[\u0964\u0965])(?:\s+|(?=[^\s\u0964\u0965]))"
+        r"|(?<=[\n.?!;:])(?:\s+|(?=[^\s\d.?!;:,]))"
+        r"|(?<=[,;—–])\s+",
+        protected,
+    )
+    raw_clauses: list[str] = []
     for part in raw_parts:
         p = part.strip()
         if not p:
             continue
-        if re.fullmatch(r"[\u0964\u0965|.?!;,\s\-]+", p):
-            if clauses:
-                clauses[-1] = f"{clauses[-1]} {p}"
+        if re.fullmatch(r"[\u0964\u0965|.?!;,\s\-—–:\uE000]+", p):
+            if raw_clauses:
+                raw_clauses[-1] = f"{raw_clauses[-1]} {p}"
             continue
         if len(p) <= max_chars:
-            clauses.append(p)
+            raw_clauses.append(p)
             continue
-        words = p.split(" ")
-        buf = ""
-        for w in words:
-            if not buf:
-                buf = w
-            elif len(buf) + 1 + len(w) <= max_chars:
-                buf = f"{buf} {w}"
-            else:
-                clauses.append(buf)
-                buf = w
-        if buf:
-            clauses.append(buf)
+        raw_clauses.extend(_split_long_unpunctuated(p, max_chars))
+    merged: list[str] = []
+    for item in raw_clauses:
+        if (
+            merged
+            and (len(merged[-1]) < 6 or (len(merged[-1]) < 10 and " " not in merged[-1]))
+            and len(merged[-1]) + 1 + len(item) <= max_chars
+        ):
+            merged[-1] = f"{merged[-1]} {item}"
+        else:
+            merged.append(item)
+    clauses = [c.replace("\uE000", ".") for c in merged]
+    if len(clauses) >= 2 and len(clauses[-1].split()) <= 2 and re.search(r"[,—–]\s*$", clauses[-2]):
+        tail = clauses.pop()
+        clauses[-1] = f"{clauses[-1]} {tail}"
     return clauses or [cleaned]
+
+
+def split_studio_sentence_blocks(text: str, max_chars: int = 340) -> list[str]:
+    """Split Studio VITS input strictly on full sentence boundaries without breaking mid-sentence commas."""
+    cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not cleaned:
+        return []
+    eff_max = max(80, int(max_chars))
+    protected = _ABBREV_PROTECT_RE.sub(lambda m: m.group(0).replace(".", "\uE000"), cleaned)
+    raw_parts = re.split(
+        r"(?<=\|\|)(?:\s+|(?=[^\s|]))"
+        r"|(?<=[\u0964\u0965])(?:\s+|(?=[^\s\u0964\u0965]))"
+        r"|(?<=[\n.?!])(?:\s+|(?=[^\s\d.?!,]))",
+        protected,
+    )
+    raw_blocks: list[str] = []
+    for part in raw_parts:
+        p = part.strip()
+        if not p:
+            continue
+        if re.fullmatch(r"[\u0964\u0965|.?!;,\s\-—–:\uE000]+", p):
+            if raw_blocks:
+                raw_blocks[-1] = f"{raw_blocks[-1]} {p}"
+            continue
+        if len(p) <= eff_max:
+            raw_blocks.append(p)
+        else:
+            raw_blocks.extend(_split_long_unpunctuated(p, eff_max))
+    merged: list[str] = []
+    for item in raw_blocks:
+        if merged and len(merged[-1]) < 10 and len(merged[-1]) + 1 + len(item) <= eff_max:
+            merged[-1] = f"{merged[-1]} {item}"
+        else:
+            merged.append(item)
+    return [b.replace("\uE000", ".") for b in merged] or [cleaned]
+
 
 
 def _biquad_resonator(samples: list[float], freq: float, bw: float, sr: int = SAMPLE_RATE) -> list[float]:
@@ -108,24 +215,25 @@ def apply_dc_blocker_1pole(
     if len(arr) == 0:
         return arr, (x_prev, y_prev)
 
-    try:
-        from scipy.signal import lfilter
+    if _scipy_lfilter is not None:
+        try:
+            b = np.array([1.0, -1.0], dtype=np.float32)
+            a = np.array([1.0, -float(r)], dtype=np.float32)
+            zi = np.array([-x_prev + float(r) * y_prev], dtype=np.float32)
+            filtered, _ = _scipy_lfilter(b, a, arr, zi=zi)
+            return filtered.astype(np.float32), (float(arr[-1]), float(filtered[-1]))
+        except Exception:
+            pass
 
-        b = np.array([1.0, -1.0], dtype=np.float32)
-        a = np.array([1.0, -float(r)], dtype=np.float32)
-        zi = np.array([-x_prev + float(r) * y_prev], dtype=np.float32)
-        filtered, _ = lfilter(b, a, arr, zi=zi)
-        return filtered.astype(np.float32), (float(arr[-1]), float(filtered[-1]))
-    except Exception:
-        out = np.empty_like(arr)
-        r_f = float(r)
-        for n in range(len(arr)):
-            xn = float(arr[n])
-            yn = xn - x_prev + r_f * y_prev
-            out[n] = yn
-            x_prev = xn
-            y_prev = yn
-        return out.astype(np.float32), (x_prev, y_prev)
+    out = np.empty_like(arr)
+    r_f = float(r)
+    for n in range(len(arr)):
+        xn = float(arr[n])
+        yn = xn - x_prev + r_f * y_prev
+        out[n] = yn
+        x_prev = xn
+        y_prev = yn
+    return out.astype(np.float32), (x_prev, y_prev)
 
 
 def generate_room_tone(num_samples: int = 1920, seed: int = 1337) -> Any:
@@ -151,29 +259,38 @@ def generate_room_tone(num_samples: int = 1920, seed: int = 1337) -> Any:
     return room_tone
 
 
-def synthesize_klatt_pcm(
-    text: str,
-    lang: str | None = None,
-    rate: float = 1.0,
+def _synthesize_klatt_akshara_slice(
+    aksharas: list[dict[str, Any]],
+    total_ak: int,
+    start_idx: int = 0,
+    speed: float = 1.0,
     f0_base: float = 132.0,
-) -> tuple[list[float], dict[str, Any]]:
-    """Tier-2 Zero-Dependency Cascade Klatt-Akshara Synthesizer (24 kHz float PCM)."""
-    parsed = text_to_ids(text, lang=lang)
-    aksharas = parsed["aksharas"]
-    speed = max(0.45, min(2.5, float(rate)))
-
+    init_phase: float = 0.0,
+    init_seed: int = 20261030,
+) -> tuple[list[float], float, int]:
+    """Synthesize a range of aksharas using cascade Klatt resonators, preserving phase and RNG seed."""
     pcm: list[float] = []
-    phase = 0.0
-    total_ak = max(1, len(aksharas))
-
-    seed = 20261030
+    phase = init_phase
+    seed = init_seed
 
     def rand_u() -> float:
         nonlocal seed
         seed = (1664525 * seed + 1013904223) & 0xFFFFFFFF
         return (seed / 2147483648.0) - 1.0
 
-    for idx, ak in enumerate(aksharas):
+    def _filt(x: list[float] | Any, freq: float, bw: float) -> list[float]:
+        r_c = math.exp(-math.pi * bw / SAMPLE_RATE)
+        c_c = -(r_c * r_c)
+        b_c = 2.0 * r_c * math.cos(2.0 * math.pi * freq / SAMPLE_RATE)
+        a_c = 1.0 - b_c - c_c
+        if _scipy_lfilter is not None:
+            import numpy as np
+
+            return _scipy_lfilter([a_c], [1.0, -b_c, -c_c], np.asarray(x, dtype=np.float32)).tolist()
+        return _biquad_resonator(x if isinstance(x, list) else list(x), freq, bw, sr=SAMPLE_RATE)
+
+    for i, ak in enumerate(aksharas):
+        idx = start_idx + i
         s = ak["akshara"]
         weight = ak["weight"]
         decl = 1.0 - 0.10 * (idx / total_ak)
@@ -204,9 +321,11 @@ def synthesize_klatt_pcm(
         n_tot = n_onset + n_nuc
 
         exc = [0.0] * n_tot
+        inv_onset = 1.0 / max(1, n_onset)
+        inv_nuc = 1.0 / max(1, n_nuc)
         for t in range(n_tot):
             if t < n_onset:
-                env = math.sin(math.pi * (t / max(1, n_onset)))
+                env = math.sin(math.pi * (t * inv_onset))
                 if is_sibilant:
                     exc[t] = 0.42 * env * rand_u()
                 elif is_aspirated:
@@ -217,8 +336,9 @@ def synthesize_klatt_pcm(
                 else:
                     exc[t] = 0.08 * env * rand_u()
             else:
-                u = (t - n_onset) / max(1, n_nuc)
-                env = math.sin(math.pi * min(1.0, u * 0.92 + 0.05))
+                u = (t - n_onset) * inv_nuc
+                u_scaled = u * 0.92 + 0.05
+                env = math.sin(math.pi * (u_scaled if u_scaled < 1.0 else 1.0))
                 phase = (phase + f0 / SAMPLE_RATE) % 1.0
                 glot = (
                     0.5 * (1.0 - math.cos(math.pi * phase / 0.42))
@@ -230,20 +350,195 @@ def synthesize_klatt_pcm(
                 breath = (0.28 * rand_u()) if (has_visarga and u > 0.72) else (0.03 * rand_u())
                 exc[t] = env * (0.78 * glot + breath)
 
-        r1 = _biquad_resonator(exc, 280.0 if is_nasal else f1, 95.0)
-        r2 = _biquad_resonator(r1, f2, 130.0)
-        r3 = _biquad_resonator(r2, f3, 185.0)
+        r1 = _filt(exc, 280.0 if is_nasal else f1, 95.0)
+        r2 = _filt(r1, f2, 130.0)
+        r3 = _filt(r2, f3, 185.0)
         pcm.extend(r3)
         pcm.extend([0.0] * int(0.010 * SAMPLE_RATE / speed))
 
-    if not pcm:
-        pcm = [0.0] * 2400
-    mean_val = sum(pcm) / len(pcm)
-    pcm = [x - mean_val for x in pcm]
-    peak = max(1e-6, max(abs(x) for x in pcm))
-    pcm = [0.82 * (x / peak) for x in pcm]
+    return pcm, phase, seed
+
+
+def _iter_klatt_streaming_chunks(
+    text: str,
+    lang: str | None = None,
+    rate: float = 1.0,
+    f0_base: float = 132.0,
+    t_start: float | None = None,
+    sample_offset: int = 0,
+    chunk_start_idx: int = 0,
+    filter_state: tuple[float, float] | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Internal single-source generator yielding Tier-2 Klatt streaming chunks."""
+    eff_rate = max(0.45, min(2.5, float(rate)))
+    clauses = split_prosodic_clauses(text)
+    t_origin = time.perf_counter() if t_start is None else t_start
+    ttfa_ms: float | None = None
+    chunk_idx = chunk_start_idx
+    cur_offset = sample_offset
+    filter_state_kl = filter_state if filter_state is not None else (0.0, 0.0)
+
+    if not clauses:
+        silent = generate_room_tone(num_samples=int(0.10 * SAMPLE_RATE), seed=1337)
+        now_ms = (time.perf_counter() - t_origin) * 1000.0
+        yield {
+            "pcm": silent,
+            "wav": encode_wav_bytes(silent, sr=SAMPLE_RATE),
+            "sample_rate": SAMPLE_RATE,
+            "sample_offset": cur_offset,
+            "index": chunk_idx,
+            "clause_index": 0,
+            "clause_count": 1,
+            "is_final": True,
+            "duration_sec": len(silent) / SAMPLE_RATE,
+            "latency_ms": now_ms,
+            "ttfa_ms": now_ms,
+            "lang": lang or "sa",
+            "tier": "klatt_zero_dep",
+            "aksharas": [],
+            "durations": [],
+            "_filter_state": filter_state_kl,
+        }
+        return
+
+    import numpy as np
+
+    for c_idx, clause in enumerate(clauses):
+        parsed = text_to_ids(clause, lang=lang)
+        aksharas = parsed["aksharas"]
+        total_ak = len(aksharas)
+        if total_ak == 0:
+            silent = generate_room_tone(num_samples=int(0.10 * SAMPLE_RATE), seed=1337 + c_idx)
+            now_ms = (time.perf_counter() - t_origin) * 1000.0
+            if ttfa_ms is None:
+                ttfa_ms = now_ms
+            yield {
+                "pcm": silent,
+                "wav": encode_wav_bytes(silent, sr=SAMPLE_RATE),
+                "sample_rate": SAMPLE_RATE,
+                "sample_offset": cur_offset,
+                "index": chunk_idx,
+                "clause_index": c_idx,
+                "clause_count": len(clauses),
+                "is_final": c_idx == len(clauses) - 1,
+                "duration_sec": len(silent) / SAMPLE_RATE,
+                "latency_ms": (time.perf_counter() - t_origin) * 1000.0 if chunk_idx == chunk_start_idx else 0.05,
+                "ttfa_ms": ttfa_ms,
+                "lang": parsed["lang"],
+                "tier": "klatt_zero_dep",
+                "aksharas": [],
+                "durations": [],
+                "_filter_state": filter_state_kl,
+            }
+            cur_offset += len(silent)
+            chunk_idx += 1
+            continue
+
+        if total_ak > 18:
+            bounds: list[tuple[int, int]] = []
+            cur = 0
+            while cur < total_ak:
+                step = 6 if cur == 0 and chunk_idx == chunk_start_idx else 14
+                nxt = min(total_ak, cur + step)
+                if total_ak - nxt < 4:
+                    nxt = total_ak
+                bounds.append((cur, nxt))
+                cur = nxt
+        else:
+            bounds = [(0, total_ak)]
+
+        ph = 0.0
+        sd = 20261030
+        num_sub = len(bounds)
+        for sub_i, (st_ak, end_ak) in enumerate(bounds):
+            t_sub_start = time.perf_counter()
+            raw_pcm, ph, sd = _synthesize_klatt_akshara_slice(
+                aksharas[st_ak:end_ak],
+                total_ak,
+                start_idx=st_ak,
+                speed=eff_rate,
+                f0_base=f0_base,
+                init_phase=ph,
+                init_seed=sd,
+            )
+            is_last_chunk_of_clause = sub_i == num_sub - 1
+            is_stream_final = (c_idx == len(clauses) - 1) and is_last_chunk_of_clause
+
+            arr = np.asarray(raw_pcm, dtype=np.float32)
+            arr, filter_state_kl = apply_dc_blocker_1pole(arr, r=0.9965, state=filter_state_kl)
+            if len(arr) > 0:
+                # Fixed nominal gain factor
+                arr = (0.70 * arr).astype(np.float32)
+
+            pos_m = arr > 0.96
+            neg_m = arr < -0.96
+            if np.any(pos_m) or np.any(neg_m):
+                arr = arr.copy()
+                if np.any(pos_m):
+                    arr[pos_m] = 0.96 + 0.03 * np.tanh((arr[pos_m] - 0.96) / 0.04)
+                if np.any(neg_m):
+                    arr[neg_m] = -0.96 - 0.03 * np.tanh((-arr[neg_m] - 0.96) / 0.04)
+
+            # 64-sample raised-cosine chunk edge taper
+            t = min(64, len(arr) // 2)
+            if t > 0:
+                w_in = 0.5 * (1.0 - np.cos(math.pi * (np.arange(t, dtype=np.float32) + 0.5) / float(t)))
+                arr[:t] *= w_in
+                arr[-t:] *= w_in[::-1]
+
+            # Windowed DC removal applied post-taper to eliminate edge-induced mean shift
+            if len(arr) > 0:
+                mean_val = float(np.mean(arr))
+                if abs(mean_val) > 1e-6:
+                    n_samp = len(arr)
+                    k_arr = np.arange(n_samp, dtype=np.float32)
+                    w_dc = 1.0 - np.cos(2.0 * math.pi * (k_arr + 0.5) / float(n_samp))
+                    arr = (arr - mean_val * w_dc).astype(np.float32)
+
+            pcm_out = arr.tolist()
+            now_ms = (time.perf_counter() - t_origin) * 1000.0
+            if ttfa_ms is None:
+                ttfa_ms = now_ms
+            t_latency = (time.perf_counter() - t_sub_start) * 1000.0 if chunk_idx == chunk_start_idx else 0.05
+
+            yield {
+                "pcm": pcm_out,
+                "wav": encode_wav_bytes(pcm_out, sr=SAMPLE_RATE),
+                "sample_rate": SAMPLE_RATE,
+                "sample_offset": cur_offset,
+                "index": chunk_idx,
+                "clause_index": c_idx,
+                "clause_count": len(clauses),
+                "is_final": is_stream_final,
+                "duration_sec": len(pcm_out) / SAMPLE_RATE,
+                "latency_ms": t_latency,
+                "ttfa_ms": ttfa_ms,
+                "lang": parsed["lang"],
+                "tier": "klatt_zero_dep",
+                "aksharas": aksharas[st_ak:end_ak],
+                "durations": [],
+                "_filter_state": filter_state_kl,
+            }
+            cur_offset += len(pcm_out)
+            chunk_idx += 1
+
+
+def synthesize_klatt_pcm(
+    text: str,
+    lang: str | None = None,
+    rate: float = 1.0,
+    f0_base: float = 132.0,
+) -> tuple[list[float], dict[str, Any]]:
+    """Tier-2 Zero-Dependency Cascade Klatt-Akshara Synthesizer (24 kHz float PCM)."""
+    parsed = text_to_ids(text, lang=lang)
+    use_lang = parsed["lang"]
+    pcm_full: list[float] = []
+    for ch in _iter_klatt_streaming_chunks(text, lang=use_lang, rate=rate, f0_base=f0_base):
+        pcm_full.extend(ch["pcm"])
+    if not pcm_full:
+        pcm_full = [0.0] * 2400
     parsed["tier"] = "klatt_zero_dep"
-    return pcm, parsed
+    return pcm_full, parsed
 
 
 def encode_wav_bytes(pcm: Any, sr: int = SAMPLE_RATE) -> bytes:
@@ -297,8 +592,9 @@ def _make_ort_cpu_session(onnx_path: Path) -> Any:
 
     so = ort.SessionOptions()
     so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    n_thr = int(os.environ.get("NINADA_ORT_THREADS", str(min(6, max(2, (os.cpu_count() or 4) // 2)))))
-    so.intra_op_num_threads = max(1, n_thr)
+    n_thr = int(os.environ.get("NINADA_ORT_THREADS", str(min(8, max(4, os.cpu_count() or 4)))))
+    so.intra_op_num_threads = max(4, n_thr)
+    so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     so.inter_op_num_threads = 1
     return ort.InferenceSession(str(onnx_path), sess_options=so, providers=["CPUExecutionProvider"])
 
@@ -323,6 +619,8 @@ class Ninada:
         self.model_path: Path | None = None
         self._explicit_override = bool(model_path or encoder_path or vocoder_path)
         self._studio_v4_sessions: dict[str, Any] = {}
+        self._studio_v4_split_sessions: dict[str, tuple[Any, Any]] = {}
+        self._dc_filter_state: tuple[float, float] = (0.0, 0.0)
         self._lang_sessions: dict[str, tuple[Any, Any]] = {}
         self._voice_banks: dict[str, Any] = {}
         self._repo_root = Path(__file__).resolve().parents[3]
@@ -380,6 +678,10 @@ class Ninada:
             sess_v4 = self._get_v4_studio_session(self.default_lang, voice=self.default_voice)
             if sess_v4 is not None:
                 self.session = sess_v4
+                try:
+                    self._get_v4_studio_split_session(self.default_lang, voice=self.default_voice)
+                except Exception:
+                    pass
             else:
                 sess_24k = self._discover_unified_24k_session()
                 if sess_24k is not None:
@@ -389,6 +691,10 @@ class Ninada:
                     if pair is not None:
                         self.enc_session, self.voc_session = pair
 
+    def reset_filter_state(self) -> None:
+        """Reset causal 1-pole DC blocker filter state to (0.0, 0.0)."""
+        self._dc_filter_state = (0.0, 0.0)
+
     @staticmethod
     def _is_v4_studio_session(sess: Any) -> bool:
         if sess is None:
@@ -396,20 +702,10 @@ class Ninada:
         in_names = {i.name for i in sess.get_inputs()}
         return in_names == {"input_ids", "scales"}
 
-    def _get_v4_studio_session(self, lang: str, voice: str | None = None) -> Any:
+    def _get_v4_studio_path(self, lang: str, voice: str | None = None) -> Path | None:
         lc = lang if lang in LANGUAGE_IDS else "sa"
         v_norm = (voice or "").strip().lower()
         is_fem = v_norm == "female"
-        cache_key = f"{lc}:female" if is_fem else lc
-
-        if self._explicit_override:
-            if self._is_v4_studio_session(self.session):
-                return self.session
-            return None
-
-        if cache_key in self._studio_v4_sessions:
-            return self._studio_v4_sessions[cache_key]
-
         fname = f"{lc}_female.onnx" if is_fem else f"{lc}.onnx"
         candidates: list[Path] = []
         if self._onnx_base_dir is not None:
@@ -428,21 +724,36 @@ class Ninada:
                 self._repo_root / "docs" / fname,
             ]
         )
-
-        onnx_path: Path | None = None
         for p in candidates:
             if p.exists():
-                onnx_path = p
-                break
+                return p
 
-        if onnx_path is None:
-            try:
-                from huggingface_hub import hf_hub_download
+        try:
+            from huggingface_hub import hf_hub_download
 
-                onnx_path = Path(hf_hub_download(repo_id="gnumanth/ninada", filename=f"onnx/{fname}"))
-            except Exception:
-                onnx_path = None
+            return Path(hf_hub_download(repo_id="gnumanth/ninada", filename=f"onnx/{fname}"))
+        except Exception:
+            pass
 
+        if is_fem:
+            return self._get_v4_studio_path(lc, voice=None)
+        return None
+
+    def _get_v4_studio_session(self, lang: str, voice: str | None = None) -> Any:
+        lc = lang if lang in LANGUAGE_IDS else "sa"
+        v_norm = (voice or "").strip().lower()
+        is_fem = v_norm == "female"
+        cache_key = f"{lc}:female" if is_fem else lc
+
+        if self._explicit_override:
+            if self._is_v4_studio_session(self.session):
+                return self.session
+            return None
+
+        if cache_key in self._studio_v4_sessions:
+            return self._studio_v4_sessions[cache_key]
+
+        onnx_path = self._get_v4_studio_path(lc, voice=voice)
         if onnx_path is not None and onnx_path.exists():
             try:
                 sess = _make_ort_cpu_session(onnx_path)
@@ -457,6 +768,67 @@ class Ninada:
         if is_fem:
             return self._get_v4_studio_session(lc, voice=None)
         return None
+
+    def _get_v4_studio_split_session(self, lang: str, voice: str | None = None) -> tuple[Any, Any] | None:
+        lc = lang if lang in LANGUAGE_IDS else "sa"
+        v_norm = (voice or "").strip().lower()
+        is_fem = v_norm == "female"
+        cache_key = f"{lc}:female" if is_fem else lc
+
+        if cache_key in self._studio_v4_split_sessions:
+            return self._studio_v4_split_sessions[cache_key]
+
+        onnx_path = self._get_v4_studio_path(lc, voice=voice)
+        if onnx_path is None or not onnx_path.exists():
+            return None
+
+        try:
+            import tempfile
+            import numpy as np
+            from onnx.utils import extract_model
+
+            try:
+                cache_dir = Path.home() / ".cache" / "ninada" / "split_models"
+                cache_dir.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                cache_dir = Path(tempfile.gettempdir()) / "ninada_split_models"
+                cache_dir.mkdir(parents=True, exist_ok=True)
+
+            enc_file = cache_dir / f"{onnx_path.stem}_enc.onnx"
+            voc_file = cache_dir / f"{onnx_path.stem}_voc.onnx"
+
+            src_mtime = onnx_path.stat().st_mtime
+            needs_extract = (
+                not enc_file.exists()
+                or not voc_file.exists()
+                or enc_file.stat().st_mtime < src_mtime
+                or voc_file.stat().st_mtime < src_mtime
+                or enc_file.stat().st_size < 1000000
+                or voc_file.stat().st_size < 1000000
+            )
+            if needs_extract:
+                extract_model(str(onnx_path), str(enc_file), ["input_ids", "scales"], ["/Mul_8_output_0", "durations"])
+                extract_model(str(onnx_path), str(voc_file), ["/Mul_8_output_0"], ["waveform"])
+
+            enc_sess = _make_ort_cpu_session(enc_file)
+            voc_sess = _make_ort_cpu_session(voc_file)
+
+            # Warmup JIT execution so chunk 0 emits immediately
+            try:
+                dummy_ids = np.array([[0, 24, 0]], dtype=np.int64)
+                dummy_sc = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+                enc_sess.run(None, {"input_ids": dummy_ids, "scales": dummy_sc})
+                voc_sess.run(None, {"/Mul_8_output_0": np.zeros((1, 192, 40), dtype=np.float32)})
+                voc_sess.run(None, {"/Mul_8_output_0": np.zeros((1, 192, 48), dtype=np.float32)})
+                voc_sess.run(None, {"/Mul_8_output_0": np.zeros((1, 192, 112), dtype=np.float32)})
+                apply_dc_blocker_1pole(np.zeros(256, dtype=np.float32))
+            except Exception:
+                pass
+
+            self._studio_v4_split_sessions[cache_key] = (enc_sess, voc_sess)
+            return enc_sess, voc_sess
+        except Exception:
+            return None
 
     def _discover_unified_24k_session(self) -> Any:
         if self.session is not None:
@@ -552,8 +924,8 @@ class Ninada:
             try:
                 import onnxruntime as ort
 
-                es = ort.InferenceSession(str(enc_p), providers=["CPUExecutionProvider"])
-                vs = ort.InferenceSession(str(voc_p), providers=["CPUExecutionProvider"])
+                es = _make_ort_cpu_session(enc_p)
+                vs = _make_ort_cpu_session(voc_p)
                 self._lang_sessions[lc] = (es, vs)
                 if self.model_path is None:
                     self.model_path = enc_p
@@ -590,7 +962,7 @@ class Ninada:
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.60,
+        noise: float = 0.40,
         noise_duration: float = 0.0,
         tier: str = "auto",
         chunk_frames: int = 64,
@@ -602,13 +974,14 @@ class Ninada:
         use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
         use_voice = voice if voice is not None else self.default_voice
         eff_rate = max(0.45, min(2.5, float(rate)))
-        clauses = split_prosodic_clauses(text)
+        v4_sess = self._get_v4_studio_session(use_lang, voice=use_voice) if tier != "klatt" else None
+        clauses = split_studio_sentence_blocks(text) if v4_sess is not None else split_prosodic_clauses(text)
         t_start = time.perf_counter()
         ttfa_ms: float | None = None
         chunk_idx = 0
+        sample_offset = 0
 
         # Path 0: Primary v5.0 Per-Language Native 24,000 Hz Studio VITS Specialist (`input_ids`, `scales`)
-        v4_sess = self._get_v4_studio_session(use_lang, voice=use_voice) if tier != "klatt" else None
         if v4_sess is not None:
             import numpy as np
 
@@ -620,6 +993,7 @@ class Ninada:
                     "wav": encode_wav_bytes(silent, sr=SAMPLE_RATE),
                     "sample_rate": SAMPLE_RATE,
                     "index": 0,
+                    "sample_offset": 0,
                     "clause_index": 0,
                     "clause_count": 1,
                     "is_final": True,
@@ -636,7 +1010,7 @@ class Ninada:
             chunk_f = max(24, int(chunk_frames))
             chunk_samples = chunk_f * HOP_LENGTH
             min_tail_samples = 16 * STUDIO_HOP_LENGTH
-            filter_state: tuple[float, float] = (0.0, 0.0)
+            filter_state: tuple[float, float] = self._dc_filter_state
             eff_noise = max(0.0, min(1.2, float(noise)))
             eff_noise_dp = 0.0 if noise_duration is None else max(0.0, min(1.2, float(noise_duration)))
             scales_vec = np.asarray([1.0 / eff_rate, eff_noise, eff_noise_dp], dtype=np.float32)
@@ -655,6 +1029,7 @@ class Ninada:
                         "wav": encode_wav_bytes(silent, sr=SAMPLE_RATE),
                         "sample_rate": SAMPLE_RATE,
                         "index": chunk_idx,
+                        "sample_offset": sample_offset,
                         "clause_index": c_idx,
                         "clause_count": len(clauses),
                         "is_final": c_idx == len(clauses) - 1,
@@ -666,10 +1041,161 @@ class Ninada:
                         "aksharas": parsed["aksharas"],
                         "durations": [],
                     }
+                    sample_offset += len(silent)
                     chunk_idx += 1
                     continue
 
                 studio_ids, resolved_lc, _ = studio_text_to_ids(clause, lang=parsed["lang"])
+                split_pair = self._get_v4_studio_split_session(resolved_lc, voice=use_voice)
+                if split_pair is not None:
+                    enc_sess, voc_sess = split_pair
+                    enc_out = enc_sess.run(
+                        None,
+                        {
+                            "input_ids": np.asarray([studio_ids], dtype=np.int64),
+                            "scales": scales_vec,
+                        },
+                    )
+                    z = enc_out[0]
+                    total_latent_frames = z.shape[2]
+                    durs_list = np.asarray(enc_out[1], dtype=np.int64).reshape(-1).tolist()
+
+                    VOCODER_BUCKET = 80
+                    halo_latent = max(8, min(14, int(halo_frames) if halo_frames != 16 else 12))
+                    steady_latent = VOCODER_BUCKET - 2 * halo_latent
+                    xfade_len = max(128, min(512, int(crossfade_samples)))
+                    first_latent = max(28, min(VOCODER_BUCKET - halo_latent, int(chunk_frames) if chunk_frames <= VOCODER_BUCKET - halo_latent else (VOCODER_BUCKET - halo_latent)))
+
+                    f_bounds: list[tuple[int, int]] = []
+                    f_cur = 0
+                    while f_cur < total_latent_frames:
+                        rem = total_latent_frames - f_cur
+                        if f_cur == 0:
+                            f_next = total_latent_frames if total_latent_frames <= VOCODER_BUCKET else first_latent
+                        elif rem <= VOCODER_BUCKET - halo_latent:
+                            f_next = total_latent_frames
+                        elif rem <= VOCODER_BUCKET - halo_latent + steady_latent // 2:
+                            f_next = f_cur + (rem + 1) // 2
+                        else:
+                            f_next = f_cur + steady_latent
+                        f_bounds.append((f_cur, f_next))
+                        f_cur = f_next
+
+                    z_buf = np.zeros((1, 192, VOCODER_BUCKET), dtype=np.float32)
+                    prev_right_halo: np.ndarray | None = None
+
+                    for w_idx, (f_start, f_end) in enumerate(f_bounds):
+                        t_w0 = time.perf_counter()
+                        valid_f = f_end - f_start
+                        l_halo = min(f_start, halo_latent)
+                        r_halo = min(total_latent_frames - f_end, halo_latent)
+                        raw_slice_f = valid_f + l_halo + r_halo
+                        bucket_f = VOCODER_BUCKET
+
+                        slice_start = f_start - l_halo
+                        z_buf[:, :, :raw_slice_f] = z[:, :, slice_start : slice_start + raw_slice_f]
+                        if raw_slice_f < bucket_f:
+                            z_buf[:, :, raw_slice_f:] = z_buf[:, :, raw_slice_f - 1 : raw_slice_f]
+
+                        voc_out = voc_sess.run(None, {"/Mul_8_output_0": z_buf})
+                        raw_slice = np.asarray(voc_out[0], dtype=np.float32).reshape(-1)
+
+                        valid_start_samp = l_halo * STUDIO_HOP_LENGTH
+                        valid_len_samp = valid_f * STUDIO_HOP_LENGTH
+                        valid_end_samp = valid_start_samp + valid_len_samp
+                        unpadded_samp = raw_slice_f * STUDIO_HOP_LENGTH
+                        pcm = raw_slice[valid_start_samp:valid_end_samp].copy()
+
+                        if (
+                            prev_right_halo is not None
+                            and valid_len_samp >= xfade_len
+                            and len(prev_right_halo) >= xfade_len
+                        ):
+                            alpha = 0.5 * (
+                                1.0 - np.cos(math.pi * (np.arange(xfade_len, dtype=np.float32) + 0.5) / float(xfade_len))
+                            )
+                            pcm[:xfade_len] = (1.0 - alpha) * prev_right_halo[:xfade_len] + alpha * pcm[:xfade_len]
+
+                        is_last_sub = w_idx == len(f_bounds) - 1
+                        if not is_last_sub and unpadded_samp >= valid_end_samp + xfade_len:
+                            prev_right_halo = raw_slice[valid_end_samp : valid_end_samp + xfade_len].copy()
+                        else:
+                            prev_right_halo = None
+
+                        if w_idx == 0 and valid_len_samp > 192:
+                            r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 191.0))
+                            pcm[:192] *= r_in
+                        if is_last_sub and valid_len_samp > 256:
+                            r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 255.0))
+                            pcm[-256:] *= r_out
+
+                        if is_last_sub:
+                            is_final_clause = c_idx == len(clauses) - 1
+                            ends_with_double = bool(re.search(r"(?:॥|\|\||।।|।\s*।|\.\s*\.)\s*$", clause))
+                            if is_final_clause:
+                                pause_sec = 0.120
+                            elif ends_with_double:
+                                pause_sec = 0.140
+                            else:
+                                pause_sec = 0.035
+                            pause_samples = int((pause_sec / eff_rate) * SAMPLE_RATE)
+                            if pause_samples > 0:
+                                room_buf = generate_room_tone(num_samples=pause_samples, seed=1337 + c_idx)
+                                pcm = np.concatenate([pcm, room_buf])
+
+                        pcm, filter_state = apply_dc_blocker_1pole(pcm, r=0.9965, state=filter_state)
+                        self._dc_filter_state = filter_state
+
+                        pos_m = pcm > 0.96
+                        neg_m = pcm < -0.96
+                        if np.any(pos_m) or np.any(neg_m):
+                            pcm = pcm.copy()
+                            if np.any(pos_m):
+                                pcm[pos_m] = 0.96 + 0.03 * np.tanh((pcm[pos_m] - 0.96) / 0.04)
+                            if np.any(neg_m):
+                                pcm[neg_m] = -0.96 - 0.03 * np.tanh((-pcm[neg_m] - 0.96) / 0.04)
+
+                        # 64-sample raised-cosine edge taper across all chunk boundaries
+                        t_taper = min(64, len(pcm) // 2)
+                        if t_taper > 0:
+                            w_in = 0.5 * (1.0 - np.cos(math.pi * (np.arange(t_taper, dtype=np.float32) + 0.5) / float(t_taper)))
+                            pcm[:t_taper] *= w_in
+                            pcm[-t_taper:] *= w_in[::-1]
+
+                        # Windowed DC removal applied after taper to guarantee zero residual mean
+                        if len(pcm) > 0:
+                            mean_val = float(np.mean(pcm))
+                            if abs(mean_val) > 1e-6:
+                                n_samp = len(pcm)
+                                k_arr = np.arange(n_samp, dtype=np.float32)
+                                w_dc = 1.0 - np.cos(2.0 * math.pi * (k_arr + 0.5) / float(n_samp))
+                                pcm = (pcm - mean_val * w_dc).astype(np.float32)
+
+                        now_ms = (time.perf_counter() - t_start) * 1000.0
+                        if ttfa_ms is None:
+                            ttfa_ms = now_ms
+                        t_chunk_ms = (time.perf_counter() - t_c) * 1000.0 if w_idx == 0 else 0.05
+                        yield {
+                            "pcm": pcm,
+                            "wav": encode_wav_bytes(pcm, sr=SAMPLE_RATE),
+                            "sample_rate": SAMPLE_RATE,
+                            "index": chunk_idx,
+                            "sample_offset": sample_offset,
+                            "clause_index": c_idx,
+                            "clause_count": len(clauses),
+                            "is_final": (c_idx == len(clauses) - 1) and is_last_sub,
+                            "duration_sec": len(pcm) / SAMPLE_RATE,
+                            "latency_ms": t_chunk_ms,
+                            "ttfa_ms": ttfa_ms,
+                            "lang": resolved_lc,
+                            "tier": "neural_onnx",
+                            "aksharas": parsed["aksharas"] if w_idx == 0 else [],
+                            "durations": durs_list if w_idx == 0 else [],
+                        }
+                        sample_offset += len(pcm)
+                        chunk_idx += 1
+                    continue
+
                 active_sess = self._get_v4_studio_session(resolved_lc, voice=use_voice) or v4_sess
                 wav_out, durs_out = active_sess.run(
                     None,
@@ -682,22 +1208,43 @@ class Ninada:
                 durs_list = np.asarray(durs_out, dtype=np.int64).reshape(-1).tolist()
 
                 clause_pcm, filter_state = apply_dc_blocker_1pole(clause_pcm, r=0.9965, state=filter_state)
-                clause_pcm = (clause_pcm - float(np.mean(clause_pcm))).astype(np.float32)
+                self._dc_filter_state = filter_state
+                if len(clause_pcm) > 0:
+                    mean_val = float(np.mean(clause_pcm))
+                    if abs(mean_val) > 1e-6:
+                        n_samp = len(clause_pcm)
+                        k_arr = np.arange(n_samp, dtype=np.float32)
+                        w_dc = 1.0 - np.cos(2.0 * math.pi * (k_arr + 0.5) / float(n_samp))
+                        clause_pcm = (clause_pcm - mean_val * w_dc).astype(np.float32)
+
                 if len(clause_pcm) > 192:
-                    r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 192.0))
+                    r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 191.0))
                     clause_pcm[:192] *= r_in
                 if len(clause_pcm) > 256:
-                    r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 256.0))
+                    r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 255.0))
                     clause_pcm[-256:] *= r_out
-                pause_sec = 0.052 if c_idx < len(clauses) - 1 else 0.480
+
+                is_final_clause = c_idx == len(clauses) - 1
+                ends_with_double = bool(re.search(r"(?:॥|\|\||।।|।\s*।|\.\s*\.)\s*$", clause))
+                if is_final_clause:
+                    pause_sec = 0.120
+                elif ends_with_double:
+                    pause_sec = 0.140
+                else:
+                    pause_sec = 0.035
                 pause_samples = int((pause_sec / eff_rate) * SAMPLE_RATE)
                 if pause_samples > 0:
-                    silence = np.zeros(pause_samples, dtype=np.float32)
-                    clause_pcm = np.concatenate([clause_pcm, silence])
+                    room_buf = generate_room_tone(num_samples=pause_samples, seed=1337 + c_idx)
+                    clause_pcm = np.concatenate([clause_pcm, room_buf])
 
-                peak = float(np.max(np.abs(clause_pcm))) if len(clause_pcm) > 0 else 0.0
-                if peak > 0.96:
-                    clause_pcm = (0.92 * (clause_pcm / peak)).astype(np.float32)
+                pos_m = clause_pcm > 0.96
+                neg_m = clause_pcm < -0.96
+                if np.any(pos_m) or np.any(neg_m):
+                    clause_pcm = clause_pcm.copy()
+                    if np.any(pos_m):
+                        clause_pcm[pos_m] = 0.96 + 0.03 * np.tanh((clause_pcm[pos_m] - 0.96) / 0.04)
+                    if np.any(neg_m):
+                        clause_pcm[neg_m] = -0.96 - 0.03 * np.tanh((-clause_pcm[neg_m] - 0.96) / 0.04)
 
                 total_s = len(clause_pcm)
                 bounds: list[tuple[int, int]] = []
@@ -723,6 +1270,7 @@ class Ninada:
                         "wav": encode_wav_bytes(sub_pcm, sr=SAMPLE_RATE),
                         "sample_rate": SAMPLE_RATE,
                         "index": chunk_idx,
+                        "sample_offset": sample_offset,
                         "clause_index": c_idx,
                         "clause_count": len(clauses),
                         "is_final": (c_idx == len(clauses) - 1) and is_last_sub,
@@ -734,7 +1282,9 @@ class Ninada:
                         "aksharas": parsed["aksharas"] if sub_i == 0 else [],
                         "durations": durs_list if sub_i == 0 else [],
                     }
+                    sample_offset += len(sub_pcm)
                     chunk_idx += 1
+            self._dc_filter_state = filter_state
             return
 
         # Path 1: Legacy Unified 24 kHz ONNX (`input_ids`, `style`, `speed`)
@@ -749,6 +1299,7 @@ class Ninada:
                     "wav": encode_wav_bytes(silent, sr=SAMPLE_RATE),
                     "sample_rate": SAMPLE_RATE,
                     "index": 0,
+                    "sample_offset": 0,
                     "clause_index": 0,
                     "clause_count": 1,
                     "is_final": True,
@@ -765,7 +1316,7 @@ class Ninada:
             chunk_f = max(24, int(chunk_frames))
             chunk_samples = chunk_f * HOP_LENGTH
             min_tail_samples = 16 * HOP_LENGTH
-            filter_state_leg: tuple[float, float] = (0.0, 0.0)
+            filter_state_leg: tuple[float, float] = self._dc_filter_state
 
             for c_idx, clause in enumerate(clauses):
                 t_c = time.perf_counter()
@@ -780,6 +1331,7 @@ class Ninada:
                         "wav": encode_wav_bytes(silent, sr=SAMPLE_RATE),
                         "sample_rate": SAMPLE_RATE,
                         "index": chunk_idx,
+                        "sample_offset": sample_offset,
                         "clause_index": c_idx,
                         "clause_count": len(clauses),
                         "is_final": c_idx == len(clauses) - 1,
@@ -791,6 +1343,7 @@ class Ninada:
                         "aksharas": parsed["aksharas"],
                         "durations": [],
                     }
+                    sample_offset += len(silent)
                     chunk_idx += 1
                     continue
 
@@ -806,20 +1359,34 @@ class Ninada:
                 durs_list = np.asarray(durs_out, dtype=np.int64).reshape(-1).tolist()
 
                 clause_pcm, filter_state_leg = apply_dc_blocker_1pole(clause_pcm, r=0.9965, state=filter_state_leg)
+                self._dc_filter_state = filter_state_leg
+                if len(clause_pcm) > 0:
+                    mean_val = float(np.mean(clause_pcm))
+                    if abs(mean_val) > 1e-6:
+                        n_samp = len(clause_pcm)
+                        k_arr = np.arange(n_samp, dtype=np.float32)
+                        w_dc = 1.0 - np.cos(2.0 * math.pi * (k_arr + 0.5) / float(n_samp))
+                        clause_pcm = (clause_pcm - mean_val * w_dc).astype(np.float32)
+
                 if len(clause_pcm) > 192:
-                    r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 192.0))
+                    r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 191.0))
                     clause_pcm[:192] *= r_in
                 if len(clause_pcm) > 256:
-                    r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 256.0))
+                    r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 255.0))
                     clause_pcm[-256:] *= r_out
                 if c_idx < len(clauses) - 1:
                     pause_samples = int(0.048 * SAMPLE_RATE)
-                    silence = np.zeros(pause_samples, dtype=np.float32)
-                    clause_pcm = np.concatenate([clause_pcm, silence])
+                    room_buf = generate_room_tone(num_samples=pause_samples, seed=1337 + c_idx)
+                    clause_pcm = np.concatenate([clause_pcm, room_buf])
 
-                peak = float(np.max(np.abs(clause_pcm))) if len(clause_pcm) > 0 else 0.0
-                if peak > 0.96:
-                    clause_pcm = (0.92 * (clause_pcm / peak)).astype(np.float32)
+                pos_m = clause_pcm > 0.96
+                neg_m = clause_pcm < -0.96
+                if np.any(pos_m) or np.any(neg_m):
+                    clause_pcm = clause_pcm.copy()
+                    if np.any(pos_m):
+                        clause_pcm[pos_m] = 0.96 + 0.03 * np.tanh((clause_pcm[pos_m] - 0.96) / 0.04)
+                    if np.any(neg_m):
+                        clause_pcm[neg_m] = -0.96 - 0.03 * np.tanh((-clause_pcm[neg_m] - 0.96) / 0.04)
 
                 total_s = len(clause_pcm)
                 bounds = []
@@ -845,6 +1412,7 @@ class Ninada:
                         "wav": encode_wav_bytes(sub_pcm, sr=SAMPLE_RATE),
                         "sample_rate": SAMPLE_RATE,
                         "index": chunk_idx,
+                        "sample_offset": sample_offset,
                         "clause_index": c_idx,
                         "clause_count": len(clauses),
                         "is_final": (c_idx == len(clauses) - 1) and is_last_sub,
@@ -856,6 +1424,7 @@ class Ninada:
                         "aksharas": parsed["aksharas"] if sub_i == 0 else [],
                         "durations": durs_list if sub_i == 0 else [],
                     }
+                    sample_offset += len(sub_pcm)
                     chunk_idx += 1
             return
 
@@ -886,6 +1455,7 @@ class Ninada:
             fade_out = 1.0 - fade_in
 
             global_ord = 0
+            filter_state_enc = self._dc_filter_state
             for c_idx, clause in enumerate(clauses):
                 parsed = text_to_ids(clause, lang=use_lang)
                 ort_in_leg: dict[str, Any] = {
@@ -922,7 +1492,6 @@ class Ninada:
 
                 num_sub = max(1, len(bounds))
                 prev_tail: np.ndarray | None = None
-                filter_state_enc = (0.0, 0.0)
 
                 for sub_i, (st, ed) in enumerate(bounds):
                     is_last_sub = sub_i == num_sub - 1
@@ -950,12 +1519,30 @@ class Ninada:
                         prev_tail = None
                         pcm = seg[: crop_r - crop_l]
 
-                    pcm, filter_state_enc = apply_dc_blocker_1pole(pcm, r=0.995, state=filter_state_enc)
+                    pcm, filter_state_enc = apply_dc_blocker_1pole(pcm, r=0.9965, state=filter_state_enc)
+                    self._dc_filter_state = filter_state_enc
+                    if len(pcm) > 0:
+                        mean_val = float(np.mean(pcm))
+                        if abs(mean_val) > 1e-6:
+                            n_samp = len(pcm)
+                            k_arr = np.arange(n_samp, dtype=np.float32)
+                            w_dc = 1.0 - np.cos(2.0 * math.pi * (k_arr + 0.5) / float(n_samp))
+                            pcm = (pcm - mean_val * w_dc).astype(np.float32)
+
+                        pos_m = pcm > 0.96
+                        neg_m = pcm < -0.96
+                        if np.any(pos_m) or np.any(neg_m):
+                            pcm = pcm.copy()
+                            if np.any(pos_m):
+                                pcm[pos_m] = 0.96 + 0.03 * np.tanh((pcm[pos_m] - 0.96) / 0.04)
+                            if np.any(neg_m):
+                                pcm[neg_m] = -0.96 - 0.03 * np.tanh((-pcm[neg_m] - 0.96) / 0.04)
+
                     if sub_i == 0 and len(pcm) > 192:
-                        r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 192.0))
+                        r_in = 0.5 * (1.0 - np.cos(math.pi * np.arange(192, dtype=np.float32) / 191.0))
                         pcm[:192] *= r_in
                     if is_last_sub and len(pcm) > 256:
-                        r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 256.0))
+                        r_out = 0.5 * (1.0 + np.cos(math.pi * np.arange(256, dtype=np.float32) / 255.0))
                         pcm[-256:] *= r_out
 
                     now_ms = (time.perf_counter() - t_start) * 1000.0
@@ -965,6 +1552,7 @@ class Ninada:
                         "pcm": pcm,
                         "wav": encode_wav_bytes(pcm, sr=SAMPLE_RATE),
                         "sample_rate": SAMPLE_RATE,
+                        "sample_offset": sample_offset,
                         "index": chunk_idx,
                         "clause_index": c_idx,
                         "clause_count": len(clauses),
@@ -977,7 +1565,9 @@ class Ninada:
                         "aksharas": parsed["aksharas"] if sub_i == 0 else [],
                         "durations": durs[0].tolist() if sub_i == 0 else [],
                     }
+                    sample_offset += len(pcm)
                     chunk_idx += 1
+            self._dc_filter_state = filter_state_enc
             return
 
         # Path 3: Legacy monolithic VITS ONNX with attention_mask (if explicitly configured)
@@ -1007,6 +1597,7 @@ class Ninada:
                     "pcm": pcm,
                     "wav": encode_wav_bytes(pcm, sr=SAMPLE_RATE),
                     "sample_rate": SAMPLE_RATE,
+                    "sample_offset": sample_offset,
                     "index": chunk_idx,
                     "clause_index": c_idx,
                     "clause_count": len(clauses),
@@ -1019,60 +1610,35 @@ class Ninada:
                     "aksharas": parsed["aksharas"],
                     "durations": durs[0].tolist(),
                 }
+                sample_offset += len(pcm)
                 chunk_idx += 1
             return
 
         # Path 4: Zero-Dependency Klatt Tier-2 Clause Streaming
-        if not clauses:
-            pcm_list, parsed = synthesize_klatt_pcm(text, lang=use_lang, rate=eff_rate)
-            ttfa_ms = (time.perf_counter() - t_start) * 1000.0
-            yield {
-                "pcm": pcm_list,
-                "wav": encode_wav_bytes(pcm_list, sr=SAMPLE_RATE),
-                "sample_rate": SAMPLE_RATE,
-                "index": 0,
-                "clause_index": 0,
-                "clause_count": 1,
-                "is_final": True,
-                "duration_sec": len(pcm_list) / SAMPLE_RATE,
-                "latency_ms": ttfa_ms,
-                "ttfa_ms": ttfa_ms,
-                "lang": parsed["lang"],
-                "tier": "klatt_zero_dep",
-                "aksharas": parsed["aksharas"],
-                "durations": [],
-            }
-            return
-
-        for c_idx, clause in enumerate(clauses):
-            t_c = time.perf_counter()
-            pcm_list, parsed = synthesize_klatt_pcm(clause, lang=use_lang, rate=eff_rate)
-            if ttfa_ms is None:
-                ttfa_ms = (time.perf_counter() - t_start) * 1000.0
-            yield {
-                "pcm": pcm_list,
-                "wav": encode_wav_bytes(pcm_list, sr=SAMPLE_RATE),
-                "sample_rate": SAMPLE_RATE,
-                "index": chunk_idx,
-                "clause_index": c_idx,
-                "clause_count": len(clauses),
-                "is_final": c_idx == len(clauses) - 1,
-                "duration_sec": len(pcm_list) / SAMPLE_RATE,
-                "latency_ms": (time.perf_counter() - t_c) * 1000.0,
-                "ttfa_ms": ttfa_ms,
-                "lang": parsed["lang"],
-                "tier": "klatt_zero_dep",
-                "aksharas": parsed["aksharas"],
-                "durations": [],
-            }
-            chunk_idx += 1
+        for chunk in _iter_klatt_streaming_chunks(
+            text,
+            lang=use_lang,
+            rate=eff_rate,
+            f0_base=132.0,
+            t_start=t_start,
+            sample_offset=sample_offset,
+            chunk_start_idx=chunk_idx,
+            filter_state=self._dc_filter_state,
+        ):
+            if ttfa_ms is None and chunk.get("ttfa_ms") is not None:
+                ttfa_ms = chunk["ttfa_ms"]
+            self._dc_filter_state = chunk.get("_filter_state", self._dc_filter_state)
+            yield chunk
+            sample_offset = chunk["sample_offset"] + len(chunk["pcm"])
+            chunk_idx = chunk["index"] + 1
+        return
 
     def speak(
         self,
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.60,
+        noise: float = 0.40,
         noise_duration: float = 0.0,
         tier: str = "auto",
         voice: str | None = None,
@@ -1094,7 +1660,7 @@ class Ninada:
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.60,
+        noise: float = 0.40,
         noise_duration: float = 0.0,
         tier: str = "auto",
         voice: str | None = None,
@@ -1129,11 +1695,6 @@ class Ninada:
                     all_durs.extend(ch["durations"])
                 ttfa_ms = float(ch["ttfa_ms"])
             waveform = np.concatenate(pieces, axis=0) if pieces else np.zeros(2400, dtype=np.float32)
-            waveform = (waveform - float(np.mean(waveform))).astype(np.float32)
-            peak = float(np.max(np.abs(waveform))) if len(waveform) > 0 else 0.0
-            if peak > 0.02:
-                waveform = 0.88 * (waveform / max(1.0, peak))
-                waveform = (waveform - float(np.mean(waveform))).astype(np.float32)
             parsed["tier"] = "neural_onnx"
             parsed["durations"] = all_durs
             parsed["ttfa_ms"] = ttfa_ms
@@ -1148,7 +1709,7 @@ def speak(
     text: str,
     lang: str = "sa",
     rate: float = 1.0,
-    noise: float = 0.60,
+    noise: float = 0.40,
     noise_duration: float = 0.0,
     tier: str = "auto",
     voice: str | None = None,
@@ -1169,7 +1730,7 @@ def stream(
     text: str,
     lang: str = "sa",
     rate: float = 1.0,
-    noise: float = 0.60,
+    noise: float = 0.40,
     noise_duration: float = 0.0,
     tier: str = "auto",
     chunk_frames: int = 64,

@@ -1,6 +1,6 @@
 # ninada
 
-Stream 24,000 Hz studio speech for Indian English, Classical Sanskrit, and ten Indian languages (`sa`, `en`, `hi`, `kn`, `mr`, `bn`, `ta`, `te`, `ml`, `gu`, `pa`, `or`) in the browser, Node.js, and Python using `27.9 MB` native per-language VITS ONNX specialists (`24` Male & Female studio models) with zero cross-language accent bleed.
+In-browser, Node.js, and Python 24,000 Hz text to speech for Indian English, Classical Sanskrit, and ten Indian languages (`sa`, `en`, `hi`, `kn`, `mr`, `bn`, `ta`, `te`, `ml`, `gu`, `pa`, `or`) powered by `27.9 MB` native per-language VITS ONNX specialists (`24` Male & Female studio models) with zero cross-language accent bleed.
 
 ```bash
 npm install ninada webml-kit
@@ -74,12 +74,12 @@ const { aksharas } = textToIds('धर्मक्षेत्रे कुर�
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Base `facebook/mms-tts-hin` | 16 kHz | 138.8 MB | 29.4% | 0.9 ms* | `7.98 [7.81, 8.16]` | 65.16 dB | 3.49s |
 | Meta MMS 11-Specialist Fleet (`11x` VITS) | 16 kHz | 1526.8 MB | 100.0% | 204.2 ms | `5.17 [5.12, 5.22]` | 64.97 dB | 1.04s |
-| `ninada` v5.0 Untuned Warm-Start (`step=0`) | 24 kHz | 112.0 MB | 100.0% | 196.1 ms | `4.58 [4.54, 4.62]` | 10.93 dB | 0.93s |
-| **`ninada` v5.0 Native Studio FP32** | **24 kHz** | 112.0 MB | **100.0%** | **45.0 ms** | **`3.27 [3.24, 3.30]`** | **6.07 dB** | **0.60s** |
-| **`ninada` v5.0 Native Browser ONNX** | **24 kHz** | **27.9 MB** | **100.0%** | **382.4 ms** | **`3.27 [3.24, 3.29]`** | **6.03 dB** | **0.60s** |
-| `ninada` Tier-2 Klatt Fallback | 24 kHz | **0.0 MB** | **100.0%** | **112.8 ms** | `10.53 [10.43, 10.64]` | 42.38 dB | 0.88s |
+| `ninada` v5.0.1 Untuned Warm-Start (`step=0`) | 24 kHz | 112.0 MB | 100.0% | 191.0 ms | `4.58 [4.54, 4.62]` | 10.93 dB | 0.93s |
+| **`ninada` v5.0.1 Native Studio FP32** | **24 kHz** | 112.0 MB | **100.0%** | **43.3 ms** | **`3.22 [3.19, 3.25]`** | **6.08 dB** | **0.58s** |
+| **`ninada` v5.0.1 Native Browser ONNX** | **24 kHz** | **27.9 MB** | **100.0%** | **373.0 ms** | **`3.22 [3.19, 3.25]`** | **6.07 dB** | **0.58s** |
+| `ninada` Tier-2 Klatt Fallback | 24 kHz | **0.0 MB** | **100.0%** | **110.2 ms** | `10.53 [10.43, 10.64]` | 42.38 dB | 0.88s |
 
-Per-language held-out `MCD 0–8 kHz (dB, ↓)`: Punjabi **`2.89`** (vs `5.23` MMS), Marathi **`3.10`** (vs `4.62` MMS), Odia **`3.11`** (vs `5.49` MMS), Indian English **`3.13`** (vs `5.94` MMS), Tamil **`3.21`** (vs `4.87` MMS), Bengali **`3.27`** (vs `4.68` MMS), Gujarati **`3.30`** (vs `5.56` MMS), Malayalam **`3.35`** (vs `4.88` MMS), Hindi **`3.36`** (vs `4.85` MMS), Kannada **`3.36`** (vs `5.04` MMS), Sanskrit **`3.51`** (vs `5.32` MMS), Telugu **`3.59`** (vs `5.57` MMS). Full bootstrap CIs and parity telemetry (`0.58 dB` parity MCD, `r = 0.9999`) in [`bench/SCIENCE_REPORT.md`](./bench/SCIENCE_REPORT.md) and [`bench/results.json`](./bench/results.json).
+Per-language held-out `MCD 0–8 kHz (dB, ↓)`: Punjabi **`2.89`** (vs `5.23` MMS), Indian English **`3.07`** (vs `5.94` MMS), Marathi **`3.10`** (vs `4.62` MMS), Odia **`3.11`** (vs `5.49` MMS), Tamil **`3.21`** (vs `4.87` MMS), Bengali **`3.27`** (vs `4.68` MMS), Gujarati **`3.30`** (vs `5.56` MMS), Malayalam **`3.35`** (vs `4.88` MMS), Hindi **`3.36`** (vs `4.85` MMS), Kannada **`3.36`** (vs `5.04` MMS), Sanskrit **`3.51`** (vs `5.32` MMS), Telugu **`3.59`** (vs `5.57` MMS). Full bootstrap CIs and parity telemetry (`0.58 dB` parity MCD, `r = 0.9999`) in [`bench/SCIENCE_REPORT.md`](./bench/SCIENCE_REPORT.md) and [`bench/results.json`](./bench/results.json).
 
 ## Reproduce & Verify
 
@@ -93,7 +93,7 @@ Trains all 24 native `24 kHz` Male/Female studio VITS specialists across 12 lang
 
 ## Links
 
-- [Live Browser Voice Studio](https://hemanth.github.io/ninada/)
+- [In-Browser Voice Studio](https://hemanth.github.io/ninada/)
 - [Hugging Face Model (`gnumanth/ninada`)](https://huggingface.co/gnumanth/ninada)
 - [Hugging Face Dataset (`gnumanth/ninada-sanskrit-indic`)](https://huggingface.co/datasets/gnumanth/ninada-sanskrit-indic)
 

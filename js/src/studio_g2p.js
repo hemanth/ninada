@@ -1,7 +1,15 @@
 /**
  * Ninada v5.0 — Native Per-Language 24,000 Hz Studio VITS Character Tokenizer (Zero-Dep ESM).
  */
-import { detectScriptAndLang, iastToDevanagari, toNativeModelText } from './g2p.js';
+import {
+  deleteHindiSchwa,
+  deleteHindiSchwaWord,
+  detectScriptAndLang,
+  iastToDevanagari,
+  toNativeModelText,
+} from './g2p.js';
+
+export { deleteHindiSchwa, deleteHindiSchwaWord };
 
 export const STUDIO_HOP_LENGTH = 256;
 export const STUDIO_SAMPLE_RATE = 24000;
@@ -135,7 +143,18 @@ const EN_ABBREVS = [
   [/\bms\./gi, 'miss'],
   [/\bdr\./gi, 'doctor'],
   [/\bprof\./gi, 'professor'],
+  [/\bst\./gi, 'saint'],
   [/\bvs\./gi, 'versus'],
+  [/\binc\./gi, 'incorporated'],
+  [/\bcorp\./gi, 'corporation'],
+  [/\bltd\./gi, 'limited'],
+  [/\bco\./gi, 'company'],
+  [/\bjr\./gi, 'junior'],
+  [/\bsr\./gi, 'senior'],
+  [/\bdept\./gi, 'department'],
+  [/\buniv\./gi, 'university'],
+  [/\bno\./gi, 'number'],
+  [/\bapprox\./gi, 'approximately'],
   [/\betc\./gi, 'et cetera'],
   [/\be\.g\./gi, 'for example'],
   [/\bi\.e\./gi, 'that is'],
@@ -166,6 +185,16 @@ function enIntToWords(n) {
     const r = n % 1000;
     return r === 0 ? `${enIntToWords(k)} thousand` : `${enIntToWords(k)} thousand ${enIntToWords(r)}`;
   }
+  if (n < 1_000_000_000) {
+    const m = Math.floor(n / 1_000_000);
+    const r = n % 1_000_000;
+    return r === 0 ? `${enIntToWords(m)} million` : `${enIntToWords(m)} million ${enIntToWords(r)}`;
+  }
+  if (n < 1_000_000_000_000) {
+    const b = Math.floor(n / 1_000_000_000);
+    const r = n % 1_000_000_000;
+    return r === 0 ? `${enIntToWords(b)} billion` : `${enIntToWords(b)} billion ${enIntToWords(r)}`;
+  }
   return [...String(n)].map((d) => EN_ONES[Number(d)]).join(' ');
 }
 
@@ -178,19 +207,88 @@ function enOrdinalToWords(n) {
   return words.join(' ');
 }
 
-function normalizeEnglishText(t) {
-  let out = t;
+export function normalizeEnglishText(t) {
+  let out = t
+    .replace(/(?<=\d)\s*kHz\b/gi, ' kilohertz')
+    .replace(/(?<=\d)\s*MHz\b/gi, ' megahertz')
+    .replace(/(?<=\d)\s*GHz\b/gi, ' gigahertz')
+    .replace(/\bkHz\b/gi, 'kilohertz')
+    .replace(/\bMHz\b/gi, 'megahertz')
+    .replace(/\bGHz\b/gi, 'gigahertz')
+    .replace(/(?<=\d)\s*Hz\b/gi, ' hertz')
+    .replace(/(?<=\d)\s*ms\b/gi, ' milliseconds')
+    .replace(/(?<=\d)\s*MB\b/gi, ' megabytes')
+    .replace(/(?<=\d)\s*GB\b/gi, ' gigabytes')
+    .replace(/(?<=\d)\s*KB\b/gi, ' kilobytes')
+    .replace(/\b(\d{1,12})(st|nd|rd|th)\b/gi, (_, num) => enOrdinalToWords(Number(num)))
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/([A-Za-z])(\d)/g, '$1 $2')
+    .replace(/(\d)([A-Za-z])/g, '$1 $2');
   for (const [pat, rep] of EN_ABBREVS) {
     out = out.replace(pat, rep);
   }
+  out = out.replace(/(?<=\d),(?=\d{3}\b)/g, '');
+
+  const currMap = {
+    $: ['dollar', 'dollars', 'cent', 'cents'],
+    '€': ['euro', 'euros', 'cent', 'cents'],
+    '₹': ['rupee', 'rupees', 'paise', 'paise'],
+  };
+
+  out = out.replace(/([$€₹])(\d+)\.(\d{2})\b/g, (_, sym, dStr, cStr) => {
+    const dollars = Number(dStr);
+    const cents = Number(cStr);
+    const [cSing, cPlur, sSing, sPlur] = currMap[sym] || ['dollar', 'dollars', 'cent', 'cents'];
+    const parts = [];
+    if (dollars > 0 || cents === 0) {
+      parts.push(`${enIntToWords(dollars)} ${dollars === 1 ? cSing : cPlur}`);
+    }
+    if (cents > 0) {
+      const sName = cents === 1 ? sSing : sPlur;
+      if (parts.length > 0) {
+        parts.push(`and ${enIntToWords(cents)} ${sName}`);
+      } else {
+        parts.push(`${enIntToWords(cents)} ${sName}`);
+      }
+    }
+    return parts.length > 0 ? parts.join(' ') : `zero ${cPlur}`;
+  });
+
+  out = out.replace(/([$€₹])(\d+)\b/g, (_, sym, valStr) => {
+    const val = Number(valStr);
+    const [cSing, cPlur] = currMap[sym] || ['dollar', 'dollars'];
+    return `${enIntToWords(val)} ${val === 1 ? cSing : cPlur}`;
+  });
+
   out = out
     .replaceAll('&', ' and ')
     .replaceAll('%', ' percent ')
     .replaceAll('₹', ' rupees ')
-    .replaceAll('$', ' dollars ');
-  out = out.replace(/(?<=\d),(?=\d{3}\b)/g, '');
-  out = out.replace(/\b(\d{1,6})(st|nd|rd|th)\b/gi, (_, num) => enOrdinalToWords(Number(num)));
-  out = out.replace(/\b(\d{1,6})\b/g, (_, num) => enIntToWords(Number(num)));
+    .replaceAll('$', ' dollars ')
+    .replaceAll('€', ' euros ');
+
+  out = out.replace(/\b\d+(?:\.\d+)+\b/g, (s) => {
+    const parts = s.split('.');
+    if (parts.length === 2) {
+      const whole = enIntToWords(Number(parts[0]));
+      const fracWords = [...parts[1]].map((d) => EN_ONES[Number(d)]).join(' ');
+      return `${whole} point ${fracWords}`;
+    }
+    const outParts = [];
+    for (const p of parts) {
+      if (p === '0') {
+        outParts.push('zero');
+      } else if (p.length > 1 && p.startsWith('0')) {
+        outParts.push([...p].map((d) => EN_ONES[Number(d)]).join(' '));
+      } else {
+        outParts.push(enIntToWords(Number(p)));
+      }
+    }
+    return outParts.join(' point ');
+  });
+
+  out = out.replace(/\b(\d{1,12})\b/g, (_, num) => enIntToWords(Number(num)));
   return out;
 }
 
@@ -239,7 +337,12 @@ export function cleanStudioText(text, lang = 'sa') {
 
   if (lc === 'sa') {
     t = t.replace(/[\u0951-\u0954\u1cd0-\u1cff]/g, '');
-    t = t.replaceAll('॥', '.').replaceAll('।', ',');
+    t = t.replace(/\s*ऽ+/g, 'ऽ');
+    t = t.replaceAll('||', '॥').replaceAll('|', '।');
+  }
+  if (lc === 'hi') {
+    t = t.replace(/[\u0951-\u0954\u1cd0-\u1cff]/g, '');
+    t = t.replaceAll('||', '।').replaceAll('|', '।').replaceAll('।।', '।');
   }
   if (lc === 'mr') {
     t = t.replace(/[\u0951-\u0954\u1cd0-\u1cff]/g, '');

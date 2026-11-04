@@ -214,6 +214,16 @@ def _en_ordinal_to_words(n: int) -> str:
 
 
 def _normalize_english_text(t: str) -> str:
+    # Expand frequency/size/latency units before splitting CamelCase & acronym-to-word transitions
+    t = re.sub(r"\bkHz\b", "kilohertz", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bMHz\b", "megahertz", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bGHz\b", "gigahertz", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?<=\d)\s*Hz\b", " hertz", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?<=\d)\s*ms\b", " milliseconds", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?<=\d)\s*MB\b", " megabytes", t)
+    t = re.sub(r"(?<=\d)\s*GB\b", " gigabytes", t)
+    t = re.sub(r"([a-z])([A-Z])", r"\1 \2", t)
+    t = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", t)
     for pat, rep in _EN_ABBREVS:
         t = pat.sub(rep, t)
     t = t.replace("&", " and ").replace("%", " percent ").replace("₹", " rupees ").replace("$", " dollars ")
@@ -555,7 +565,7 @@ def build_target_tokenizer_and_remap_embeddings(
         return target_tok, new_emb
 
     if lang == "or":
-        # Build dedicated native Odia tokenizer and map 1-to-1 from SYSPIN Bengali Eastern-Indo-Aryan (-0x0180) offsets
+        # Build dedicated native Odia tokenizer and map 1-to-1 from SYSPIN Bengali Unicode block (-0x0180) offsets
         target_tok = StudioCharTokenizer(
             lang="or",
             pad="<PAD>",

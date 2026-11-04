@@ -10,7 +10,7 @@ def main() -> None:
     assert results_path.exists(), "bench/results.json not found"
     res = json.loads(results_path.read_text(encoding="utf-8"))
 
-    assert res.get("version") == "5.0.0", f"Expected version 5.0.0, got {res.get('version')}"
+    assert res.get("version") in ("5.0.0", "5.0.1"), f"Expected version 5.0.x, got {res.get('version')}"
     assert res.get("sample_rate_hz") == 24000, f"Expected 24000 Hz, got {res.get('sample_rate_hz')}"
     assert res.get("num_test_utterances") == 480, f"Expected 480 test utterances, got {res.get('num_test_utterances')}"
 

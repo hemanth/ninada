@@ -1,5 +1,5 @@
 import * as ortNs from './ort/ort.wasm.min.mjs';
-import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.0';
+import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.1';
 
 const ort = ortNs?.default?.InferenceSession ? ortNs.default : ortNs;
 
@@ -7,15 +7,16 @@ const HF_REPO = 'gnumanth/ninada';
 const SUPPORTED_LANGS = ['sa', 'kn', 'hi', 'ta', 'te', 'ml', 'en', 'mr', 'bn', 'gu', 'pa', 'or'];
 const LOCAL_BUNDLED_LANGS = new Set(['sa', 'kn', 'hi', 'ta', 'te', 'ml']);
 
-const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v5.0.0';
+const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v5.0.1';
 const MODEL_CACHE_PREFIX = 'ninada-onnx-';
-const IDB_NAME = 'ninada-onnx-idb-v500';
+const IDB_NAME = 'ninada-onnx-idb-v501';
 const LEGACY_IDB_NAMES = [
   'ninada-onnx-idb-v3',
   'ninada-onnx-idb-v31',
   'ninada-onnx-idb-v32',
   'ninada-onnx-idb-v40',
   'ninada-onnx-idb-v402',
+  'ninada-onnx-idb-v500',
 ];
 const IDB_STORE = 'models';
 
@@ -51,11 +52,11 @@ function buildFallbackLangSpec(lc) {
   const maleUrls = LOCAL_BUNDLED_LANGS.has(lc) ? [localMaleUrl, hfMaleUrl] : [hfMaleUrl, localMaleUrl];
   return {
     lang: lc,
-    cacheKey: `ninada_v500_${lc}_24k_q8f16.onnx`,
+    cacheKey: `ninada_v501_${lc}_24k_q8f16.onnx`,
     expectedBytes: 0,
     totalMB: 27.93,
     urls: maleUrls,
-    femaleCacheKey: `ninada_v500_${lc}_female_24k_q8f16.onnx`,
+    femaleCacheKey: `ninada_v501_${lc}_female_24k_q8f16.onnx`,
     femaleExpectedBytes: 0,
     femaleTotalMB: 27.93,
     femaleUrls: [
@@ -73,7 +74,7 @@ async function getModelsManifest() {
       fallbackLanguages[lc] = buildFallbackLangSpec(lc);
     }
     try {
-      const res = await fetch('./models_manifest.json?v=5.0.0', { cache: 'no-cache' });
+      const res = await fetch('./models_manifest.json?v=5.0.1', { cache: 'no-cache' });
       if (res.ok) {
         const json = await res.json();
         if (json?.cacheName) {
@@ -88,7 +89,7 @@ async function getModelsManifest() {
           }
         }
         return {
-          version: json?.version || '5.0.0',
+          version: json?.version || '5.0.1',
           cacheName: activeCacheName,
           languages: mergedLangs,
         };
@@ -97,7 +98,7 @@ async function getModelsManifest() {
       // Fallback to built-in specialist URL map
     }
     return {
-      version: '5.0.0',
+      version: '5.0.1',
       cacheName: activeCacheName,
       languages: fallbackLanguages,
     };
@@ -292,32 +293,43 @@ async function fetchOrLoadAsset(cacheKey, urls, expectedBytes, validator, onDelt
 
 function buildSessionOpts() {
   const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
+  const canUseArena = isCoi || !IS_MOBILE_OR_LOW_MEM;
   return {
     executionProviders: ['wasm'],
     graphOptimizationLevel: 'all',
-    enableCpuMemArena: isCoi,
-    enableMemPattern: isCoi,
+    enableCpuMemArena: canUseArena,
+    enableMemPattern: true,
   };
 }
 
 async function warmupSpecialistSession(session) {
   try {
     const warmIds = new ort.Tensor('int64', BigInt64Array.from([0n, 3n, 0n, 4n, 0n]), [1, 5]);
-    const warmScales = new ort.Tensor('float32', Float32Array.from([1.0, 0.60, 0.0]), [3]);
-    const out = await session.run({
-      input_ids: warmIds,
-      scales: warmScales,
-    });
-    warmIds.dispose?.();
-    warmScales.dispose?.();
-    out.waveform?.dispose?.();
-    out.durations?.dispose?.();
-    const isCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
-    if (isCoi && !IS_MOBILE_OR_LOW_MEM && session?.isSplitStudioVits && session.vocoderSession && session.latentName) {
-      const warmLatent = new ort.Tensor('float32', new Float32Array(192 * 64), [1, 192, 64]);
-      const vocOut = await session.vocoderSession.run({ [session.latentName]: warmLatent });
-      warmLatent.dispose?.();
-      vocOut[session.wav3dName]?.dispose?.();
+    const warmScales = new ort.Tensor('float32', Float32Array.from([1.0, 0.40, 0.0]), [3]);
+    if (session?.isSplitStudioVits && session.encFlowSession && session.vocoderSession && session.latentName) {
+      const encOut = await session.encFlowSession.run({
+        input_ids: warmIds,
+        scales: warmScales,
+      });
+      warmIds.dispose?.();
+      warmScales.dispose?.();
+      encOut[session.latentName]?.dispose?.();
+      encOut.durations?.dispose?.();
+
+      // Warm exclusively with the single static vocoder shape [1, 192, 80] so ORT WASM memory-pattern planning stays locked.
+      const warm80 = new ort.Tensor('float32', new Float32Array(192 * 80), [1, 192, 80]);
+      const voc80 = await session.vocoderSession.run({ [session.latentName]: warm80 });
+      warm80.dispose?.();
+      voc80[session.wav3dName]?.dispose?.();
+    } else {
+      const out = await session.run({
+        input_ids: warmIds,
+        scales: warmScales,
+      });
+      warmIds.dispose?.();
+      warmScales.dispose?.();
+      out.waveform?.dispose?.();
+      out.durations?.dispose?.();
     }
   } catch {
     // Non-fatal JIT warmup
@@ -513,7 +525,7 @@ async function ensureLangReady(rawLang = 'sa', { voice = 'male', emitReady = tru
       fromCache: false,
       cachedPersisted: false,
       cacheBackend: null,
-      reason: `WASM fallback (${err?.message || 'memory limit'}) — running Klatt Tier-2`,
+      reason: `WASM fallback (${err?.message || 'memory limit'}): running Klatt Tier-2`,
     };
     if (emitReady) self.postMessage(lastReadyPayload);
     return voiceEngine;
@@ -584,13 +596,14 @@ self.addEventListener('message', (ev) => {
           lang: targetLang,
           voice: targetVoice,
           rate: Number(msg.rate ?? 1.0),
-          noise: Number(msg.noise ?? 0.60),
+          noise: Number(msg.noise ?? 0.40),
           noiseDuration: Number(msg.noiseDuration ?? msg.noise_duration ?? 0.0),
           tier,
           firstChunkFrames: Number(msg.firstChunkFrames || defaultFirstFrames),
           chunkFrames: Number(msg.chunkFrames || defaultChunkFrames),
-          firstLatentFrames: Number(msg.firstLatentFrames || (workerIsCoi ? 32 : 28)),
+          firstLatentFrames: Number(msg.firstLatentFrames || 68),
           singleThread: !workerIsCoi || workerThreads <= 1,
+          yieldBetweenWindows: false,
           signal: controller.signal,
         })) {
           if (controller.signal.aborted) return;

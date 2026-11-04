@@ -22,11 +22,9 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
     this.playedSourceSamples = 0;
     this.totalPushedSamples = 0;
     this.underrunCount = 0;
+    this.minBufferedPlayingSamples = Infinity;
     this.quantaCounter = 0;
-    // Stateful 1-pole high-pass DC blocker (R = 0.9965, fc ≈ 13.3 Hz @ 24 kHz)
-    this.dcR = 0.9965;
-    this.dcXPrev = 0.0;
-    this.dcYPrev = 0.0;
+    this.recoveryWatermarkSec = 0.24;
 
     this.port.onmessage = (ev) => {
       const msg = ev.data || {};
@@ -36,6 +34,7 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
         this.headOffset = 0;
         this.queuedSamples = 0;
         this.srcRate = Number(msg.sampleRate) || 24000;
+        this.recoveryWatermarkSec = Number(msg.recoveryWatermarkSec) || this.recoveryWatermarkSec || 0.24;
         this.watermarkSamples = Math.max(128, Number(msg.watermarkSamples) || Math.round(0.045 * this.srcRate));
         this.state = 'buffering';
         this.eos = false;
@@ -47,9 +46,8 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
         this.playedSourceSamples = 0;
         this.totalPushedSamples = 0;
         this.underrunCount = 0;
+        this.minBufferedPlayingSamples = Infinity;
         this.quantaCounter = 0;
-        this.dcXPrev = 0.0;
-        this.dcYPrev = 0.0;
         return;
       }
 
@@ -63,6 +61,7 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
       if (msg.type === 'push') {
         const pcm = msg.pcm;
         if (pcm && pcm.length > 0) {
+          if (msg.sessionId && this.sessionId === 0) this.sessionId = Number(msg.sessionId) || 0;
           if (msg.sampleRate) this.srcRate = Number(msg.sampleRate);
           this.chunks.push(pcm);
           this.queuedSamples += pcm.length;
@@ -75,8 +74,12 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
       }
 
       if (msg.type === 'eos') {
-        if (msg.sessionId && msg.sessionId !== this.sessionId) return;
+        if (msg.sessionId && this.sessionId !== 0 && msg.sessionId !== this.sessionId) return;
+        if (msg.sessionId && this.sessionId === 0) this.sessionId = Number(msg.sessionId) || 0;
         this.eos = true;
+        if (this.state === 'buffering' && this.queuedSamples > 0 && !Number.isFinite(this.minBufferedPlayingSamples)) {
+          this.minBufferedPlayingSamples = this.queuedSamples;
+        }
         if (this.state === 'buffering' && this.queuedSamples === 0) {
           this.state = 'idle';
           this.port.postMessage({
@@ -84,6 +87,7 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
             sessionId: this.sessionId,
             playedSourceSamples: this.playedSourceSamples,
             underrunCount: this.underrunCount,
+            minBufferedSamples: Number.isFinite(this.minBufferedPlayingSamples) ? this.minBufferedPlayingSamples : 0,
           });
         }
         return;
@@ -97,8 +101,6 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
         this.eos = true;
         this.hist.fill(0);
         this.histPrimed = false;
-        this.dcXPrev = 0.0;
-        this.dcYPrev = 0.0;
       }
     };
   }
@@ -136,7 +138,7 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
     this.hist[0] = this.hist[1];
     this.hist[1] = this.hist[2];
     this.hist[2] = this.hist[3];
-    this.hist[3] = this.queuedSamples > 0 ? this._shiftOneSourceSample() : (this.eos ? 0.0 : this.hist[2] * 0.92);
+    this.hist[3] = this.queuedSamples > 0 ? this._shiftOneSourceSample() : 0.0;
   }
 
   process(_inputs, outputs) {
@@ -157,6 +159,9 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
         this._primeHistory();
         this.state = 'playing';
         justStarted = true;
+        if (!Number.isFinite(this.minBufferedPlayingSamples)) {
+          this.minBufferedPlayingSamples = this.queuedSamples;
+        }
       } else {
         ch0.fill(0);
         for (let c = 1; c < out.length; c++) out[c].fill(0);
@@ -166,6 +171,10 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
 
     const ratio = this.srcRate / sampleRate;
 
+    if (!this.eos && this.queuedSamples < this.minBufferedPlayingSamples) {
+      this.minBufferedPlayingSamples = this.queuedSamples;
+    }
+
     for (let i = 0; i < nFrames; i++) {
       // Starvation guard: smoothly fade to 0 instead of clicking if network/CPU ever stalls mid-utterance
       if (!this.eos && this.queuedSamples < 48) {
@@ -173,7 +182,7 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
         if (this.queuedSamples === 0 && this.envGain < 0.002) {
           this.envGain = 0.0;
           this.underrunCount += 1;
-          this.watermarkSamples = Math.max(this.watermarkSamples, Math.round(0.18 * this.srcRate));
+          this.watermarkSamples = Math.round((this.recoveryWatermarkSec || 0.24) * this.srcRate);
           this.hist.fill(0);
           this.histPrimed = false;
           this.state = 'buffering';
@@ -199,7 +208,9 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
       const c1 = 0.5 * (y1 - ym1);
       const c2 = ym1 - 2.5 * y0 + 2.0 * y1 - 0.5 * y2;
       const c3 = 0.5 * (y2 - ym1) + 1.5 * (y0 - y1);
-      const sample = (((c3 * t + c2) * t + c1) * t + y0) * this.envGain;
+      let sample = (((c3 * t + c2) * t + c1) * t + y0) * this.envGain;
+      if (sample > 1.0) sample = 1.0;
+      else if (sample < -1.0) sample = -1.0;
       ch0[i] = sample;
 
       this.phase += ratio;
@@ -214,11 +225,18 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
           if (this.drainRemaining < 0) {
             for (let k = i + 1; k < nFrames; k++) ch0[k] = 0;
             this.state = 'idle';
+            this.eos = false;
+            this.hist.fill(0);
+            this.histPrimed = false;
+            this.drainRemaining = 2;
+            this.phase = 0.0;
+            this.envGain = 1.0;
             this.port.postMessage({
               type: 'ended',
               sessionId: this.sessionId,
               playedSourceSamples: this.playedSourceSamples,
               underrunCount: this.underrunCount,
+              minBufferedSamples: Number.isFinite(this.minBufferedPlayingSamples) ? this.minBufferedPlayingSamples : this.queuedSamples,
             });
             i = nFrames;
             break;
@@ -241,6 +259,7 @@ class NinadaStreamProcessor extends AudioWorkletProcessor {
         sessionId: this.sessionId,
         playedSourceSamples: this.playedSourceSamples,
         bufferedSourceSamples: this.queuedSamples,
+        minBufferedSamples: Number.isFinite(this.minBufferedPlayingSamples) ? this.minBufferedPlayingSamples : this.queuedSamples,
         underrunCount: this.underrunCount,
       });
     }

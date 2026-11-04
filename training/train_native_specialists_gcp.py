@@ -186,13 +186,13 @@ SPECIALIST_RECIPES: dict[str, dict[str, Any]] = {
     "en": {
         "male_donor": "SYSPIN/vits_English_Male",
         "female_donor": "SYSPIN/vits_English_Female",
-        "male_steps": 1800,
-        "female_steps": 1200,
-        "lr_g": 1.2e-4,
-        "lr_text": 6.5e-5,
-        "lr_d": 1.2e-4,
-        "target_male_utts": 1200,
-        "target_female_utts": 900,
+        "male_steps": 4400,
+        "female_steps": 3000,
+        "lr_g": 1.6e-4,
+        "lr_text": 2.4e-4,
+        "lr_d": 1.4e-4,
+        "target_male_utts": 1800,
+        "target_female_utts": 1200,
     },
     "mr": {
         "male_donor": "SYSPIN/vits_Marathi_Male",
@@ -461,7 +461,7 @@ def export_specialist_to_onnx(
         None,
         {
             "input_ids": np.asarray([probe_ids], dtype=np.int64),
-            "scales": np.asarray([1.0, 0.60, 0.0], dtype=np.float32),
+            "scales": np.asarray([1.0, 0.40, 0.0], dtype=np.float32),
         },
     )
     wav_1d = np.asarray(ort_wav[0], dtype=np.float32).reshape(-1)
@@ -491,7 +491,7 @@ def resample_to_24k(wav: np.ndarray, orig_sr: int) -> np.ndarray:
     return resample_poly(wav, frac.numerator, frac.denominator).astype(np.float32)
 
 
-def clean_studio_vits_24k(wav: np.ndarray) -> np.ndarray | None:
+def clean_studio_vits_24k(wav: np.ndarray, pad_tail_sec: float = 0.145) -> np.ndarray | None:
     if wav.size < int(0.95 * SAMPLE_RATE_24K):
         return None
     wav = wav - float(np.mean(wav))
@@ -506,7 +506,7 @@ def clean_studio_vits_24k(wav: np.ndarray) -> np.ndarray | None:
     if active.size < int(0.65 * SAMPLE_RATE_24K):
         return None
     pad_lead = int(0.090 * SAMPLE_RATE_24K)
-    pad_tail = int(0.145 * SAMPLE_RATE_24K)
+    pad_tail = int(pad_tail_sec * SAMPLE_RATE_24K)
     s = max(0, int(active[0]) - pad_lead)
     e = min(wav.size, int(active[-1]) + pad_tail)
     wav = wav[s:e]
@@ -595,6 +595,8 @@ def stream_indictts_english_splits(
         "data/train-00008-of-00028.parquet",
         "data/train-00007-of-00028.parquet",
         "data/train-00009-of-00028.parquet",
+        "data/train-00006-of-00028.parquet",
+        "data/train-00010-of-00028.parquet",
     ]
     male_list: list[dict[str, Any]] = []
     fem_list: list[dict[str, Any]] = []
@@ -655,8 +657,10 @@ def stream_indictts_english_splits(
                     raw_wav, orig_sr = sf.read(io.BytesIO(b_payload), dtype="float32")
                 except Exception:
                     continue
+                if raw_wav.size == 0 or float(np.max(np.abs(raw_wav))) >= 0.985:
+                    continue
 
-                wav_24k = clean_studio_vits_24k(resample_to_24k(raw_wav, int(orig_sr)))
+                wav_24k = clean_studio_vits_24k(resample_to_24k(raw_wav, int(orig_sr)), pad_tail_sec=0.215)
                 if wav_24k is None:
                     continue
 
@@ -1503,7 +1507,7 @@ def evaluate_all_systems_on_heldout(
             _w_first, _ = pt_m.infer(
                 torch.tensor([clause_ids], dtype=torch.long, device=device),
                 length_scale=1.0,
-                noise_scale=0.60,
+                noise_scale=0.40,
                 noise_scale_dp=0.0,
             )
         ttfa_pt = (time.perf_counter() - t0) * 1000.0 if len(ids) > 55 else 0.0
@@ -1514,7 +1518,7 @@ def evaluate_all_systems_on_heldout(
             wav_pt_t, _ = pt_m.infer(
                 torch.tensor([ids], dtype=torch.long, device=device),
                 length_scale=1.0,
-                noise_scale=0.60,
+                noise_scale=0.40,
                 noise_scale_dp=0.0,
             )
             wav_pt = wav_pt_t[0].detach().cpu().numpy().astype(np.float32)
@@ -1531,7 +1535,7 @@ def evaluate_all_systems_on_heldout(
 
         # CPU ONNX W8A32+FP16
         sess = ort_sessions[lc]
-        scales_np = np.asarray([1.0, 0.60, 0.0], dtype=np.float32)
+        scales_np = np.asarray([1.0, 0.40, 0.0], dtype=np.float32)
         t2 = time.perf_counter()
         if len(ids) > 55:
             sess.run(None, {"input_ids": np.asarray([clause_ids], dtype=np.int64), "scales": scales_np})
@@ -1596,7 +1600,7 @@ def evaluate_all_systems_on_heldout(
     dur_r = float(np.corrcoef(pt_durs_det, ox_durs_det)[0, 1]) if len(pt_durs_det) > 2 else 1.0
     return {
         "benchmark": "ninada_24khz_native_studio_12lang",
-        "version": "5.0.0",
+        "version": "5.0.1",
         "sample_rate_hz": SAMPLE_RATE_24K,
         "num_train_utterances": num_train_total,
         "num_val_utterances": num_val_total,
@@ -1763,7 +1767,7 @@ def main() -> None:
     # Save canonical `vocabs.json` when all 12 languages are loaded
     if len(target_langs) == len(SUPPORTED_LANGS):
         vocabs_payload = {
-            "version": "5.0.0",
+            "version": "5.0.1",
             "sample_rate": SAMPLE_RATE_24K,
             "hop_length": HOP_LENGTH,
             "languages": {lc: tokenizers[lc].to_dict() for lc in SUPPORTED_LANGS},

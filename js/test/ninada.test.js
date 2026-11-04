@@ -9,7 +9,10 @@ import ninada, {
   IPA_VOCAB,
   RETROFLEX_LATERAL_ID,
   splitProsodicClauses,
+  buildStudioSentenceBlocks,
+  cleanStudioText,
   textToIpa,
+  ipaToIds,
   textToIds,
   iastToDevanagari,
   brahmicToDevanagari,
@@ -261,9 +264,25 @@ test('In-memory Studio VITS ONNX splitter enables sub-clause latent-window strea
     const d = mono.pcm[i] - cat[i];
     errEnergy += d * d;
   }
+  for (const ch of streamChunks) {
+    assert.equal(
+      ch.vocoderBucketFrames,
+      80,
+      `Expected single static vocoder bucket shape (80), got ${ch.vocoderBucketFrames}`
+    );
+  }
   const snrDb = 10 * Math.log10(sigEnergy / Math.max(1e-12, errEnergy));
-  assert.ok(snrDb > 35, `Expected latent-windowed HiFi-GAN SNR > 35 dB vs monolithic, got ${snrDb.toFixed(2)} dB`);
+  assert.ok(snrDb > 45, `Expected latent-windowed HiFi-GAN SNR > 45 dB vs monolithic, got ${snrDb.toFixed(2)} dB`);
   await voice.dispose();
+});
+
+test('English CamelCase G2P and unchopped single-sentence prosody preserve breath-group continuity', () => {
+  const preset1 =
+    'Sub-clause latent streaming synthesizes the opening phrase in milliseconds while the AudioWorklet ring buffer maintains glitch-free twenty-four kilohertz playback.';
+  assert.ok([1, 2].includes(splitProsodicClauses(preset1).length));
+
+  const norm = cleanStudioText('AudioWorklet WebGPU 24 kHz 28 MB 120ms', 'en');
+  assert.equal(norm, 'audio worklet web gpu twenty four kilohertz twenty eight megabytes one hundred twenty milliseconds');
 });
 
 test('12-language v5.0 roster supports Indian English, Marathi, Bengali, Gujarati, Punjabi, and Odia end-to-end', async () => {
@@ -312,4 +331,216 @@ test('12-language v5.0 roster supports Indian English, Marathi, Bengali, Gujarat
   await enVoice.dispose();
 });
 
+test('Multi-clause Klatt streaming seam continuity, |Δy| < 0.008, and Seam SNR > 45 dB', async () => {
+  const cases = [
+    ['hindi', 'नमस्ते, आपकी समस्या का समाधान शीघ्र ही किया जाएगा । कृपया अपनी खाता संख्या बताएं, धन्यवाद ॥'],
+    ['english', 'The AudioWorklet ring buffer processes audio chunks in real time, while the WebAssembly engine runs neural inference.'],
+    ['kannada', 'ಬೆಂಗಳೂರು ಕರ್ನಾಟಕದ ರಾಜಧಾನಿ ಮತ್ತು ಅತ್ಯಂತ ಸುಂದರವಾದ ನಗರ । ಇದು ಭಾರತದ ಸಿಲಿಕಾನ್ ವ್ಯಾಲಿ ಎಂದು ಪ್ರಸಿದ್ಧವಾಗಿದೆ ॥'],
+    ['telugu', 'హైదరాబాదు తెలంగాణ రాజధాని, అత్యంత సుందరమైన నగరం । ఇది భారతదేశ ఐటీ కేంద్రంగా ప్రసిద్ధి చెందింది, ధన్యవాదాలు ॥'],
+  ];
+  for (const [lang, text] of cases) {
+    const voice = await ninada(lang);
+    const chunks = [];
+    for await (const ch of voice.stream(text, { tier: 'klatt' })) {
+      chunks.push(ch);
+    }
+    assert.ok(chunks.length >= 2, `[${lang}] Expected >= 2 chunks, got ${chunks.length}`);
+
+    const totalStreamLen = chunks.reduce((acc, c) => acc + c.pcm.length, 0);
+    const stitched = new Float32Array(totalStreamLen);
+    let off = 0;
+    const boundaries = [];
+    for (let i = 0; i < chunks.length; i++) {
+      stitched.set(chunks[i].pcm, off);
+      off += chunks[i].pcm.length;
+      if (i < chunks.length - 1) boundaries.push(off);
+    }
+
+    // 1. Boundary transient step jumps |Δy| < 0.008
+    for (let i = 0; i < boundaries.length; i++) {
+      const b = boundaries[i];
+      const jump = Math.abs(stitched[b] - stitched[b - 1]);
+      assert.ok(
+        jump < 0.008,
+        `[${lang}] Boundary ${i} at sample ${b}: step jump |Δy| = ${jump.toFixed(6)} exceeded 0.008`
+      );
+    }
+
+    // 2. Seam SNR > 45 dB vs monolithic synthesis
+    const mono = await voice.synthesize(text, { tier: 'klatt' });
+    assert.equal(mono.pcm.length, totalStreamLen, `[${lang}] Sample length parity required between stream and synthesize`);
+
+    for (let i = 0; i < boundaries.length; i++) {
+      const b = boundaries[i];
+      const win = 512;
+      const st = Math.max(0, b - 256);
+      const ed = Math.min(mono.pcm.length, st + win);
+      let sigPow = 0.0;
+      let errPow = 0.0;
+      for (let k = st; k < ed; k++) {
+        const r = mono.pcm[k];
+        const s = stitched[k];
+        sigPow += r * r;
+        errPow += (s - r) * (s - r);
+      }
+      const snr = errPow < 1e-12 ? 100.0 : 10.0 * Math.log10(sigPow / errPow);
+      assert.ok(
+        snr > 45.0,
+        `[${lang}] Boundary ${i} at sample ${b}: Seam SNR ${snr.toFixed(2)} dB < 45.0 dB threshold`
+      );
+    }
+    await voice.dispose();
+  }
+});
+
+test('SemVer and multi-dot decimal normalization in cleanStudioText', () => {
+  const cases = [
+    ['version 2.0.1', 'version two point zero point one'],
+    ['version 2.0.1.', 'version two point zero point one.'],
+    ['Linux 6.1.102', 'linux six point one point one hundred two'],
+    ['v1.2.3.4', 'v one point two point three point four'],
+    ['IP 192.168.1.1', 'ip one hundred ninety two point one hundred sixty eight point one point one'],
+    ['3.14159', 'three point one four one five nine'],
+    ['0.001', 'zero point zero zero one'],
+    ['100.50', 'one hundred point five zero'],
+  ];
+  for (const [raw, expected] of cases) {
+    const res = cleanStudioText(raw, 'en');
+    assert.equal(res, expected, `Mismatch for ${raw}`);
+    if (!raw.endsWith('.')) {
+      assert.ok(!res.includes('.'), `Found unexpected literal period in ${res}`);
+    }
+  }
+});
+
+test('Abbreviation protection for approx, Rs, and orphan-tail merging parity in splitProsodicClauses', () => {
+  const cases = [
+    ['Dr. Rao vs. Prof. Smith at St. Jude Inc. approx. 10 km/h.', 1],
+    ['Prof. Smith vs. Dr. Watson: the benchmark completed in approx. 120ms with 99.9% accuracy; however, Mr. Brown from Univ. Dept. requested 3.14 iterations.', 3],
+    ['Yes. No. Dr. Lee said etc. and approx. 5 MB was transferred.', 1],
+    ['He paid Rs. 500 for the book.', 1],
+    ['This is a reasonably long introductory clause that sets the stage, yes.', 2],
+  ];
+  for (const [text, expected] of cases) {
+    const res = splitProsodicClauses(text, text.includes('stage, yes.') ? 60 : 100);
+    assert.equal(res.length, expected, `Expected ${expected} clauses, got ${res.length}: ${JSON.stringify(res)}`);
+  }
+});
+
+test('Punjabi numeral transliteration expands to phonetic aksharas for Klatt synthesis', () => {
+  const text = 'ਇੱਕ ਕੁੱਤਾ ਅਤੇ ਸੱਤ ਬੱਚੇ, 500 ਰੁਪਏ।';
+  const parsed = textToIds(text, { lang: 'pa' });
+  const aksharas = parsed.aksharas.map((a) => a.akshara);
+  assert.ok(aksharas.includes('पं'), `Expected numeral akshara 'पं' in ${JSON.stringify(aksharas)}`);
+  assert.ok(parsed.nativeTokens.includes('੫'), `Expected Gurmukhi token '੫' in ${JSON.stringify(parsed.nativeTokens)}`);
+
+  const pureParsed = textToIds('500', { lang: 'pa' });
+  assert.equal(pureParsed.aksharas.length, 8, `Expected 8 aksharas for 500, got ${pureParsed.aksharas.length}`);
+  assert.ok(pureParsed.nativeTokens.includes('੫'), `Expected '੫' in ${JSON.stringify(pureParsed.nativeTokens)}`);
+  assert.ok(pureParsed.nativeTokens.includes('੦'), `Expected '੦' in ${JSON.stringify(pureParsed.nativeTokens)}`);
+
+  const pure1234 = textToIds('1234', { lang: 'pa' });
+  for (const digit of ['੧', '੨', '੩', '੪']) {
+    assert.ok(pure1234.nativeTokens.includes(digit), `Expected '${digit}' in ${JSON.stringify(pure1234.nativeTokens)}`);
+  }
+
+  const danda500 = textToIds('500।', { lang: 'pa' });
+  assert.ok(danda500.nativeTokens.includes('੫'), `Expected '੫' in ${JSON.stringify(danda500.nativeTokens)}`);
+});
+
+test('Kannada Dravidian streaming synthesis, vowel preservation, retroflex lateral ಳ, and offset monotonicity', async () => {
+  // 1. Dravidian vowel preservation (ಎ, ಏ, ಒ, ಓ)
+  const vowelText = 'ಎಲೆ ಏಣಿ ಒಂಟೆ ಓಟ';
+  const vowelIpa = textToIpa(vowelText, 'kn');
+  assert.ok(vowelIpa.includes('ɛ'), `Expected short e [ɛ] in ${vowelIpa}`);
+  assert.ok(vowelIpa.includes('eː'), `Expected long e [eː] in ${vowelIpa}`);
+  assert.ok(vowelIpa.includes('o'), `Expected short o [o] in ${vowelIpa}`);
+  assert.ok(vowelIpa.includes('oː'), `Expected long o [oː] in ${vowelIpa}`);
+
+  // 2. Retroflex lateral approximant ಳ (slot 79)
+  const retroflexText = 'ಹಳೆಗನ್ನಡ ಮತ್ತು ಬೆಳ್ಳಿ ಬೆಳಕು';
+  const retroflexIpa = textToIpa(retroflexText, 'kn');
+  assert.ok(retroflexIpa.includes('ɭ'), `Expected retroflex lateral [ɭ] in ${retroflexIpa}`);
+  const tokenIds = ipaToIds(retroflexIpa);
+  assert.ok(tokenIds.includes(RETROFLEX_LATERAL_ID), `Expected slot ${RETROFLEX_LATERAL_ID} in ${tokenIds}`);
+  assert.equal(IPA_VOCAB['ɭ'], 79);
+
+  // 3. Geminate consonants (ಕ್ಕ, ತ್ತ)
+  const geminateText = 'ಅಕ್ಕ ಮತ್ತು ಅತ್ತೆ';
+  const geminateIpa = textToIpa(geminateText, 'kn');
+  assert.ok(geminateIpa.includes('kk'), `Expected geminate kk in ${geminateIpa}`);
+  assert.ok(geminateIpa.includes('tt'), `Expected geminate tt in ${geminateIpa}`);
+
+  // 4. Streaming performance: TTFA < 150 ms (target < 50 ms), 0 overlap, offset monotonicity
+  const voice = await ninada('kannada');
+  const text = 'ಕನ್ನಡ ನಾಡು ಚಂದನದ ಬೀಡು . ಬೆಳ್ಳಿ ಬೆಳಕು ಹರಡಿತು ಮತ್ತು ಹಳೆಯ ಕನ್ನಡ ಕಾವ್ಯಗಳು ಜನರ ಮನಸ್ಸನ್ನು ತಣಿಸಿದವು .';
+  const t0 = performance.now();
+  const chunks = [];
+  let firstChunkTime = null;
+  for await (const ch of voice.stream(text, { tier: 'klatt' })) {
+    if (firstChunkTime === null) firstChunkTime = performance.now() - t0;
+    chunks.push(ch);
+  }
+
+  assert.ok(chunks.length >= 2, `Expected >= 2 chunks, got ${chunks.length}`);
+  assert.ok(firstChunkTime !== null, 'Failed to capture first chunk time');
+  assert.ok(firstChunkTime < 150.0, `TTFA ${firstChunkTime.toFixed(2)} ms exceeded 150 ms threshold`);
+
+  // Sample offset monotonicity (Δsamples = 0) and zero chunk overlap
+  let curOffset = 0;
+  for (let idx = 0; idx < chunks.length; idx++) {
+    const c = chunks[idx];
+    assert.equal(c.sampleOffset, curOffset, `Chunk ${idx} sampleOffset ${c.sampleOffset} != ${curOffset}`);
+    assert.equal(c.sample_offset, curOffset, `Chunk ${idx} sample_offset ${c.sample_offset} != ${curOffset}`);
+    curOffset += c.pcm.length;
+  }
+
+  // 5. Acoustic seam continuity and Seam SNR > 45 dB vs monolithic
+  const totalStreamLen = chunks.reduce((acc, c) => acc + c.pcm.length, 0);
+  const stitched = new Float32Array(totalStreamLen);
+  let off = 0;
+  const boundaries = [];
+  for (let i = 0; i < chunks.length; i++) {
+    stitched.set(chunks[i].pcm, off);
+    off += chunks[i].pcm.length;
+    if (i < chunks.length - 1) boundaries.push(off);
+  }
+
+  const mono = await voice.synthesize(text, { tier: 'klatt' });
+  assert.equal(mono.pcm.length, totalStreamLen, 'Sample length parity required between stream and synthesize');
+
+  for (let i = 0; i < boundaries.length; i++) {
+    const b = boundaries[i];
+    const jump = Math.abs(stitched[b] - stitched[b - 1]);
+    assert.ok(jump < 0.008, `Boundary ${i} at sample ${b}: step jump |Δy| = ${jump.toFixed(6)} exceeded 0.008`);
+  }
+
+  for (let i = 0; i < boundaries.length; i++) {
+    const b = boundaries[i];
+    const win = 512;
+    const st = Math.max(0, b - 256);
+    const ed = Math.min(mono.pcm.length, st + win);
+    let sigPow = 0.0;
+    let errPow = 0.0;
+    for (let k = st; k < ed; k++) {
+      const r = mono.pcm[k];
+      const s = stitched[k];
+      sigPow += r * r;
+      errPow += (s - r) * (s - r);
+    }
+    const snr = errPow < 1e-12 ? 100.0 : 10.0 * Math.log10(sigPow / errPow);
+    assert.ok(snr > 45.0, `Boundary ${i} at sample ${b}: Seam SNR ${snr.toFixed(2)} dB < 45.0 dB threshold`);
+  }
+
+  await voice.dispose();
+});
+
+test('buildStudioSentenceBlocks preserves commas and semicolons intact and splits strictly on sentences', () => {
+  const passage =
+    'Ninada runs privately in the browser, with zero server calls; audio streams smoothly. Second sentence follows cleanly! आप जैसे ही कोई वाक्य चुनते हैं, निनाद सुगम ऑडियो स्ट्रीमिंग शुरू करता है ।';
+  const blocks = buildStudioSentenceBlocks(passage);
+  assert.equal(blocks.length, 3, `Expected 3 full sentence blocks without comma splits, got ${blocks.length}`);
+  assert.ok(blocks[0].text.includes(',') && blocks[0].text.includes(';'));
+  assert.ok(blocks[2].text.includes(','));
+});
 

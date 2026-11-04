@@ -102,11 +102,11 @@ tags:
   - wasm
 ---
 
-# `Ninada` (निनाद) v5.0 — 24,000 Hz Native Studio VITS Specialists (Indian English + 11 Indian Languages)
+# `Ninada` (निनाद) v5.0.1 - In-Browser Text-to-Speech Specialists (Indian English + 11 Indian Languages)
 
-`Ninada` (*Nināda* — Sanskrit `निनाद`, deep resonant sound) v5.0 is a **24,000 Hz Native Per-Language Studio Neural TTS** suite (**`~{ox_mb:.1f} MB` active W8A32+FP16 ONNX per specialist, `{ttfa_ox:.1f} ms` native CPU median TTFA, `{rtf_ox:.3f}x` RTF**) featuring **12 dedicated Studio Male + 12 dedicated Studio Female specialists (24 models total)** across **Classical Sanskrit (`sa`)**, **Indian English (`en`)**, **Hindi (`hi`)**, **Kannada (`kn`)**, **Marathi (`mr`)**, **Bengali (`bn`)**, **Tamil (`ta`)**, **Telugu (`te`)**, **Malayalam (`ml`)**, **Gujarati (`gu`)**, **Punjabi (`pa`)**, and **Odia (`or`)** — fine-tuned end-to-end on Cloud GPU from IISc SPIRE Lab `SYSPIN` VITS donors onto single-speaker `24,000 Hz` studio recordings (`ai4bharat/Rasa` + `SPRINGLab/IndicTTS-English`).
+`Ninada` (*Nināda* - Sanskrit `निनाद`, deep resonant sound) v5.0.1 is a **24,000 Hz In-Browser & Multi-Runtime Neural Text-to-Speech** suite (**`~{ox_mb:.1f} MB` active W8A32+FP16 ONNX per specialist, `{ttfa_ox:.1f} ms` native CPU median TTFA, `{rtf_ox:.3f}x` RTF**) featuring **12 dedicated Studio Male + 12 dedicated Studio Female specialists (24 models total)** across **Classical Sanskrit (`sa`)**, **Indian English (`en`)**, **Hindi (`hi`)**, **Kannada (`kn`)**, **Marathi (`mr`)**, **Bengali (`bn`)**, **Tamil (`ta`)**, **Telugu (`te`)**, **Malayalam (`ml`)**, **Gujarati (`gu`)**, **Punjabi (`pa`)**, and **Odia (`or`)** - fine-tuned end-to-end on Cloud GPU from IISc SPIRE Lab `SYSPIN` VITS donors onto single-speaker `24,000 Hz` studio recordings (`ai4bharat/Rasa` + `SPRINGLab/IndicTTS-English`).
 
-- **Live Off-Main-Thread Browser `AudioWorklet` Studio**: [https://hemanth.github.io/ninada/](https://hemanth.github.io/ninada/)
+- **In-Browser `AudioWorklet` Text-to-Speech Studio**: [https://hemanth.github.io/ninada/](https://hemanth.github.io/ninada/)
 - **GitHub Repository & Streaming SDKs (JS + Python)**: [https://github.com/hemanth/ninada](https://github.com/hemanth/ninada)
 - **Curated 24 kHz Studio Split Manifests**: [https://huggingface.co/datasets/gnumanth/ninada-sanskrit-indic](https://huggingface.co/datasets/gnumanth/ninada-sanskrit-indic)
 
@@ -238,7 +238,7 @@ def main() -> None:
             "*.tar.gz",
             "*.jsonl",
         ],
-        commit_message="Release Ninada v5.0: 24 Native 24,000 Hz Studio VITS Specialists (Indian English + 11 Indian Languages, Male & Female W8A32+FP16 ONNX)",
+        commit_message="Release Ninada v5.0.1: Smooth Studio Indian English Specialists + In-Browser Streaming",
     )
     print(f"Published model to https://huggingface.co/{args.repo_id}")
 
