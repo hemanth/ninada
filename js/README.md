@@ -1,6 +1,6 @@
 # ninada
 
-In-browser and Node.js 24,000 Hz text to speech for Indian English, Classical Sanskrit, and 10 Indian languages (`sa`, `en`, `hi`, `kn`, `mr`, `bn`, `ta`, `te`, `ml`, `gu`, `pa`, `or`).
+In-browser and Node.js 24,000 Hz text to speech for English, Classical Sanskrit, and 10 Indian languages (`sa`, `en`, `hi`, `kn`, `mr`, `bn`, `ta`, `te`, `ml`, `gu`, `pa`, `or`).
 
 ```bash
 npm install ninada webml-kit
@@ -40,8 +40,8 @@ Synthesizes any supported Brahmic script or IAST string directly to a 24 kHz WAV
 
 ## Related
 
-- [In-Browser Voice Studio](https://hemanth.github.io/ninada/) — Web Worker WASM SIMD playground
-- [Hugging Face Weights](https://huggingface.co/gnumanth/ninada) — 24 native `~28 MB` W8A32+FP16 ONNX specialists (`12` languages × Male & Female)
+- [In-Browser Voice Studio](https://hemanth.github.io/ninada/) (Web Worker WebGPU & WASM SIMD playground)
+- [Hugging Face Weights](https://huggingface.co/gnumanth/ninada) (48 dual-tier `27.9 MB` Studio `HiFi-GAN` + `21.7 MB` Mobile `iSTFTNet` ONNX specialists across `12` languages x Male & Female)
 - [Source & Benchmarks](https://github.com/hemanth/ninada)
 
 ## License

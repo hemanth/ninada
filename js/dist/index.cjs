@@ -4023,7 +4023,7 @@ async function ninada(input = 'sa', opts = {}) {
       const is24k = !isV4 && tier !== 'klatt' && isUnified24kSession() && Boolean(ort);
       const fastFirst = is24k && callOpts.fastFirstClause !== false;
       const clauses = isV4
-        ? buildStudioSentenceBlocks(text, callOpts.maxClauseChars || 340)
+        ? buildStudioSentenceBlocks(text, callOpts.maxClauseChars || (lang === 'en' ? 105 : 220))
         : buildStreamingClauses(text, callOpts.maxClauseChars || (is24k ? 140 : 220), fastFirst);
       const tStart = nowMs();
       let ttfaMs = null;
@@ -4231,9 +4231,7 @@ async function ninada(input = 'sa', opts = {}) {
                   : isSingleThreadWasm
                   ? firstBucket
                   : isMobileWasm
-                  ? cIdx === 0
-                    ? 128
-                    : 104
+                  ? 128
                   : firstBucket <= 44
                   ? 64
                   : 88;
@@ -4302,7 +4300,7 @@ async function ninada(input = 'sa', opts = {}) {
             for (let fCur = 0; fCur < totalLatentFrames; ) {
               const remFrames = totalLatentFrames - fCur;
               const useFastBucket = isMobileWasm
-                ? cIdx === 0 && fCur === 0
+                ? fCur === 0
                 : fCur === 0 || (!isWebGpuVoc && fBounds.length === 1);
               if (useFastBucket) {
                 if (fCur === 0) {
@@ -4319,20 +4317,15 @@ async function ninada(input = 'sa', opts = {}) {
                   fBounds.push([fCur, fNext, firstBucket]);
                   fCur = fNext;
                 }
-              } else if (isMobileWasm && cIdx === 0 && fBounds.length === 1 && remFrames > 92) {
+              } else if (isMobileWasm && fBounds.length === 1 && remFrames > 92) {
                 // Zero-flow Bridge Chunk 1 (~0.64s audio, 84 vocoded frames, 0ms flow since Chunk 0 pre-computed 128 frames)
                 const fNext = fCur + 60;
                 fBounds.push([fCur, fNext, steadyBucket]);
                 fCur = fNext;
-              } else if (isMobileWasm && cIdx === 0 && fBounds.length === 2 && remFrames > 104) {
+              } else if (isMobileWasm && fBounds.length === 2 && remFrames > 104) {
                 // Step-up Chunk 2 (~0.85s audio, 104 vocoded frames) smoothly transitions into 96-frame steady state
                 const fNext = fCur + 80;
                 fBounds.push([fCur, fNext, steadyBucket]);
-                fCur = fNext;
-              } else if (isMobileWasm && cIdx >= 1 && fCur === 0 && remFrames > 92) {
-                // Inter-sentence first chunk (~0.68s audio, 76 vocoded frames) prevents sentence-boundary dips
-                const fNext = 64;
-                fBounds.push([0, fNext, steadyBucket]);
                 fCur = fNext;
               } else {
                 let fNext;
@@ -4480,7 +4473,8 @@ async function ninada(input = 'sa', opts = {}) {
 
               let nextWindowSec = 0;
               if (!isLastSub) {
-                nextWindowSec = (fBounds[wIdx + 1][2] * STUDIO_HOP_LENGTH) / SAMPLE_RATE;
+                const [nfStart, nfEnd] = fBounds[wIdx + 1];
+                nextWindowSec = ((nfEnd - nfStart) * STUDIO_HOP_LENGTH) / SAMPLE_RATE;
               }
 
               const stageEncMs = wIdx === 0 ? encFlowMs + flowStepMs : flowStepMs;

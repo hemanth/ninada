@@ -186,13 +186,14 @@ SPECIALIST_RECIPES: dict[str, dict[str, Any]] = {
     "en": {
         "male_donor": "SYSPIN/vits_English_Male",
         "female_donor": "SYSPIN/vits_English_Female",
-        "male_steps": 4400,
-        "female_steps": 3000,
-        "lr_g": 1.6e-4,
-        "lr_text": 2.4e-4,
-        "lr_d": 1.4e-4,
-        "target_male_utts": 1800,
-        "target_female_utts": 1200,
+        "freeze_text_backbone": True,
+        "male_steps": 4500,
+        "female_steps": 3600,
+        "lr_g": 1.4e-4,
+        "lr_text": 1.0e-4,
+        "lr_d": 1.3e-4,
+        "target_male_utts": 2200,
+        "target_female_utts": 1600,
     },
     "mr": {
         "male_donor": "SYSPIN/vits_Marathi_Male",
@@ -588,49 +589,52 @@ def stream_indictts_english_splits(
     hf_tok: str | None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """
-    Stream single-speaker 48,000 Hz -> 24,000 Hz Indian English studio splits from
-    `SPRINGLab/IndicTTS-English` (`train_hindifullmale_` Male & `train_hindifullfemale_` Female).
+    Stream single-speaker 44,100 Hz -> 24,000 Hz full-band clean studio English splits
+    from `MikhailT/hifi-tts` (`clean` subset, CC-BY-4.0: speaker `6097` Male & `92` Female).
     """
-    primary_shards = [
-        "data/train-00008-of-00028.parquet",
-        "data/train-00007-of-00028.parquet",
-        "data/train-00009-of-00028.parquet",
-        "data/train-00006-of-00028.parquet",
-        "data/train-00010-of-00028.parquet",
-    ]
+    api = HfApi(token=hf_tok)
+    all_files = sorted(
+        f for f in api.list_repo_files("MikhailT/hifi-tts", repo_type="dataset")
+        if f.startswith("data/train.clean-") and f.endswith(".parquet")
+    )
+    # Speaker 6097 lives in shards 00..11; Speaker 92 lives in shards 26..34
+    ordered_shards: list[str] = []
+    if t_male + need_eval > 0:
+        ordered_shards.extend(all_files[:4])
+    if t_fem > 0:
+        ordered_shards.extend(reversed(all_files[-4:]))
+
     male_list: list[dict[str, Any]] = []
     fem_list: list[dict[str, Any]] = []
 
-    for shard in primary_shards:
+    for shard in ordered_shards:
         if len(male_list) >= t_male + need_eval and len(fem_list) >= t_fem:
             break
         try:
             pq_path = hf_hub_download(
-                repo_id="SPRINGLab/IndicTTS-English",
+                repo_id="MikhailT/hifi-tts",
                 filename=shard,
                 repo_type="dataset",
                 token=hf_tok,
             )
             pf = pq.ParquetFile(pq_path)
         except Exception as exc:
-            print(f"[WARN] IndicTTS-English shard {shard} skipped: {exc}", flush=True)
+            print(f"[WARN] Hi-Fi TTS shard {shard} skipped: {exc}", flush=True)
             continue
 
         for batch in pf.iter_batches(batch_size=64):
             if len(male_list) >= t_male + need_eval and len(fem_list) >= t_fem:
                 break
             cols = batch.to_pydict()
-            texts = cols.get("text", [])
+            speakers = cols.get("speaker", [])
+            texts = cols.get("text_normalized") or cols.get("text_no_preprocessing") or cols.get("text", [])
             audio_col = cols.get("audio", [])
 
             for i in range(len(texts)):
-                aud = audio_col[i] if i < len(audio_col) else None
-                if not isinstance(aud, dict):
-                    continue
-                apath = str(aud.get("path") or "").lower()
-                if "train_hindifullmale_" in apath:
+                spk = str(speakers[i] or "").strip() if i < len(speakers) else ""
+                if spk == "6097":
                     g_str = "Male"
-                elif "train_hindifullfemale_" in apath:
+                elif spk == "92":
                     g_str = "Female"
                 else:
                     continue
@@ -650,23 +654,24 @@ def stream_indictts_english_splits(
                 if key in eval_blacklist or key in seen_local:
                     continue
 
-                b_payload = aud.get("bytes")
+                aud = audio_col[i] if i < len(audio_col) else None
+                b_payload = aud.get("bytes") if isinstance(aud, dict) else None
                 if not b_payload:
                     continue
                 try:
                     raw_wav, orig_sr = sf.read(io.BytesIO(b_payload), dtype="float32")
                 except Exception:
                     continue
-                if raw_wav.size == 0 or float(np.max(np.abs(raw_wav))) >= 0.985:
+                if raw_wav.size == 0 or int(orig_sr) < 24000 or float(np.max(np.abs(raw_wav))) >= 0.995:
                     continue
 
-                wav_24k = clean_studio_vits_24k(resample_to_24k(raw_wav, int(orig_sr)), pad_tail_sec=0.215)
+                wav_24k = clean_studio_vits_24k(resample_to_24k(raw_wav, int(orig_sr)), pad_tail_sec=0.20)
                 if wav_24k is None:
                     continue
 
                 dur_s = wav_24k.size / SAMPLE_RATE_24K
                 cps = len(norm_t) / max(dur_s, 0.1)
-                if cps < 4.5 or cps > 26.0:
+                if cps < 5.5 or cps > 25.0:
                     continue
 
                 seen_local.add(key)
@@ -725,8 +730,13 @@ def prepare_heldout_and_native_splits(
     seeded_male: dict[str, list[dict[str, Any]]] = {lc: [] for lc in SUPPORTED_LANGS}
     seeded_seen: dict[str, set[str]] = {lc: set() for lc in SUPPORTED_LANGS}
 
+    f_male_set = force_male_langs if force_male_langs is not None else (force_langs or set())
+    f_fem_set = force_fem_langs if force_fem_langs is not None else (force_langs or set())
+    active_langs = only_langs if only_langs else set(SUPPORTED_LANGS)
+    need_v3_cache = not (skip_bench and active_langs.isdisjoint({"sa", "hi", "kn", "te", "ta", "ml"}))
+
     tar_local = work_dir / "curated_24k_cache.tar.gz"
-    if not smoke_limit and gcs_download_if_exists(gcs_bucket, "ninada_v3/curated_24k_cache.tar.gz", tar_local):
+    if not smoke_limit and need_v3_cache and gcs_download_if_exists(gcs_bucket, "ninada_v3/curated_24k_cache.tar.gz", tar_local):
         with tarfile.open(tar_local, "r:gz") as tf:
             tf.extractall(path=cache_dir)
         tar_local.unlink(missing_ok=True)
@@ -806,10 +816,6 @@ def prepare_heldout_and_native_splits(
             )
         shutil.rmtree(cache_dir, ignore_errors=True)
 
-    f_male_set = force_male_langs if force_male_langs is not None else (force_langs or set())
-    f_fem_set = force_fem_langs if force_fem_langs is not None else (force_langs or set())
-    active_langs = only_langs if only_langs else set(SUPPORTED_LANGS)
-
     # Restore cached per-language held-out eval splits (`ninada_v5/eval_splits/{lc}_eval.tar.gz`) for new languages
     if not smoke_limit and gcs_bucket:
         test_gt_dir = out_dir / "test_gt_wavs"
@@ -820,7 +826,7 @@ def prepare_heldout_and_native_splits(
             if sum(1 for r in test_rows if r["lang"] == lc) >= 40:
                 continue
             eval_tar = work_dir / f"{lc}_eval.tar.gz"
-            if gcs_download_if_exists(gcs_bucket, f"ninada_v5/eval_splits/{lc}_eval.tar.gz", eval_tar):
+            if not (lc == "en" and lc in f_male_set) and gcs_download_if_exists(gcs_bucket, f"ninada_v5/eval_splits/{lc}_eval.tar.gz", eval_tar):
                 ex_dir = work_dir / f"eval_extract_{lc}"
                 ex_dir.mkdir(parents=True, exist_ok=True)
                 with tarfile.open(eval_tar, "r:gz") as tf:
@@ -1759,7 +1765,9 @@ def main() -> None:
             gcs_upload_if_configured(gcs_bucket, out_onnx_p, f"ninada_v5/onnx/{lang}.onnx")
             gcs_upload_if_configured(gcs_bucket, sample_p, f"ninada_v5/samples_v5/{lang}.wav")
 
-        pt_models[lang] = copy.deepcopy(net).cpu().eval()
+        if not args.skip_bench:
+            pt_models[lang] = copy.deepcopy(net).cpu().eval()
+        del net
         training_summary[f"{lang}_male"] = t_stats
         if device.type == "cuda":
             torch.cuda.empty_cache()

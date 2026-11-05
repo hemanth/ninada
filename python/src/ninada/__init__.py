@@ -39,7 +39,7 @@ from .studio_g2p import (
     studio_text_to_ids,
 )
 
-__version__ = "5.0.1"
+__version__ = "5.1.0"
 
 __all__ = [
     "__version__",

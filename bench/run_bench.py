@@ -37,7 +37,6 @@ import soundfile as sf
 import torch
 from safetensors.torch import load_file
 from scipy.fft import dct
-from transformers import AutoTokenizer, VitsModel
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "python" / "src") not in sys.path:
@@ -47,7 +46,6 @@ if str(ROOT) not in sys.path:
 
 from ninada.engine import SAMPLE_RATE, Ninada, synthesize_klatt_pcm
 from ninada.ipa_g2p import ipa_to_ids, text_to_ipa
-from training.modeling_ninada_24k import Ninada24kModel
 from training.modeling_studio_vits import SUPPORTED_LANGS
 
 MMS_FLEET_REPOS: dict[str, str] = {
@@ -308,6 +306,9 @@ def main() -> None:
     print(f"[bench] PyTorch evaluation device: {pt_device}", flush=True)
 
     # 1. Load Meta MMS-TTS 5-Specialist Fleet (16 kHz baselines)
+    from transformers import AutoTokenizer, VitsModel
+    from training.modeling_ninada_24k import Ninada24kModel
+
     fleet_toks: dict[str, Any] = {}
     fleet_models: dict[str, VitsModel] = {}
     for repo in sorted(set(MMS_FLEET_REPOS.values())):

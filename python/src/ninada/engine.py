@@ -975,7 +975,11 @@ class Ninada:
         use_voice = voice if voice is not None else self.default_voice
         eff_rate = max(0.45, min(2.5, float(rate)))
         v4_sess = self._get_v4_studio_session(use_lang, voice=use_voice) if tier != "klatt" else None
-        clauses = split_studio_sentence_blocks(text) if v4_sess is not None else split_prosodic_clauses(text)
+        clauses = (
+            split_studio_sentence_blocks(text, max_chars=105 if use_lang == "en" else 220)
+            if v4_sess is not None
+            else split_prosodic_clauses(text)
+        )
         t_start = time.perf_counter()
         ttfa_ms: float | None = None
         chunk_idx = 0

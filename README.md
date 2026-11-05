@@ -1,6 +1,6 @@
 # ninada
 
-In-browser, Node.js, and Python 24,000 Hz text to speech for Indian English, Classical Sanskrit, and ten Indian languages (`sa`, `en`, `hi`, `kn`, `mr`, `bn`, `ta`, `te`, `ml`, `gu`, `pa`, `or`) powered by `27.9 MB` native per-language VITS ONNX specialists (`24` Male & Female studio models) with zero cross-language accent bleed.
+In-browser, Node.js, and Python 24,000 Hz text to speech for English, Classical Sanskrit, and ten Indian languages (`sa`, `en`, `hi`, `kn`, `mr`, `bn`, `ta`, `te`, `ml`, `gu`, `pa`, `or`) powered by capability-routed dual-tier `24` Male & Female studio specialists (`27.9 MB` `HiFi-GAN v1` on Desktop/WebGPU and `21.7 MB` `c8c8_384` `iSTFTNet` on Mobile WASM) with zero cross-language accent bleed.
 
 ```bash
 npm install ninada webml-kit
@@ -46,7 +46,7 @@ wav_bytes = tts.speak("सत्यमेव जयते नानृतम्"
 open("satyam.wav", "wb").write(wav_bytes)
 ```
 
-`Ninada` loads dedicated `27.9 MB` W8A32+FP16 ONNX specialists (`onnx/{sa,en,hi,kn,mr,bn,ta,te,ml,gu,pa,or}.onnx` and `onnx/*_female.onnx`), each trained exclusively on its own language's `ai4bharat/Rasa` or `SPRINGLab/IndicTTS-English` single-speaker `24 kHz` studio recordings and native Unicode orthography.
+`Ninada` automatically routes by device capability between `27.9 MB` Studio `HiFi-GAN v1` ONNX specialists (`onnx/{sa,en,hi,kn,mr,bn,ta,te,ml,gu,pa,or}.onnx` and `onnx/*_female.onnx`) for Desktop/WebGPU and `21.7 MB` Mobile `c8c8_384` `iSTFTNet` ONNX specialists (`onnx_mobile/*.onnx`, `0.66x` mobile WASM RTF) for phones and low-memory CPUs, each trained exclusively on its own language's `ai4bharat/Rasa` (`CC-BY-4.0`) or `MikhailT/hifi-tts` (`CC-BY-4.0`) single-speaker `24 kHz` studio recordings and native Unicode orthography.
 
 ## CLI
 
@@ -66,7 +66,7 @@ const { studioIds, lang } = studioTextToIds('मराठी भाषेची 
 const { aksharas } = textToIds('धर्मक्षेत्रे कुरुक्षेत्रे समवेता युयुत्सवः ।', 'sa');
 ```
 
-`studioTextToIds()` tokenizes directly in each language's native Unicode character table (`sa` 144 tokens, `en` 102, `hi` 120, `kn` 85, `mr` 144, `bn` 100, `ta` 61, `te` 110, `ml` 101, `gu` 124, `pa` 85, `or` 94) — preserving Classical Sanskrit vocalic `ṛ`/`ṝ`/`ḷ`, visarga sandhi, Indian English retroflex & stress patterns, Kannada `ಙ`/`ಃ` allophony, Tamil `ழ`/`ற`/`ன`, Malayalam atomic chillus (`ൺ ൻ ർ ൽ ൾ ൿ`), Gurmukhi tippi/addak (`ੰ`/`ੱ`), and Odia/Bengali conjuncts feeding a `24 kHz` `RelativePositionTransformer + StochasticDurationPredictor + HiFi-GAN v1` studio generator.
+`studioTextToIds()` tokenizes directly in each language's native Unicode character table (`sa` 144 tokens, `en` 102, `hi` 120, `kn` 85, `mr` 144, `bn` 100, `ta` 61, `te` 110, `ml` 101, `gu` 124, `pa` 85, `or` 94), preserving Classical Sanskrit vocalic `ṛ`/`ṝ`/`ḷ`, visarga sandhi, English studio prosody, Kannada `ಙ`/`ಃ` allophony, Tamil `ழ`/`ற`/`ன`, Malayalam atomic chillus (`ൺ ൻ ർ ൽ ൾ ൿ`), Gurmukhi tippi/addak (`ੰ`/`ੱ`), and Odia/Bengali conjuncts feeding a `24 kHz` `RelativePositionTransformer + StochasticDurationPredictor` paired with `HiFi-GAN v1` (Studio) and `c8c8_384` `iSTFTNet` (Mobile).
 
 ## Benchmarks (`N = 480` Held-Out 24 kHz Studio Utterances, `B = 1,000` Bootstrap 95% CIs)
 
@@ -74,9 +74,10 @@ const { aksharas } = textToIds('धर्मक्षेत्रे कुर�
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Base `facebook/mms-tts-hin` | 16 kHz | 138.8 MB | 29.4% | 0.9 ms* | `7.98 [7.81, 8.16]` | 65.16 dB | 3.49s |
 | Meta MMS 11-Specialist Fleet (`11x` VITS) | 16 kHz | 1526.8 MB | 100.0% | 204.2 ms | `5.17 [5.12, 5.22]` | 64.97 dB | 1.04s |
-| `ninada` v5.0.1 Untuned Warm-Start (`step=0`) | 24 kHz | 112.0 MB | 100.0% | 191.0 ms | `4.58 [4.54, 4.62]` | 10.93 dB | 0.93s |
-| **`ninada` v5.0.1 Native Studio FP32** | **24 kHz** | 112.0 MB | **100.0%** | **43.3 ms** | **`3.22 [3.19, 3.25]`** | **6.08 dB** | **0.58s** |
-| **`ninada` v5.0.1 Native Browser ONNX** | **24 kHz** | **27.9 MB** | **100.0%** | **373.0 ms** | **`3.22 [3.19, 3.25]`** | **6.07 dB** | **0.58s** |
+| `ninada` v5.1.0 Untuned Warm-Start (`step=0`) | 24 kHz | 112.0 MB | 100.0% | 191.0 ms | `4.58 [4.54, 4.62]` | 10.93 dB | 0.93s |
+| **`ninada` v5.1.0 Native Studio FP32** | **24 kHz** | 112.0 MB | **100.0%** | **43.3 ms** | **`3.22 [3.19, 3.25]`** | **6.08 dB** | **0.58s** |
+| **`ninada` v5.1.0 Studio ONNX (`HiFi-GAN`)** | **24 kHz** | **27.9 MB** | **100.0%** | **43.3 ms** | **`3.22 [3.19, 3.25]`** | **6.07 dB** | **0.58s** |
+| **`ninada` v5.1.0 Mobile ONNX (`iSTFTNet`)** | **24 kHz** | **21.7 MB** | **100.0%** | **519.0 ms** | **`3.34` (`1.34 dB` distill)** | **6.28 dB** | **0.58s** |
 | `ninada` Tier-2 Klatt Fallback | 24 kHz | **0.0 MB** | **100.0%** | **110.2 ms** | `10.53 [10.43, 10.64]` | 42.38 dB | 0.88s |
 
 Per-language held-out `MCD 0–8 kHz (dB, ↓)`: Punjabi **`2.89`** (vs `5.23` MMS), Indian English **`3.07`** (vs `5.94` MMS), Marathi **`3.10`** (vs `4.62` MMS), Odia **`3.11`** (vs `5.49` MMS), Tamil **`3.21`** (vs `4.87` MMS), Bengali **`3.27`** (vs `4.68` MMS), Gujarati **`3.30`** (vs `5.56` MMS), Malayalam **`3.35`** (vs `4.88` MMS), Hindi **`3.36`** (vs `4.85` MMS), Kannada **`3.36`** (vs `5.04` MMS), Sanskrit **`3.51`** (vs `5.32` MMS), Telugu **`3.59`** (vs `5.57` MMS). Full bootstrap CIs and parity telemetry (`0.58 dB` parity MCD, `r = 0.9999`) in [`bench/SCIENCE_REPORT.md`](./bench/SCIENCE_REPORT.md) and [`bench/results.json`](./bench/results.json).

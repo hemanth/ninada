@@ -1,12 +1,12 @@
-import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.0.5';
+import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.1.1';
 
 const HF_REPO = 'gnumanth/ninada';
 const SUPPORTED_LANGS = ['en', 'sa', 'kn', 'hi', 'ta', 'te', 'ml', 'mr', 'bn', 'gu', 'pa', 'or'];
 const LOCAL_BUNDLED_LANGS = new Set(['en', 'sa', 'kn', 'hi', 'ta', 'te', 'ml']);
 
-const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v5.0.1';
+const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v5.1.0';
 const MODEL_CACHE_PREFIX = 'ninada-onnx-';
-const IDB_NAME = 'ninada-onnx-idb-v501';
+const IDB_NAME = 'ninada-onnx-idb-v510';
 const LEGACY_IDB_NAMES = [
   'ninada-onnx-idb-v3',
   'ninada-onnx-idb-v31',
@@ -14,10 +14,12 @@ const LEGACY_IDB_NAMES = [
   'ninada-onnx-idb-v40',
   'ninada-onnx-idb-v402',
   'ninada-onnx-idb-v500',
+  'ninada-onnx-idb-v501',
 ];
 const IDB_STORE = 'models';
 
-const DEFAULT_SPECIALIST_BYTES = 29300000;
+const DEFAULT_STUDIO_SPECIALIST_BYTES = 29285000;
+const DEFAULT_MOBILE_SPECIALIST_BYTES = 22740000;
 const IS_MOBILE_OR_LOW_MEM = Boolean(
   (self.navigator?.deviceMemory && self.navigator.deviceMemory <= 4) ||
     /Android|iPhone|iPad|iPod|Mobile/i.test(self.navigator?.userAgent || '')
@@ -167,20 +169,44 @@ function normalizeVoiceKey(voice) {
   return typeof voice === 'string' && voice.trim().toLowerCase() === 'female' ? 'female' : 'male';
 }
 
+function shouldUseMobileWeights() {
+  const pref = (WORKER_PARAMS.get('weights') || '').trim().toLowerCase();
+  if (pref === 'mobile' || pref === 'istft') return true;
+  if (pref === 'studio' || pref === 'hifigan') return false;
+  if (IS_MOBILE_OR_LOW_MEM) return true;
+  const cores = self.navigator?.hardwareConcurrency || 4;
+  return ortBackendMode !== 'webgpu' && cores <= 4;
+}
+
 function buildFallbackLangSpec(lc) {
   const hfMaleUrl = `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}.onnx`;
   const localMaleUrl = `./models/${lc}.onnx`;
   const maleUrls = LOCAL_BUNDLED_LANGS.has(lc) ? [localMaleUrl, hfMaleUrl] : [hfMaleUrl, localMaleUrl];
+  const hfMobMaleUrl = `https://huggingface.co/${HF_REPO}/resolve/main/onnx_mobile/${lc}.onnx`;
+  const localMobMaleUrl = `./models_mobile/${lc}.onnx`;
   return {
     lang: lc,
-    cacheKey: `ninada_v501_${lc}_24k_q8f16.onnx`,
+    cacheKey: `ninada_v510_studio_${lc}_24k_q8f16.onnx`,
     expectedBytes: 0,
     totalMB: 27.93,
     urls: maleUrls,
-    femaleCacheKey: `ninada_v501_${lc}_female_24k_q8f16.onnx`,
+    femaleCacheKey: `ninada_v510_studio_${lc}_female_24k_q8f16.onnx`,
     femaleExpectedBytes: 0,
     femaleTotalMB: 27.93,
     femaleUrls: [
+      `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}_female.onnx`,
+      `./models/${lc}_female.onnx`,
+    ],
+    mobileCacheKey: `ninada_v510_mobile_${lc}_24k_q8f16.onnx`,
+    mobileExpectedBytes: 0,
+    mobileTotalMB: 21.68,
+    mobileUrls: [localMobMaleUrl, hfMobMaleUrl, ...maleUrls],
+    femaleMobileCacheKey: `ninada_v510_mobile_${lc}_female_24k_q8f16.onnx`,
+    femaleMobileExpectedBytes: 0,
+    femaleMobileTotalMB: 21.68,
+    femaleMobileUrls: [
+      `./models_mobile/${lc}_female.onnx`,
+      `https://huggingface.co/${HF_REPO}/resolve/main/onnx_mobile/${lc}_female.onnx`,
       `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}_female.onnx`,
       `./models/${lc}_female.onnx`,
     ],
@@ -195,7 +221,7 @@ async function getModelsManifest() {
       fallbackLanguages[lc] = buildFallbackLangSpec(lc);
     }
     try {
-      const res = await fetch('./models_manifest.json?v=5.0.5', { cache: 'no-cache' });
+      const res = await fetch('./models_manifest.json?v=5.1.1', { cache: 'no-cache' });
       if (res.ok) {
         const json = await res.json();
         if (json?.cacheName) {
@@ -210,7 +236,7 @@ async function getModelsManifest() {
           }
         }
         return {
-          version: json?.version || '5.0.2',
+          version: json?.version || '5.1.0',
           cacheName: activeCacheName,
           languages: mergedLangs,
         };
@@ -219,7 +245,7 @@ async function getModelsManifest() {
       // Fallback to built-in specialist URL map
     }
     return {
-      version: '5.0.2',
+      version: '5.1.0',
       cacheName: activeCacheName,
       languages: fallbackLanguages,
     };
@@ -433,27 +459,31 @@ async function warmupSpecialistSession(session) {
     return;
   }
 
-  // WebGPU: pre-compile 44-frame first-chunk WGSL shader pipeline + verify finite output and mobile dispatch speed
-  const zData = new Float32Array(192 * 44).fill(0.02);
-  const warmLat = new ort.Tensor('float32', zData, [1, 192, 44]);
-  const vocOut = await session.vocoderSession.run({ [session.latentName]: warmLat });
-  warmLat.dispose?.();
-  const wavT = vocOut[session.wav3dName];
-  const wavData = wavT?.data;
-  if (!wavData || wavData.length === 0) {
-    wavT?.dispose?.();
-    throw new Error('WebGPU vocoder returned empty output');
-  }
-  const checkN = Math.min(64, wavData.length);
-  for (let i = 0; i < checkN; i++) {
-    if (!Number.isFinite(wavData[i])) {
+  // WebGPU: pre-compile BOTH 44-frame first-chunk AND 112-frame steady-chunk WGSL shader pipelines at boot
+  // so Sentence 2 / Chunk 1 never pauses mid-stream to compile [1, 192, 112] shaders!
+  for (const bucketF of [44, 112]) {
+    const zData = new Float32Array(192 * bucketF).fill(0.02);
+    const warmLat = new ort.Tensor('float32', zData, [1, 192, bucketF]);
+    const vocOut = await session.vocoderSession.run({ [session.latentName]: warmLat });
+    warmLat.dispose?.();
+    const wavT = vocOut[session.wav3dName];
+    const wavData = wavT?.data;
+    if (!wavData || wavData.length === 0) {
       wavT?.dispose?.();
-      throw new Error('WebGPU vocoder returned non-finite output');
+      throw new Error('WebGPU vocoder returned empty output');
     }
+    const checkN = Math.min(64, wavData.length);
+    for (let i = 0; i < checkN; i++) {
+      if (!Number.isFinite(wavData[i])) {
+        wavT?.dispose?.();
+        throw new Error('WebGPU vocoder returned non-finite output');
+      }
+    }
+    wavT?.dispose?.();
   }
-  wavT?.dispose?.();
 
   if (IS_MOBILE_OR_LOW_MEM && typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated) {
+    const zData = new Float32Array(192 * 44).fill(0.02);
     const probeLat = new ort.Tensor('float32', zData, [1, 192, 44]);
     const t0 = performance.now();
     const probeOut = await session.vocoderSession.run({ [session.latentName]: probeLat });
@@ -468,7 +498,10 @@ async function warmupSpecialistSession(session) {
 
 async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true } = {}) {
   const normVoice = normalizeVoiceKey(voiceKey);
-  const slotKey = `${lc}:${normVoice}`;
+  await resolveWorkerOrt();
+  const useMobileWeights = shouldUseMobileWeights();
+  const tierTag = useMobileWeights ? 'mobile' : 'studio';
+  const slotKey = `${lc}:${normVoice}:${tierTag}`;
 
   if (warmSessions.has(slotKey)) {
     const hit = warmSessions.get(slotKey);
@@ -481,7 +514,7 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
     };
   }
 
-  // Pre-evict oldest warm session BEFORE allocating incoming 28 MB ONNX buffer to minimize peak RSS
+  // Pre-evict oldest warm session BEFORE allocating incoming ONNX buffer to minimize peak RSS
   while (warmSessions.size >= MAX_WARM_SESSIONS) {
     const oldestKey = warmSessions.keys().next().value;
     const evicted = warmSessions.get(oldestKey);
@@ -492,23 +525,44 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
   }
 
   const isFemale = normVoice === 'female';
-  let langSpec;
-  if (!isFemale && LOCAL_BUNDLED_LANGS.has(lc)) {
-    // Zero-RTT fast path for bundled specialists (e.g. boot EN): start model read/fetch immediately at t=0ms!
-    langSpec = buildFallbackLangSpec(lc);
-    getModelsManifest().catch(() => {});
-  } else {
-    const manifest = await getModelsManifest();
-    langSpec = manifest.languages[lc] || buildFallbackLangSpec(lc);
-  }
+  const manifest = await getModelsManifest();
+  const langSpec = manifest.languages[lc] || buildFallbackLangSpec(lc);
   setTimeout(() => {
     pruneStaleModelCaches().catch(() => {});
   }, 1500);
 
-  const cacheKey = isFemale ? langSpec.femaleCacheKey : langSpec.cacheKey;
-  const urls = isFemale ? langSpec.femaleUrls : langSpec.urls;
-  const expectedBytes = Number(isFemale ? langSpec.femaleExpectedBytes : langSpec.expectedBytes) || 0;
-  const expectedTotal = expectedBytes || DEFAULT_SPECIALIST_BYTES;
+  const hasMobileSpec = Boolean(
+    useMobileWeights &&
+      (isFemale
+        ? Array.isArray(langSpec.femaleMobileUrls) && langSpec.femaleMobileUrls.length > 0
+        : Array.isArray(langSpec.mobileUrls) && langSpec.mobileUrls.length > 0)
+  );
+  const cacheKey = hasMobileSpec
+    ? isFemale
+      ? langSpec.femaleMobileCacheKey || langSpec.femaleCacheKey
+      : langSpec.mobileCacheKey || langSpec.cacheKey
+    : isFemale
+      ? langSpec.femaleCacheKey
+      : langSpec.cacheKey;
+  const urls = hasMobileSpec
+    ? isFemale
+      ? langSpec.femaleMobileUrls
+      : langSpec.mobileUrls
+    : isFemale
+      ? langSpec.femaleUrls
+      : langSpec.urls;
+  const expectedBytes =
+    Number(
+      hasMobileSpec
+        ? isFemale
+          ? langSpec.femaleMobileExpectedBytes
+          : langSpec.mobileExpectedBytes
+        : isFemale
+          ? langSpec.femaleExpectedBytes
+          : langSpec.expectedBytes
+    ) || 0;
+  const expectedTotal =
+    expectedBytes || (hasMobileSpec ? DEFAULT_MOBILE_SPECIALIST_BYTES : DEFAULT_STUDIO_SPECIALIST_BYTES);
 
   let loadedBytes = 0;
   const reportProgress = emitProgress
@@ -530,16 +584,27 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
       }
     : null;
 
-  let [, modelRes] = await Promise.all([
-    resolveWorkerOrt(),
-    fetchOrLoadAsset(
-      cacheKey,
-      urls,
-      expectedBytes,
-      (arr) => isValidOnnxBuffer(arr, expectedBytes),
+  let modelRes = await fetchOrLoadAsset(
+    cacheKey,
+    urls,
+    expectedBytes,
+    (arr) => isValidOnnxBuffer(arr, expectedBytes),
+    reportProgress
+  );
+
+  // If mobile weight isn't cached/published yet, fall back seamlessly to the Studio specialist for the same voice
+  if ((!modelRes || !modelRes.bytes) && hasMobileSpec) {
+    const studioKey = isFemale ? langSpec.femaleCacheKey : langSpec.cacheKey;
+    const studioUrls = isFemale ? langSpec.femaleUrls : langSpec.urls;
+    const studioBytes = Number(isFemale ? langSpec.femaleExpectedBytes : langSpec.expectedBytes) || 0;
+    modelRes = await fetchOrLoadAsset(
+      studioKey,
+      studioUrls,
+      studioBytes,
+      (arr) => isValidOnnxBuffer(arr, studioBytes),
       reportProgress
-    ),
-  ]);
+    );
+  }
 
   // If female specialist is offline/unreachable, fall back cleanly to the native Male specialist for this language
   if ((!modelRes || !modelRes.bytes) && isFemale) {
@@ -615,6 +680,7 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
   const entry = {
     session,
     totalMB,
+    weightTier: totalMB < 25.0 ? 'mobile' : 'studio',
     fromCache,
     cachedPersisted: Boolean(fromCache || cacheBackend),
     cacheBackend: cacheBackend || 'cache_storage',
@@ -627,12 +693,9 @@ async function loadOrGetWarmSession(lc, voiceKey = 'male', { emitProgress = true
 async function ensureLangReady(rawLang = 'en', { voice = 'male', emitReady = true } = {}) {
   const lc = SUPPORTED_LANGS.includes(rawLang) ? rawLang : 'en';
   const normVoice = normalizeVoiceKey(voice);
-
-  // Start ORT WASM init and specialist model fetch/cache read concurrently when warming a new slot
-  const slotKey = `${lc}:${normVoice}`;
-  if (warmSessions.has(slotKey)) {
-    await resolveWorkerOrt();
-  }
+  await resolveWorkerOrt();
+  const tierTag = shouldUseMobileWeights() ? 'mobile' : 'studio';
+  const slotKey = `${lc}:${normVoice}:${tierTag}`;
 
   try {
     const entry = await loadOrGetWarmSession(lc, normVoice, { emitProgress: emitReady });
@@ -667,6 +730,7 @@ async function ensureLangReady(rawLang = 'en', { voice = 'male', emitReady = tru
       isNeural: voiceEngine.isNeural,
       isStreamingNeural: voiceEngine.isStreamingNeural,
       vocoderBackend: activeVocBackend,
+      weightTier: entry.weightTier || (entry.totalMB < 25.0 ? 'mobile' : 'studio'),
       totalMB: entry.totalMB,
       fromCache: Boolean(entry.fromCache),
       cachedPersisted: Boolean(entry.cachedPersisted),
@@ -742,7 +806,8 @@ self.addEventListener('message', (ev) => {
         if (tier === 'klatt' && voiceEngine) {
           engine = voiceEngine;
         } else {
-          const slotKey = `${targetLang}:${targetVoice}`;
+          const tierTag = shouldUseMobileWeights() ? 'mobile' : 'studio';
+          const slotKey = `${targetLang}:${targetVoice}:${tierTag}`;
           const needsLoad = !warmSessions.has(slotKey) || !voiceEngine;
           engine = await ensureLangReady(targetLang, { voice: targetVoice, emitReady: needsLoad });
         }
@@ -754,8 +819,9 @@ self.addEventListener('message', (ev) => {
         let totalSamples = 0;
         let finalTier = 'klatt_zero_dep';
         let finalLang = targetLang;
+        const activeSlotKey = `${targetLang}:${targetVoice}:${shouldUseMobileWeights() ? 'mobile' : 'studio'}`;
         let finalVocoderBackend =
-          warmSessions.get(`${targetLang}:${targetVoice}`)?.vocoderBackend || 'wasm';
+          warmSessions.get(activeSlotKey)?.vocoderBackend || 'wasm';
 
         const workerIsCoi = typeof crossOriginIsolated !== 'undefined' && Boolean(crossOriginIsolated);
         const workerThreads = ort?.env?.wasm?.numThreads || 1;

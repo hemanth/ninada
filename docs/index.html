@@ -71,8 +71,8 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-  <link rel="modulepreload" href="./ninada.mjs?v=5.0.5" />
-  <link rel="modulepreload" href="./synth-worker.mjs?v=5.0.6" />
+  <link rel="modulepreload" href="./ninada.mjs?v=5.1.0" />
+  <link rel="modulepreload" href="./synth-worker.mjs?v=5.1.0" />
   <link rel="modulepreload" href="./ort/ort.wasm.min.mjs" />
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" crossorigin="anonymous" />
   <noscript><link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" /></noscript>
@@ -1294,7 +1294,7 @@
   </div>
 
   <script type="module">
-    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.0.5';
+    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.1.0';
     const IS_MOBILE_DEVICE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
     const IS_LOW_MEM_DEVICE = Boolean(
       IS_MOBILE_DEVICE || (navigator.deviceMemory && navigator.deviceMemory <= 4)
@@ -1807,6 +1807,7 @@
     let mobileOpenClause = -1;
     let mobileScheduledClause = -1;
     let mobileLastArrivalPerf = 0;
+    let mobileLastArrivalClause = -1;
     let mobileRtfPenalty = 1.0;
     const mobileRtfSamples = []; // kept across requests: device throughput is a stable property
     const nativeResampler = {
@@ -1903,6 +1904,7 @@
       mobileOpenClause = -1;
       mobileScheduledClause = -1;
       mobileLastArrivalPerf = 0;
+      mobileLastArrivalClause = -1;
       nextPlayTime = 0;
       nextHardwareFrame = 0;
       totalScheduledSec = 0;
@@ -2054,16 +2056,28 @@
 
     function noteMobileChunkArrival(audioSec, chunkMeta) {
       const nowPerf = chunkMeta && chunkMeta.arrivalPerf > 0 ? chunkMeta.arrivalPerf : performance.now();
+      const clauseIdx = chunkMeta && Number.isFinite(chunkMeta.clauseIndex) ? Number(chunkMeta.clauseIndex) : -1;
+      const isNewClause = clauseIdx !== mobileLastArrivalClause;
       if (audioSec > 0.05) {
-        if (mobileLastArrivalPerf > 0) {
+        if (chunkMeta && Number(chunkMeta.vocoderMs) > 0 && (isNewClause || mobileLastArrivalPerf <= 0 || audioSec < 0.45)) {
+          const vocWinSec = Number(chunkMeta.vocoderWindowAudioSec) > 0.05 ? Number(chunkMeta.vocoderWindowAudioSec) : audioSec;
+          const vocOnlyRtf = Number(chunkMeta.vocoderMs) / 1000 / vocWinSec;
+          if (isNewClause) {
+            // First chunk of a sentence pre-computes prior + 128 flow frames (so Chunk 1 pays 0ms flow)
+            const effDenom = Math.max(audioSec, vocWinSec * 0.85);
+            const amortizedRtf = (Number(chunkMeta.vocoderMs) + 0.35 * Number(chunkMeta.encFlowMs || 0)) / 1000 / effDenom;
+            mobileRtfSamples.push(Math.max(vocOnlyRtf, amortizedRtf));
+          } else {
+            // Short tail chunk at end of sentence: never divide a padded bucket's vocoderMs by trimmed tail audioSec!
+            mobileRtfSamples.push(vocOnlyRtf);
+          }
+        } else if (mobileLastArrivalPerf > 0) {
           mobileRtfSamples.push((nowPerf - mobileLastArrivalPerf) / 1000 / audioSec);
-        } else if (chunkMeta && Number(chunkMeta.vocoderMs) > 0) {
-          // First chunk: use its own compute cost (includes warmup, so it errs on the safe side)
-          mobileRtfSamples.push((Number(chunkMeta.vocoderMs) + Number(chunkMeta.encFlowMs || 0)) / 1000 / audioSec);
         }
         if (mobileRtfSamples.length > 8) mobileRtfSamples.shift();
       }
       mobileLastArrivalPerf = nowPerf;
+      mobileLastArrivalClause = clauseIdx;
     }
 
     function admitMobileClauses() {
@@ -2088,8 +2102,10 @@
           const rtf = estimateMobileRtf();
           const nextWinSec = last.nextWindowSec > 0 ? last.nextWindowSec : Math.min(remainingSec, 1.0);
           const aheadSec = nextHardwareFrame > 0 ? Math.max(0, nextHardwareFrame / audioCtx.sampleRate - audioCtx.currentTime) : 0;
-          const needSec = rtf >= 1 ? remainingSec * (rtf - 1) + nextWinSec : nextWinSec * rtf;
-          ok = aheadSec + bufferedSec >= needSec + 0.12;
+          const isZeroFlowBridge = last === head && bufferedSec >= 0.42 && rtf < 0.98;
+          const effNextRtf = isZeroFlowBridge ? rtf * 0.80 : rtf;
+          const needSec = rtf >= 1 ? remainingSec * (rtf - 1) + nextWinSec : nextWinSec * effNextRtf;
+          ok = aheadSec + bufferedSec >= needSec + 0.06;
           if (!ok && !mobilePlaybackStarted && synthBtn.classList.contains('streaming')) {
             const pct = Math.max(1, Math.min(99, Math.round((100 * (aheadSec + bufferedSec)) / (needSec + 0.12))));
             synthBtnLabel.textContent = `Preparing voice\u2026 ${pct}%`;
@@ -2379,6 +2395,7 @@
       mobileOpenClause = -1;
       mobileScheduledClause = -1;
       mobileLastArrivalPerf = 0;
+      mobileLastArrivalClause = -1;
       mobileRtfPenalty = Math.max(1.0, mobileRtfPenalty * 0.97);
       nextHardwareFrame = 0;
       nextPlayTime = 0;
@@ -3206,7 +3223,7 @@
 
     // Dedicated off-main-thread Web Worker for ONNX Runtime WebGPU / WASM SIMD
     const workerUrlSuffix = window.location.search ? '&' + window.location.search.slice(1) : '';
-    let synthWorker = new Worker('./synth-worker.mjs?v=5.0.6' + workerUrlSuffix, { type: 'module' });
+    let synthWorker = new Worker('./synth-worker.mjs?v=5.1.2' + workerUrlSuffix, { type: 'module' });
     let nextReqSeq = 1;
     let currentPendingReq = null;
 
@@ -3305,6 +3322,7 @@
           clauseIndex: msg.clauseIndex,
           remainingClauseSec: msg.remainingClauseSec,
           nextWindowSec: msg.nextWindowSec,
+          vocoderWindowAudioSec: msg.vocoderWindowAudioSec,
           vocoderMs: msg.vocoderMs,
           encFlowMs: msg.encFlowMs,
           arrivalPerf: performance.now(),
@@ -3523,7 +3541,7 @@
 
     function respawnSynthWorker(targetLang, effVoice) {
       try { synthWorker.terminate(); } catch {}
-      synthWorker = new Worker('./synth-worker.mjs?v=5.0.6' + workerUrlSuffix, { type: 'module' });
+      synthWorker = new Worker('./synth-worker.mjs?v=5.1.2' + workerUrlSuffix, { type: 'module' });
       synthWorker.addEventListener('error', onSynthWorkerError);
       synthWorker.addEventListener('message', onSynthWorkerMessage);
       synthWorker.postMessage({ type: 'init', lang: targetLang, voice: effVoice });
