@@ -28,6 +28,22 @@
   <script>
     (function () {
       try {
+        var ua = navigator.userAgent || '';
+        var isIOS =
+          /iPhone|iPad|iPod|CriOS|FxiOS|EdgiOS/i.test(ua) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        if (isIOS) {
+          if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+              for (var i = 0; i < regs.length; i++) {
+                if (regs[i] && regs[i].active && String(regs[i].active.scriptURL || '').indexOf('coi-sw.js') !== -1) {
+                  regs[i].unregister().catch(function () {});
+                }
+              }
+            }).catch(function () {});
+          }
+          return;
+        }
         var q = new URLSearchParams(location.search);
         if (q.get('coi') === '0' || window.crossOriginIsolated || !window.isSecureContext || !('serviceWorker' in navigator)) return;
         if (sessionStorage.getItem('ninada_coi_boot') === '1') return;
@@ -72,7 +88,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
   <link rel="modulepreload" href="./ninada.mjs?v=5.1.0" />
-  <link rel="modulepreload" href="./synth-worker.mjs?v=5.1.0" />
+  <link rel="modulepreload" href="./synth-worker.mjs?v=5.1.3" />
   <link rel="modulepreload" href="./ort/ort.wasm.min.mjs" />
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" crossorigin="anonymous" />
   <noscript><link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" /></noscript>
@@ -1230,7 +1246,7 @@
           </div>
         </div>
 
-        <audio id="audioPlayer" controls preload="auto" disableRemotePlayback></audio>
+        <audio id="audioPlayer" controls playsinline webkit-playsinline preload="auto" disableRemotePlayback></audio>
       </section>
     </main>
 
@@ -1295,7 +1311,13 @@
 
   <script type="module">
     import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.1.0';
-    const IS_MOBILE_DEVICE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+    const IS_IOS_DEVICE = Boolean(
+      /iPhone|iPad|iPod|CriOS|FxiOS|EdgiOS/i.test(navigator.userAgent || '') ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
+    const IS_MOBILE_DEVICE = Boolean(
+      IS_IOS_DEVICE || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '')
+    );
     const IS_LOW_MEM_DEVICE = Boolean(
       IS_MOBILE_DEVICE || (navigator.deviceMemory && navigator.deviceMemory <= 4)
     );
@@ -1723,14 +1745,90 @@
     let speculativeTimer = 0;
     let mobileLangSwitchCount = 0;
     let currentBlobUrl = null;
+    let currentPlayerSrc = null;
     let activeAudioBlobUrl = null;
     let workerReadyInfo = null;
 
-    function assignAudioPlayerBlob(nextBlobUrl) {
-      if (!nextBlobUrl) return;
+    function uint8ToWavDataUri(wavBuf) {
+      const bytes = wavBuf instanceof Uint8Array ? wavBuf : new Uint8Array(wavBuf);
+      const chunkSz = 0x8000;
+      const parts = [];
+      for (let i = 0; i < bytes.length; i += chunkSz) {
+        parts.push(String.fromCharCode.apply(null, bytes.subarray(i, Math.min(bytes.length, i + chunkSz))));
+      }
+      return 'data:audio/wav;base64,' + btoa(parts.join(''));
+    }
+
+    // iOS Safari & Chrome (CriOS / WKWebView) mute WebAudio when the hardware Silent/Ring switch is ON unless
+    // AVAudioSession is placed into Playback mode via navigator.audioSession AND a media element on Playback channel.
+    const IOS_SILENT_WAV_URI = IS_IOS_DEVICE
+      ? uint8ToWavDataUri(encodeWavBuffer(new Float32Array(2400), SAMPLE_RATE))
+      : '';
+    let iosSessionAudio = null;
+    let iosSessionStopTimer = 0;
+
+    function startIosPlaybackSession() {
+      if (navigator.audioSession) {
+        try {
+          navigator.audioSession.type = 'playback';
+        } catch {}
+      }
+      if (!IS_IOS_DEVICE) return;
+      clearTimeout(iosSessionStopTimer);
+      iosSessionStopTimer = 0;
+      if (!iosSessionAudio) {
+        try {
+          iosSessionAudio = document.createElement('audio');
+          iosSessionAudio.setAttribute('playsinline', '');
+          iosSessionAudio.setAttribute('webkit-playsinline', '');
+          iosSessionAudio.setAttribute('x-webkit-airplay', 'deny');
+          iosSessionAudio.preload = 'auto';
+          iosSessionAudio.loop = true;
+          iosSessionAudio.volume = 0.01;
+          iosSessionAudio.src = IOS_SILENT_WAV_URI;
+        } catch {}
+      }
+      if (iosSessionAudio && iosSessionAudio.paused) {
+        try {
+          const p = iosSessionAudio.play();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch {}
+      }
+    }
+
+    function scheduleStopIosPlaybackSession() {
+      if (!IS_IOS_DEVICE || !iosSessionAudio) return;
+      clearTimeout(iosSessionStopTimer);
+      iosSessionStopTimer = setTimeout(() => {
+        iosSessionStopTimer = 0;
+        if (!isStreamAudioActive && activeSources.length === 0 && audioPlayer.paused && iosSessionAudio) {
+          try {
+            iosSessionAudio.pause();
+          } catch {}
+        }
+      }, 450);
+    }
+
+    function buildIosCompatiblePlayerSrc(blobUrl, wavBytesArr) {
+      if (IS_IOS_DEVICE && wavBytesArr && wavBytesArr.byteLength > 0 && wavBytesArr.byteLength <= 8 * 1024 * 1024) {
+        try {
+          return uint8ToWavDataUri(wavBytesArr);
+        } catch {}
+      }
+      return blobUrl;
+    }
+
+    function assignAudioPlayerBlob(nextBlobUrl, wavBytesArr = null, precomputedSrc = null) {
+      if (!nextBlobUrl && !precomputedSrc) return;
       const prevAudioBlob = activeAudioBlobUrl;
-      audioPlayer.src = nextBlobUrl;
-      activeAudioBlobUrl = nextBlobUrl;
+      const chosenSrc = precomputedSrc || buildIosCompatiblePlayerSrc(nextBlobUrl, wavBytesArr);
+      audioPlayer.src = chosenSrc;
+      if (IS_IOS_DEVICE) {
+        try {
+          audioPlayer.load();
+        } catch {}
+      }
+      activeAudioBlobUrl = nextBlobUrl || null;
       if (prevAudioBlob && prevAudioBlob !== nextBlobUrl && prevAudioBlob !== currentBlobUrl) {
         URL.revokeObjectURL(prevAudioBlob);
       }
@@ -1791,6 +1889,7 @@
     let activePlaySessionId = 0;
     let isStreamAudioActive = false;
     let pendingAudioSrcUrl = null;
+    let pendingPlayerSrc = null;
     let playbackIdleResolvers = [];
 
     // Native C++ AudioBufferSourceNode gapless hardware-frame scheduler state
@@ -1870,10 +1969,12 @@
         synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
         stopBtn.disabled = true;
       }
-      if (pendingAudioSrcUrl) {
-        assignAudioPlayerBlob(pendingAudioSrcUrl);
+      if (pendingAudioSrcUrl || pendingPlayerSrc) {
+        assignAudioPlayerBlob(pendingAudioSrcUrl, null, pendingPlayerSrc);
         pendingAudioSrcUrl = null;
+        pendingPlayerSrc = null;
       }
+      scheduleStopIosPlaybackSession();
       renderWaveBars(0);
       resolvePlaybackWaiters();
     }
@@ -1908,11 +2009,21 @@
       nextPlayTime = 0;
       nextHardwareFrame = 0;
       totalScheduledSec = 0;
-      if (pendingAudioSrcUrl) {
-        assignAudioPlayerBlob(pendingAudioSrcUrl);
+      if (pendingAudioSrcUrl || pendingPlayerSrc) {
+        assignAudioPlayerBlob(pendingAudioSrcUrl, null, pendingPlayerSrc);
         pendingAudioSrcUrl = null;
+        pendingPlayerSrc = null;
       }
       audioPlayer.pause();
+      if (iosSessionAudio && !iosSessionAudio.loop) {
+        try {
+          iosSessionAudio.pause();
+          iosSessionAudio.src = IOS_SILENT_WAV_URI;
+          iosSessionAudio.loop = true;
+          iosSessionAudio.volume = 0.01;
+        } catch {}
+      }
+      scheduleStopIosPlaybackSession();
       resolvePlaybackWaiters();
     }
 
@@ -2214,7 +2325,7 @@
       }
 
       const buf = audioCtx.createBuffer(1, hwPcm.length, dstRate);
-      buf.copyToChannel(hwPcm, 0);
+      buf.getChannelData(0).set(hwPcm);
       const src = audioCtx.createBufferSource();
       src.buffer = buf;
       src.connect(audioCtx.destination);
@@ -2254,52 +2365,163 @@
       startPlayheadLoop();
     }
 
-    function markMobileStreamEos(sessionId, blobUrl) {
+    function markMobileStreamEos(sessionId, blobUrl, playerSrc = null) {
       if (sessionId !== activePlaySessionId) return;
       mobileEosReceived = true;
       flushMobileBufferQueue();
       if (activeSources.length > 0) {
         pendingAudioSrcUrl = blobUrl;
+        pendingPlayerSrc = playerSrc;
         synthBtnLabel.textContent = 'Playing Stream...';
       } else {
         isStreamAudioActive = false;
         streamStats.isPlaying = false;
         pendingAudioSrcUrl = null;
-        if (blobUrl) assignAudioPlayerBlob(blobUrl);
+        pendingPlayerSrc = null;
+        if (blobUrl || playerSrc) assignAudioPlayerBlob(blobUrl, null, playerSrc);
         synthBtn.classList.remove('streaming');
         synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
         stopBtn.disabled = true;
+        scheduleStopIosPlaybackSession();
         resolvePlaybackWaiters();
       }
     }
 
     let audioWorkletModulePromise = null;
 
-    async function ensureAudioContext({ resumeNow = true } = {}) {
+    function ensureKeepAliveStarted(ctx) {
+      if (!ctx || !IS_MOBILE_DEVICE || keepAliveSource || ctx.state !== 'running') return;
+      if (typeof ctx.createConstantSource === 'function') {
+        try {
+          keepAliveSource = ctx.createConstantSource();
+          keepAliveSource.offset.value = 0.0000001;
+          keepAliveSource.connect(ctx.destination);
+          keepAliveSource.start();
+        } catch {
+          keepAliveSource = null;
+        }
+      }
+    }
+
+    function attachAudioContextStateHandler(ctx) {
+      if (!ctx || ctx.__ninadaStateHooked) return;
+      ctx.__ninadaStateHooked = true;
+      ctx.addEventListener('statechange', () => {
+        if (ctx !== audioCtx) return;
+        if (ctx.state === 'running') {
+          ensureKeepAliveStarted(ctx);
+          if (isStreamAudioActive && USE_NATIVE_BUFFER_SCHEDULER) {
+            flushMobileBufferQueue();
+          }
+        }
+      });
+    }
+
+    // Must run synchronously inside user gesture (touchend / click) on iOS Safari & Chrome (CriOS / WKWebView)
+    function unlockAudioSynchronously({ forPlayback = false } = {}) {
+      if (navigator.audioSession) {
+        try {
+          navigator.audioSession.type = 'playback';
+        } catch {}
+      }
+      if (IS_IOS_DEVICE && forPlayback) {
+        startIosPlaybackSession();
+      }
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return null;
+      if (audioCtx && audioCtx.state === 'closed') {
+        audioCtx = null;
+        keepAliveSource = null;
+        workletNode = null;
+        workletReady = false;
+        audioWorkletModulePromise = null;
+      }
       if (!audioCtx) {
         try {
           audioCtx = new Ctx({ latencyHint: IS_MOBILE_DEVICE ? 'playback' : 0.04 });
         } catch {
           audioCtx = new Ctx();
         }
-        if (IS_MOBILE_DEVICE && !keepAliveSource && typeof audioCtx.createConstantSource === 'function') {
-          try {
-            keepAliveSource = audioCtx.createConstantSource();
-            keepAliveSource.offset.value = 0.0000001;
-            keepAliveSource.connect(audioCtx.destination);
-            keepAliveSource.start();
-          } catch {}
+        attachAudioContextStateHandler(audioCtx);
+      }
+      if (audioCtx.state !== 'running') {
+        try {
+          const p = audioCtx.resume();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch {}
+        try {
+          const silentBuf = audioCtx.createBuffer(1, 1, audioCtx.sampleRate || 24000);
+          const silentSrc = audioCtx.createBufferSource();
+          silentSrc.buffer = silentBuf;
+          silentSrc.connect(audioCtx.destination);
+          silentSrc.start(0);
+        } catch {}
+      } else {
+        ensureKeepAliveStarted(audioCtx);
+      }
+      return audioCtx;
+    }
+
+    function waitForAudioContextRunning(ctx, timeoutMs = 1600) {
+      if (!ctx) return Promise.resolve(false);
+      if (ctx.state === 'running') {
+        ensureKeepAliveStarted(ctx);
+        return Promise.resolve(true);
+      }
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          ctx.removeEventListener('statechange', onState);
+          if (ctx.state === 'running') ensureKeepAliveStarted(ctx);
+          resolve(ctx.state === 'running');
+        };
+        const onState = () => {
+          if (ctx.state === 'running') finish();
+        };
+        const timer = setTimeout(finish, timeoutMs);
+        ctx.addEventListener('statechange', onState);
+        try {
+          const p = ctx.resume();
+          if (p && typeof p.then === 'function') {
+            p.then(() => {
+              if (ctx.state === 'running') finish();
+            }).catch(() => {});
+          }
+        } catch {}
+      });
+    }
+
+    async function ensureAudioContext({ resumeNow = true, timeoutMs = 1600 } = {}) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      if (audioCtx && audioCtx.state === 'closed') {
+        audioCtx = null;
+        keepAliveSource = null;
+        workletNode = null;
+        workletReady = false;
+        audioWorkletModulePromise = null;
+      }
+      if (!audioCtx) {
+        if (IS_IOS_DEVICE && !resumeNow) {
+          return null;
         }
+        try {
+          audioCtx = new Ctx({ latencyHint: IS_MOBILE_DEVICE ? 'playback' : 0.04 });
+        } catch {
+          audioCtx = new Ctx();
+        }
+        attachAudioContextStateHandler(audioCtx);
+      }
+      if (audioCtx.state === 'running') {
+        ensureKeepAliveStarted(audioCtx);
       }
       const resumePromise =
-        resumeNow && audioCtx.state === 'suspended'
-          ? Promise.race([
-              audioCtx.resume().catch(() => {}),
-              new Promise((r) => setTimeout(r, 350)),
-            ])
-          : Promise.resolve();
+        resumeNow && audioCtx.state !== 'running'
+          ? waitForAudioContextRunning(audioCtx, timeoutMs)
+          : Promise.resolve(audioCtx.state === 'running');
 
       if (USE_NATIVE_BUFFER_SCHEDULER) {
         streamStats.engine = 'native-buffersource';
@@ -2475,8 +2697,6 @@
     }
 
     function pushLivePcmChunk(pcm, sampleRate = SAMPLE_RATE, chunkMeta = null) {
-      if (!audioCtx || audioCtx.state !== 'running') return;
-
       if (USE_NATIVE_BUFFER_SCHEDULER) {
         const copy = pcm.slice();
         const hasClause = chunkMeta && Number.isFinite(chunkMeta.clauseIndex);
@@ -2491,9 +2711,13 @@
           nextWindowSec: hasClause ? Number(chunkMeta.nextWindowSec || 0) : 0,
         });
         mobileQueuedSrcSamples += copy.length;
-        flushMobileBufferQueue();
+        if (audioCtx && audioCtx.state === 'running') {
+          flushMobileBufferQueue();
+        }
         return;
       }
+
+      if (!audioCtx || audioCtx.state !== 'running') return;
 
       if (workletReady && workletNode) {
         const updatedWm = computeAdaptiveWatermarkSamples(
@@ -2522,7 +2746,7 @@
 
       // Fallback AudioBufferSourceNode scheduling
       const buf = audioCtx.createBuffer(1, pcm.length, sampleRate);
-      buf.copyToChannel(pcm, 0);
+      buf.getChannelData(0).set(pcm);
       const src = audioCtx.createBufferSource();
       src.buffer = buf;
       src.connect(audioCtx.destination);
@@ -3157,6 +3381,10 @@
     }
 
     async function ensureCrossOriginIsolation() {
+      if (IS_IOS_DEVICE) {
+        streamStats.crossOriginIsolated = Boolean(window.crossOriginIsolated);
+        return streamStats.crossOriginIsolated;
+      }
       const params = new URLSearchParams(window.location.search);
       if (params.get('coi') === '0') {
         streamStats.crossOriginIsolated = Boolean(window.crossOriginIsolated);
@@ -3223,7 +3451,7 @@
 
     // Dedicated off-main-thread Web Worker for ONNX Runtime WebGPU / WASM SIMD
     const workerUrlSuffix = window.location.search ? '&' + window.location.search.slice(1) : '';
-    let synthWorker = new Worker('./synth-worker.mjs?v=5.1.2' + workerUrlSuffix, { type: 'module' });
+    let synthWorker = new Worker('./synth-worker.mjs?v=5.1.3' + workerUrlSuffix, { type: 'module' });
     let nextReqSeq = 1;
     let currentPendingReq = null;
 
@@ -3381,10 +3609,11 @@
         const req = currentPendingReq;
         currentPendingReq = null;
 
-        const finalizeDone = () => {
+        const finalizeDone = async () => {
           const pcm = concatFloat32(req.chunks);
           req.chunks.length = 0;
-          lastPcm = IS_LOW_MEM_DEVICE ? null : pcm;
+          // Retain up to 45s (~4.3 MB) on mobile so Replay works through native hardware-rate WebAudio too
+          lastPcm = IS_LOW_MEM_DEVICE && pcm.length > SAMPLE_RATE * 45 ? null : pcm;
           updateWaveBarsFromChunks([pcm], pcm.length);
 
           let rmsSq = 0;
@@ -3395,6 +3624,7 @@
           const prevBlobUrl = currentBlobUrl;
           const blob = new Blob([wavBytesArr], { type: 'audio/wav' });
           currentBlobUrl = URL.createObjectURL(blob);
+          currentPlayerSrc = buildIosCompatiblePlayerSrc(currentBlobUrl, wavBytesArr);
           if (prevBlobUrl && prevBlobUrl !== activeAudioBlobUrl) {
             URL.revokeObjectURL(prevBlobUrl);
           }
@@ -3402,25 +3632,36 @@
           downloadLink.download = `ninada_${msg.lang}_${Date.now()}.wav`;
           setDownloadEnabled(true);
 
+          if (req.autoPlay && audioCtx && audioCtx.state !== 'running' && activePlaySessionId === req.playSessionId) {
+            await waitForAudioContextRunning(audioCtx, 1200);
+          }
           const audioRunning = Boolean(audioCtx && audioCtx.state === 'running');
           if (req.autoPlay && audioRunning && isStreamAudioActive && USE_NATIVE_BUFFER_SCHEDULER) {
-            markMobileStreamEos(req.playSessionId, currentBlobUrl);
+            markMobileStreamEos(req.playSessionId, currentBlobUrl, currentPlayerSrc);
           } else if (req.autoPlay && audioRunning && isStreamAudioActive && workletReady && workletNode) {
             pendingAudioSrcUrl = currentBlobUrl;
+            pendingPlayerSrc = currentPlayerSrc;
             workletNode.port.postMessage({ type: 'eos', sessionId: req.playSessionId });
             synthBtnLabel.textContent = 'Playing Stream...';
           } else if (req.autoPlay && audioRunning && activeSources.length > 0) {
             pendingAudioSrcUrl = currentBlobUrl;
+            pendingPlayerSrc = currentPlayerSrc;
             synthBtnLabel.textContent = 'Playing Stream...';
           } else {
             isStreamAudioActive = false;
             streamStats.isPlaying = false;
             pendingAudioSrcUrl = null;
-            assignAudioPlayerBlob(currentBlobUrl);
-            synthBtn.classList.remove('streaming');
-            synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
-            stopBtn.disabled = true;
-            resolvePlaybackWaiters();
+            pendingPlayerSrc = null;
+            assignAudioPlayerBlob(currentBlobUrl, null, currentPlayerSrc);
+            if (req.autoPlay && activePlaySessionId === req.playSessionId && pcm.length > 0) {
+              playHtmlAudioFallback(req.playSessionId);
+            } else {
+              synthBtn.classList.remove('streaming');
+              synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
+              stopBtn.disabled = true;
+              scheduleStopIosPlaybackSession();
+              resolvePlaybackWaiters();
+            }
           }
 
           const durationSec = pcm.length / SAMPLE_RATE;
@@ -3461,6 +3702,7 @@
               pcm,
               sampleRate: SAMPLE_RATE,
               blobUrl: currentBlobUrl,
+              playerSrc: currentPlayerSrc,
               summary,
               unconsumed: true,
             };
@@ -3496,10 +3738,89 @@
       return `${activeLang}|${v}|${r}|${n}|${tierSelect.value}|${txt}`;
     }
 
+    function playHtmlAudioFallback(sessionId) {
+      const targetSrc = audioPlayer.src || currentPlayerSrc || currentBlobUrl;
+      if (!targetSrc) {
+        synthBtn.classList.remove('streaming');
+        synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
+        stopBtn.disabled = true;
+        scheduleStopIosPlaybackSession();
+        resolvePlaybackWaiters();
+        return;
+      }
+      synthBtn.classList.add('streaming');
+      synthBtnLabel.textContent = 'Playing Stream...';
+      stopBtn.disabled = false;
+      const playViaUnlockedBridge = () => {
+        if (!IS_IOS_DEVICE || !iosSessionAudio) return false;
+        try {
+          iosSessionAudio.loop = false;
+          iosSessionAudio.volume = 1.0;
+          iosSessionAudio.src = targetSrc;
+          const restoreBridge = () => {
+            iosSessionAudio.removeEventListener('ended', restoreBridge);
+            iosSessionAudio.removeEventListener('error', restoreBridge);
+            try {
+              iosSessionAudio.pause();
+              iosSessionAudio.src = IOS_SILENT_WAV_URI;
+              iosSessionAudio.loop = true;
+              iosSessionAudio.volume = 0.01;
+            } catch {}
+            cleanup();
+          };
+          iosSessionAudio.addEventListener('ended', restoreBridge, { once: true });
+          iosSessionAudio.addEventListener('error', restoreBridge, { once: true });
+          const bp = iosSessionAudio.play();
+          if (bp && typeof bp.then === 'function') {
+            bp.then(() => {
+              if (streamStats.audibleStartMs === null && streamStats.requestStartPerfMs > 0) {
+                streamStats.audibleStartMs = performance.now() - streamStats.requestStartPerfMs;
+              }
+            }).catch(() => restoreBridge());
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      const cleanup = () => {
+        audioPlayer.removeEventListener('ended', onFinish);
+        audioPlayer.removeEventListener('error', onFinish);
+        if (sessionId === activePlaySessionId) {
+          synthBtn.classList.remove('streaming');
+          synthBtnLabel.textContent = isModelReady ? 'Stream Speech' : 'Loading Model...';
+          stopBtn.disabled = true;
+          scheduleStopIosPlaybackSession();
+          resolvePlaybackWaiters();
+        }
+      };
+      const onFinish = () => cleanup();
+      audioPlayer.addEventListener('ended', onFinish, { once: true });
+      audioPlayer.addEventListener('error', onFinish, { once: true });
+      try {
+        audioPlayer.currentTime = 0;
+        const p = audioPlayer.play();
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            if (streamStats.audibleStartMs === null && streamStats.requestStartPerfMs > 0) {
+              streamStats.audibleStartMs = performance.now() - streamStats.requestStartPerfMs;
+            }
+          }).catch(() => {
+            audioPlayer.removeEventListener('ended', onFinish);
+            audioPlayer.removeEventListener('error', onFinish);
+            if (!playViaUnlockedBridge()) cleanup();
+          });
+        }
+      } catch {
+        if (!playViaUnlockedBridge()) cleanup();
+      }
+    }
+
     async function playBootPrestreamInstant(cached) {
       cached.unconsumed = false;
       bootPrestreamCache = null;
       stopLiveAudio();
+      unlockAudioSynchronously({ forPlayback: true });
       const tClick = performance.now();
       streamStats.requestStartPerfMs = tClick;
       streamStats.audibleStartMs = null;
@@ -3509,7 +3830,7 @@
       synthBtnLabel.textContent = 'Playing Stream...';
       stopBtn.disabled = false;
 
-      await ensureAudioContext({ resumeNow: true });
+      await ensureAudioContext({ resumeNow: true, timeoutMs: 1600 });
       if (audioCtx && audioCtx.state === 'running') {
         beginLiveAudioSession(playSessionId, Math.round(0.02 * SAMPLE_RATE));
         if (USE_NATIVE_BUFFER_SCHEDULER) {
@@ -3518,7 +3839,7 @@
             isFinal: true,
             tier: cached.summary?.tier || 'neural_onnx',
           });
-          markMobileStreamEos(playSessionId, cached.blobUrl);
+          markMobileStreamEos(playSessionId, cached.blobUrl, cached.playerSrc || null);
         } else {
           const pcm = cached.pcm;
           const sliceStep = 12000;
@@ -3527,9 +3848,13 @@
           }
           if (workletReady && workletNode) {
             pendingAudioSrcUrl = cached.blobUrl;
+            pendingPlayerSrc = cached.playerSrc || null;
             workletNode.port.postMessage({ type: 'eos', sessionId: playSessionId });
           }
         }
+      } else {
+        assignAudioPlayerBlob(cached.blobUrl, null, cached.playerSrc || null);
+        playHtmlAudioFallback(playSessionId);
       }
       const instantSummary = {
         ...cached.summary,
@@ -3541,7 +3866,7 @@
 
     function respawnSynthWorker(targetLang, effVoice) {
       try { synthWorker.terminate(); } catch {}
-      synthWorker = new Worker('./synth-worker.mjs?v=5.1.2' + workerUrlSuffix, { type: 'module' });
+      synthWorker = new Worker('./synth-worker.mjs?v=5.1.3' + workerUrlSuffix, { type: 'module' });
       synthWorker.addEventListener('error', onSynthWorkerError);
       synthWorker.addEventListener('message', onSynthWorkerMessage);
       synthWorker.postMessage({ type: 'init', lang: targetLang, voice: effVoice });
@@ -3569,6 +3894,7 @@
       const isBootPrestream = Boolean(runOpts && runOpts.isBootPrestream);
 
       if (autoPlay && !isBootPrestream) {
+        unlockAudioSynchronously({ forPlayback: true });
         if (
           currentPendingReq &&
           currentPendingReq.isBootPrestream &&
@@ -3588,15 +3914,24 @@
           stopBtn.disabled = false;
           const alreadyArrived = inFlight.chunks.slice();
           const alreadyArrivedMetas = inFlight.chunkMetas.slice();
-          inFlight.audioInitPromise = ensureAudioContext({ resumeNow: true }).then(() => {
-            if (!inFlight.cancelled && activePlaySessionId === playSessionId) {
-              beginLiveAudioSession(playSessionId, Math.round(0.03 * SAMPLE_RATE));
-              for (let k = 0; k < alreadyArrived.length; k++) {
-                pushLivePcmChunk(alreadyArrived[k], SAMPLE_RATE, alreadyArrivedMetas[k] || null);
-              }
-              inFlight.audioInitPromise = null;
+          if (USE_NATIVE_BUFFER_SCHEDULER) {
+            beginLiveAudioSession(playSessionId, Math.round(0.03 * SAMPLE_RATE));
+            for (let k = 0; k < alreadyArrived.length; k++) {
+              pushLivePcmChunk(alreadyArrived[k], SAMPLE_RATE, alreadyArrivedMetas[k] || null);
             }
-          });
+            inFlight.audioInitPromise = null;
+            ensureAudioContext({ resumeNow: true, timeoutMs: 1600 }).catch(() => {});
+          } else {
+            inFlight.audioInitPromise = ensureAudioContext({ resumeNow: true }).then(() => {
+              if (!inFlight.cancelled && activePlaySessionId === playSessionId) {
+                beginLiveAudioSession(playSessionId, Math.round(0.03 * SAMPLE_RATE));
+                for (let k = 0; k < alreadyArrived.length; k++) {
+                  pushLivePcmChunk(alreadyArrived[k], SAMPLE_RATE, alreadyArrivedMetas[k] || null);
+                }
+                inFlight.audioInitPromise = null;
+              }
+            });
+          }
           return new Promise((res) => {
             const origResolve = inFlight.resolve;
             inFlight.resolve = (val) => {
@@ -3620,6 +3955,9 @@
         currentPendingReq = null;
       }
       stopLiveAudio();
+      if (autoPlay && !isBootPrestream) {
+        unlockAudioSynchronously({ forPlayback: true });
+      }
       if (IS_LOW_MEM_DEVICE) {
         lastPcm = null;
       }
@@ -3657,7 +3995,11 @@
         synthBtn.classList.add('streaming');
         synthBtnLabel.textContent = 'Streaming...';
         stopBtn.disabled = false;
-        if ((workletReady || USE_NATIVE_BUFFER_SCHEDULER) && audioCtx && audioCtx.state === 'running') {
+        if (USE_NATIVE_BUFFER_SCHEDULER) {
+          // Open mobile queue immediately so arriving chunks never drop while iOS CoreAudio/Bluetooth wakes up
+          beginLiveAudioSession(playSessionId);
+          ensureAudioContext({ resumeNow: true, timeoutMs: 1600 }).catch(() => {});
+        } else if (workletReady && audioCtx && audioCtx.state === 'running') {
           beginLiveAudioSession(playSessionId);
         } else {
           audioInitPromise = ensureAudioContext({ resumeNow: true }).then(() => {
@@ -3688,10 +4030,11 @@
       });
     }
 
-    // Unlock AudioContext + AudioWorklet on mobile/iOS gestures (touchend/pointerup/click) until running
-    const GESTURE_EVENTS = ['pointerup', 'touchend', 'click', 'keydown'];
+    // Unlock AudioContext synchronously on direct user gestures (touchend / click / keydown)
+    const GESTURE_EVENTS = ['touchend', 'click', 'keydown'];
     const warmAudioOnGesture = () => {
-      ensureAudioContext({ resumeNow: true })
+      unlockAudioSynchronously({ forPlayback: false });
+      ensureAudioContext({ resumeNow: true, timeoutMs: 800 })
         .then(() => {
           if (audioCtx && audioCtx.state === 'running') {
             for (const evName of GESTURE_EVENTS) {
@@ -3705,13 +4048,32 @@
       window.addEventListener(evName, warmAudioOnGesture, { capture: true, passive: true });
     }
 
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && audioCtx && audioCtx.state !== 'running' && isStreamAudioActive) {
+        try {
+          const p = audioCtx.resume();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch {}
+      }
+    });
+
+    audioPlayer.addEventListener('play', () => {
+      if (IS_IOS_DEVICE && navigator.audioSession) {
+        try {
+          navigator.audioSession.type = 'playback';
+        } catch {}
+      }
+    });
     audioPlayer.addEventListener('timeupdate', () => {
       if (!isStreamAudioActive && hasWaveBars && audioPlayer.duration > 0) {
         renderWaveBars(audioPlayer.currentTime / audioPlayer.duration);
       }
     });
     audioPlayer.addEventListener('ended', () => {
-      if (!isStreamAudioActive) renderWaveBars(0);
+      if (!isStreamAudioActive) {
+        renderWaveBars(0);
+        scheduleStopIosPlaybackSession();
+      }
     });
 
     // Perceived latency on phones: their CPUs vocode slower than real time, so start synthesizing while the user
@@ -3735,6 +4097,7 @@
 
     synthBtn.addEventListener('click', () => {
       if (!isModelReady) return;
+      unlockAudioSynchronously({ forPlayback: true });
       clearTimeout(speculativeTimer);
       runSynthesis(true);
     });
@@ -3745,9 +4108,30 @@
     replayBtn.addEventListener('click', () => {
       if (!isModelReady) return;
       stopLiveAudio();
-      if (audioPlayer.src) {
+      unlockAudioSynchronously({ forPlayback: true });
+      if (IS_IOS_DEVICE && lastPcm && lastPcm.length > 0) {
+        playBootPrestreamInstant({
+          unconsumed: false,
+          pcm: lastPcm,
+          sampleRate: SAMPLE_RATE,
+          blobUrl: currentBlobUrl,
+          playerSrc: currentPlayerSrc,
+          summary: window.__ninadaLastResult || {},
+        });
+      } else if (audioPlayer.src) {
         audioPlayer.currentTime = 0;
-        audioPlayer.play().catch(() => {});
+        audioPlayer.play().catch(() => {
+          if (lastPcm && lastPcm.length > 0) {
+            playBootPrestreamInstant({
+              unconsumed: false,
+              pcm: lastPcm,
+              sampleRate: SAMPLE_RATE,
+              blobUrl: currentBlobUrl,
+              playerSrc: currentPlayerSrc,
+              summary: window.__ninadaLastResult || {},
+            });
+          }
+        });
       } else {
         runSynthesis(true);
       }
@@ -3762,20 +4146,22 @@
     window.__ninadaCancel = cancelActiveSynthesis;
 
     synthWorker.postMessage({ type: 'init', lang: 'en', voice: 'male' });
-    // Pre-compile AudioWorklet module in parallel while ONNX session initializes in Web Worker
-    ensureAudioContext({ resumeNow: false }).catch(() => {});
+    // On non-iOS desktop/Android, pre-warm AudioWorklet module in parallel; on iOS WebKit/CriOS, wait for a real tap gesture
+    if (!IS_IOS_DEVICE) {
+      ensureAudioContext({ resumeNow: false }).catch(() => {});
+    }
     await workerReadyPromise;
     refreshInspection();
     if (!currentPendingReq && !isStreamAudioActive) {
-      // Attempt immediate audible stream on load; if mobile browser suspends ungestured AudioContext,
+      // Attempt immediate audible stream on load (desktop); on iOS/mobile where ungestured AudioContext is blocked,
       // stream into bootPrestreamCache + animated waveform so first tap plays in < 20 ms!
-      if (audioCtx && audioCtx.state === 'suspended') {
+      if (!IS_IOS_DEVICE && audioCtx && audioCtx.state === 'suspended') {
         await Promise.race([
           audioCtx.resume().catch(() => {}),
           new Promise((r) => setTimeout(r, 90)),
         ]);
       }
-      const canAutoPlayOnLoad = Boolean(audioCtx && audioCtx.state === 'running');
+      const canAutoPlayOnLoad = Boolean(!IS_IOS_DEVICE && audioCtx && audioCtx.state === 'running');
       await runSynthesis(canAutoPlayOnLoad, { isBootPrestream: !canAutoPlayOnLoad });
     }
   </script>

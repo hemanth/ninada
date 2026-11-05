@@ -20,8 +20,13 @@ const IDB_STORE = 'models';
 
 const DEFAULT_STUDIO_SPECIALIST_BYTES = 29285000;
 const DEFAULT_MOBILE_SPECIALIST_BYTES = 22740000;
+const IS_IOS_WORKER = Boolean(
+  /iPhone|iPad|iPod|CriOS|FxiOS|EdgiOS/i.test(self.navigator?.userAgent || '') ||
+    (self.navigator?.platform === 'MacIntel' && (self.navigator?.maxTouchPoints || 0) > 1)
+);
 const IS_MOBILE_OR_LOW_MEM = Boolean(
-  (self.navigator?.deviceMemory && self.navigator.deviceMemory <= 4) ||
+  IS_IOS_WORKER ||
+    (self.navigator?.deviceMemory && self.navigator.deviceMemory <= 4) ||
     /Android|iPhone|iPad|iPod|Mobile/i.test(self.navigator?.userAgent || '')
 );
 const MAX_WARM_SESSIONS = IS_MOBILE_OR_LOW_MEM ? 1 : 2;
@@ -77,8 +82,8 @@ function configureOrtWasmEnv(ortInstance, { forWebGpuHybrid = false } = {}) {
     const cores = self.navigator?.hardwareConcurrency || 4;
     // Measured on a Pixel 10 Pro XL (8-core big.LITTLE): vocoder RTF 1 thr = 1.55, 2 thr = 3.6, 3 thr = 2.4,
     // 6 thr = 1.3. Small thread pools stall on per-op barriers waiting for little cores, so phones use either
-    // a wide pool (8+ cores) or a single thread.
-    const mobileThreads = cores >= 8 ? Math.min(6, cores - 2) : 1;
+    // a wide pool (8+ cores) or a single thread. iOS/iPadOS WebKit always uses 1 thread to avoid pthread Jetsam limits.
+    const mobileThreads = IS_IOS_WORKER ? 1 : cores >= 8 ? Math.min(6, cores - 2) : 1;
     ortInstance.env.wasm.numThreads = isCoi
       ? IS_MOBILE_OR_LOW_MEM
         ? mobileThreads

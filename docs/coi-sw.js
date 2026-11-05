@@ -19,8 +19,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Let large ONNX model streams and CORS-enabled CDN assets stream directly without SW buffering
-  if (url.origin !== self.location.origin || url.pathname.endsWith('.onnx')) {
+  // Let large ONNX model streams, non-HTTP(S) schemes, and CORS-enabled CDN assets bypass SW buffering
+  if (
+    (url.protocol !== 'https:' && url.protocol !== 'http:') ||
+    url.origin !== self.location.origin ||
+    url.pathname.endsWith('.onnx')
+  ) {
     return;
   }
 
