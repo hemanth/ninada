@@ -1,6 +1,6 @@
 {
-  "version": "5.1.0",
-  "cacheName": "ninada-onnx-v5.1.0",
+  "version": "5.1.1",
+  "cacheName": "ninada-onnx-v5.1.1",
   "architecture": "native-studio-vits-24k-dual-tier-hifigan-istft",
   "languages": {
     "sa": {
@@ -36,33 +36,33 @@
     },
     "en": {
       "lang": "en",
-      "cacheKey": "ninada_v510_studio_en_24k_q8f16.onnx",
-      "expectedBytes": 29280152,
+      "cacheKey": "ninada_v511_studio_en_24k_q8f16.onnx",
+      "expectedBytes": 29280153,
       "totalMB": 27.92,
       "urls": [
-        "./models/en.onnx",
+        "./models/en.onnx?v=5.1.1",
         "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/en.onnx"
       ],
-      "femaleCacheKey": "ninada_v510_studio_en_female_24k_q8f16.onnx",
-      "femaleExpectedBytes": 29280152,
+      "femaleCacheKey": "ninada_v511_studio_en_female_24k_q8f16.onnx",
+      "femaleExpectedBytes": 29280153,
       "femaleTotalMB": 27.92,
       "femaleUrls": [
         "https://huggingface.co/gnumanth/ninada/resolve/main/onnx/en_female.onnx",
-        "./models/en_female.onnx"
+        "./models/en_female.onnx?v=5.1.1"
       ],
-      "mobileCacheKey": "ninada_v510_mobile_en_24k_q8f16.onnx",
-      "mobileExpectedBytes": 22735530,
+      "mobileCacheKey": "ninada_v511_mobile_en_24k_q8f16.onnx",
+      "mobileExpectedBytes": 22735531,
       "mobileTotalMB": 21.68,
       "mobileUrls": [
         "https://huggingface.co/gnumanth/ninada/resolve/main/onnx_mobile/en.onnx",
-        "./models_mobile/en.onnx"
+        "./models_mobile/en.onnx?v=5.1.1"
       ],
-      "femaleMobileCacheKey": "ninada_v510_mobile_en_female_24k_q8f16.onnx",
-      "femaleMobileExpectedBytes": 22735530,
+      "femaleMobileCacheKey": "ninada_v511_mobile_en_female_24k_q8f16.onnx",
+      "femaleMobileExpectedBytes": 22735531,
       "femaleMobileTotalMB": 21.68,
       "femaleMobileUrls": [
         "https://huggingface.co/gnumanth/ninada/resolve/main/onnx_mobile/en_female.onnx",
-        "./models_mobile/en_female.onnx"
+        "./models_mobile/en_female.onnx?v=5.1.1"
       ]
     },
     "hi": {

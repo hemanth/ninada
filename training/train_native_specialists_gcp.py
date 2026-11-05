@@ -66,9 +66,11 @@ from training.modeling_studio_vits import (
     clean_native_text,
     discriminator_loss,
     feature_loss,
+    generate_path,
     generator_loss,
     kl_loss,
     remap_embeddings_to_existing_tokenizer,
+    sequence_mask,
     slice_segments,
 )
 
@@ -186,14 +188,15 @@ SPECIALIST_RECIPES: dict[str, dict[str, Any]] = {
     "en": {
         "male_donor": "SYSPIN/vits_English_Male",
         "female_donor": "SYSPIN/vits_English_Female",
+        "exact_donor_24k_vocoder_adapt": True,
         "freeze_text_backbone": True,
-        "male_steps": 4500,
-        "female_steps": 3600,
-        "lr_g": 1.4e-4,
-        "lr_text": 1.0e-4,
-        "lr_d": 1.3e-4,
-        "target_male_utts": 2200,
-        "target_female_utts": 1600,
+        "male_steps": 650,
+        "female_steps": 650,
+        "lr_g": 1.2e-4,
+        "lr_text": 0.0,
+        "lr_d": 1.2e-4,
+        "target_male_utts": 0,
+        "target_female_utts": 0,
     },
     "mr": {
         "male_donor": "SYSPIN/vits_Marathi_Male",
@@ -1169,6 +1172,185 @@ def load_donor_checkpoint(repo_id: str) -> tuple[dict[str, Any], dict[str, torch
     return cfg, sd
 
 
+EXACT_DONOR_EN_SENTENCES = [
+    "Welcome to Ninada.",
+    "Natural studio speech streams privately inside your browser.",
+    "This text to speech studio runs completely inside your web browser using WebAssembly and AudioWorklet streaming.",
+    "Once cached, voices work offline with full privacy.",
+    "Hello and welcome to Bengaluru, where science, literature, and studio speech technology meet.",
+    "Good morning, everyone. Today we are exploring neural speech synthesis on modern devices.",
+    "The quick brown fox jumps over the lazy dog near the quiet river bank.",
+    "Please pack my box with five dozen liquor jugs before seven thirty tonight.",
+    "Sphinx of black quartz, judge my vow with clarity and grace.",
+    "She sells seashells by the seashore, while waves gently wash over the warm sand.",
+    "The birch canoe slid on the smooth planks near the clear water.",
+    "Glue the sheet to the dark blue background before framing it.",
+    "It is easy to tell the depth of a well when sunlight shines down.",
+    "Rice is often served in round bowls alongside warm lentil soup.",
+    "The juice of lemons makes fine punch on a sunny afternoon.",
+    "Four hours of steady work faced us before the evening train.",
+    "The source of the huge river is the clear spring high in the mountains.",
+    "A pot of tea helps to pass the evening with old friends.",
+    "The salt breeze came across from the sea at twilight.",
+    "Hello from Bengaluru! How are you doing today?",
+    "Could you please repeat the last address slowly so I can write it down?",
+    "Notice how questions rise naturally at the end, do they not?",
+    "Are we meeting at nine fifteen tomorrow morning, or did the schedule change?",
+    "Dr. Rao arrived from Chennai at nine fifteen and joined Prof. Sharma in the auditorium.",
+    "Let us test numbers like forty two, one hundred eight, and three thousand five hundred.",
+    "In twenty twenty six, browser WebGPU and SIMD acceleration unlocked real time studio audio.",
+    "Bengaluru, Mysuru, Mumbai, Delhi, Kolkata, Hyderabad, and Pune are vibrant cities.",
+    "When the rain stopped, sunlight filtered through the green canopy across Cubbon Park.",
+    "Artificial intelligence works best when models respect human privacy and run locally.",
+    "Every syllable, vowel, and consonant should sound warm, clear, and effortless.",
+    "Smooth breath pauses between sentences make long passages pleasant and easy to follow.",
+    "Careful engineering eliminates metallic buzz and preserves natural vocal warmth.",
+    "Deep neural vocoders synthesize twenty four kilohertz waveforms frame by frame.",
+    "Warmth in the lower harmonics gives a studio voice its natural human presence.",
+    "Crisp sibilants and gentle plosives prevent listener fatigue during long chapters.",
+    "Keep your eyes on the stars, and keep your feet firmly on the ground.",
+    "Patience, curiosity, and rigorous testing turn a rough prototype into a reliable tool.",
+    "From classical literature to daily news, clear pronunciation makes every word shine.",
+    "Everything works offline after the initial model download completes.",
+    "Thank you for listening! Have a wonderful and peaceful evening ahead.",
+]
+
+
+def adapt_exact_donor_24k_vocoder(
+    model: StudioVitsModel,
+    donor_sd: dict[str, torch.Tensor],
+    remapped_emb: torch.Tensor,
+    tok: StudioCharTokenizer,
+    spec_ext: MultiSpecExtractor24k,
+    device: torch.device,
+    total_steps: int,
+    batch_size: int,
+    lr_g: float,
+    lr_d: float,
+    tag: str,
+) -> dict[str, float]:
+    """
+    Preserve the 500,000-step native SYSPIN English `text_encoder`, `duration_predictor`, and `flow`
+    100% intact (eliminating cross-accent latent clash from external American English corpora):
+      1. Apply exact closed-form `24000 / 22050` (`160 / 147`) frame-rate shift inside
+         `duration_predictor.flows[0].translation` (zero extra ONNX nodes).
+      2. Synthesize zero-drift `(z_24, wav_24)` pairs directly from the untouched 22,050 Hz donor.
+      3. Adapt ONLY `waveform_decoder` + `disc` to crisp 24,000 Hz output.
+    """
+    from ninada.studio_g2p import clean_studio_text
+
+    donor_22k = StudioVitsModel(num_chars=tok.num_chars, use_discriminator=False)
+    psd = {k: v.clone() for k, v in donor_sd.items() if not k.startswith("disc.")}
+    psd["text_encoder.emb.weight"] = remapped_emb.clone()
+    donor_22k.load_state_dict(psd, strict=True)
+    donor_22k.eval()
+
+    with torch.no_grad():
+        ea = model.duration_predictor.flows[0]
+        pace_mult = 1.12 if tag.lower().startswith("en_m") else 1.0
+        rate_shift = math.log((float(SAMPLE_RATE_24K) / 22050.0) * pace_mult)
+        ea.translation.data[0, 0] -= rate_shift * float(torch.exp(ea.log_scale.data[0, 0]).item())
+
+    donor_flow = donor_22k.flow.to(device).eval()
+    donor_voc = donor_22k.waveform_decoder.to(device).eval()
+    teacher_flow = model.flow.to(device).eval()
+    teacher_enc = model.text_encoder.cpu().eval()
+    teacher_dp = model.duration_predictor.cpu().eval()
+
+    pairs: list[tuple[np.ndarray, np.ndarray]] = []
+    with torch.no_grad():
+        for s_idx, raw_s in enumerate(EXACT_DONOR_EN_SENTENCES):
+            ids = tok.text_to_ids(clean_studio_text(raw_s, "en"))
+            if len(ids) < 5:
+                continue
+            x = torch.tensor([ids], dtype=torch.long)
+            xl = torch.tensor([len(ids)], dtype=torch.long)
+            enc_x, m_p, logs_p, x_mask = teacher_enc(x, xl)
+            for k in range(3):
+                seed = 1000 + s_idx * 17 + k
+                torch.manual_seed(seed)
+                logw = teacher_dp(enc_x, x_mask, reverse=True, noise_scale=0.62 if k > 0 else 0.0)
+                w = torch.clamp_max(torch.exp(logw), 50.0) * x_mask
+                w_ceil = torch.ceil(w)
+                w_ceil = torch.cat([w_ceil[:, :, :-1], torch.clamp_min(w_ceil[:, :, -1:], 8.0)], dim=2) * x_mask
+                y_len_24 = torch.clamp_min(torch.sum(w_ceil, [1, 2]), 1).long()
+                T_24 = int(y_len_24.item())
+                if T_24 < SEGMENT_FRAMES + 2:
+                    continue
+                y_mask_24 = sequence_mask(y_len_24, None).unsqueeze(1).to(x_mask.dtype)
+                attn_24 = generate_path(w_ceil.squeeze(1), x_mask.transpose(1, 2) * y_mask_24)
+                m_p_24 = torch.matmul(m_p, attn_24)
+                logs_p_24 = torch.matmul(logs_p, attn_24)
+                torch.manual_seed(seed + 99999)
+                z_p_24 = m_p_24 + torch.randn_like(m_p_24) * torch.exp(logs_p_24) * (0.58 if k > 0 else 0.50)
+                z_24 = (teacher_flow(z_p_24.to(device), y_mask_24.to(device), reverse=True) * y_mask_24.to(device)).cpu()
+
+                T_22 = int(math.ceil(T_24 * 147.0 / 160.0)) + 2
+                idx_f = torch.arange(T_22, dtype=torch.float32) * (160.0 / 147.0)
+                idx_0 = torch.clamp(idx_f.floor().long(), 0, T_24 - 1)
+                idx_1 = torch.clamp(idx_0 + 1, 0, T_24 - 1)
+                alpha = (idx_f - idx_0.float()).view(1, 1, T_22)
+                z_p_22 = z_p_24[:, :, idx_0] * (1.0 - alpha) + z_p_24[:, :, idx_1] * alpha
+                z_22 = donor_flow(z_p_22.to(device), torch.ones((1, 1, T_22), dtype=torch.float32, device=device), reverse=True)
+                wav_22 = donor_voc(z_22)[0, 0].cpu().numpy()
+                wav_24 = resample_poly(wav_22, 160, 147).astype(np.float32)
+                target_len = T_24 * HOP_LENGTH
+                wav_24 = wav_24[:target_len] if len(wav_24) >= target_len else np.pad(wav_24, (0, target_len - len(wav_24)))
+                pairs.append((z_24[0].numpy().astype(np.float16), wav_24))
+
+    del donor_22k
+    voc = model.waveform_decoder.to(device).train()
+    disc = model.disc.to(device).train()
+    spec_ext.to(device)
+    eff_bs = min(batch_size, 8)
+    optim_g = torch.optim.AdamW(voc.parameters(), lr=lr_g, betas=(0.8, 0.99), weight_decay=0.01)
+    optim_d = torch.optim.AdamW(disc.parameters(), lr=lr_d, betas=(0.8, 0.99), weight_decay=0.01)
+    sched_g = torch.optim.lr_scheduler.CosineAnnealingLR(optim_g, T_max=max(total_steps, 1), eta_min=2.5e-5)
+    sched_d = torch.optim.lr_scheduler.CosineAnnealingLR(optim_d, T_max=max(total_steps, 1), eta_min=2.5e-5)
+
+    rng = random.Random(20261105)
+    t_start = time.perf_counter()
+    for step in range(1, total_steps + 1):
+        zb = np.empty((eff_bs, 192, SEGMENT_FRAMES), dtype=np.float32)
+        yb = np.empty((eff_bs, 1, SEGMENT_FRAMES * HOP_LENGTH), dtype=np.float32)
+        for b in range(eff_bs):
+            zf, wf = pairs[rng.randrange(len(pairs))]
+            f0 = rng.randint(0, zf.shape[1] - SEGMENT_FRAMES)
+            zb[b] = zf[:, f0 : f0 + SEGMENT_FRAMES].astype(np.float32)
+            s0 = f0 * HOP_LENGTH
+            yb[b, 0] = wf[s0 : s0 + SEGMENT_FRAMES * HOP_LENGTH]
+        z_t = torch.from_numpy(zb).to(device)
+        y_t = torch.from_numpy(yb).to(device)
+        y_hat = voc(z_t)
+        adv_on = step > min(60, total_steps // 4)
+        if adv_on:
+            dr, dg, _, _ = disc(y_t, y_hat.detach())
+            ld = discriminator_loss(dr, dg)
+            optim_d.zero_grad(set_to_none=True)
+            ld.backward()
+            torch.nn.utils.clip_grad_norm_(disc.parameters(), 100.0)
+            optim_d.step()
+            sched_d.step()
+        mel_r = spec_ext.wav_to_mel(y_t.squeeze(1))
+        mel_g = spec_ext.wav_to_mel(y_hat.squeeze(1))
+        loss_mel = F.l1_loss(mel_r, mel_g) * 45.0
+        if adv_on:
+            _, dg2, fmr, fmg = disc(y_t, y_hat)
+            lg = loss_mel + feature_loss(fmr, fmg) + generator_loss(dg2)
+        else:
+            lg = loss_mel
+        optim_g.zero_grad(set_to_none=True)
+        lg.backward()
+        torch.nn.utils.clip_grad_norm_(voc.parameters(), 100.0)
+        optim_g.step()
+        sched_g.step()
+        if step % 150 == 0 or step == total_steps:
+            print(f"[{tag}:ExactDonor24k] step {step}/{total_steps} | mel_l1={(loss_mel.item()/45.0):.4f}", flush=True)
+
+    model.cpu().eval()
+    return {"steps": total_steps, "wall_sec": round(time.perf_counter() - t_start, 2), "exact_donor_24k": True}
+
+
 def train_single_specialist(
     model: StudioVitsModel,
     tok: StudioCharTokenizer,
@@ -1737,20 +1919,35 @@ def main() -> None:
                     f"[CONT] Continuing {lang}:Male from GCS checkpoint for +{steps} steps (lr_g={lr_g_eff:.2e}, lr_text={lr_text_eff:.2e})",
                     flush=True,
                 )
-            t_stats = train_single_specialist(
-                net,
-                tok,
-                train_data[lang]["Male"],
-                spec_ext,
-                device=device,
-                total_steps=steps,
-                batch_size=args.batch_size,
-                lr_g=lr_g_eff,
-                lr_text=lr_text_eff,
-                lr_d=lr_d_eff,
-                tag=f"{lang}:Male",
-                freeze_text_backbone=bool(recipe.get("freeze_text_backbone", False)),
-            )
+            if recipe.get("exact_donor_24k_vocoder_adapt"):
+                t_stats = adapt_exact_donor_24k_vocoder(
+                    net,
+                    donor_sd,
+                    remapped_emb,
+                    tok,
+                    spec_ext,
+                    device=device,
+                    total_steps=steps,
+                    batch_size=args.batch_size,
+                    lr_g=lr_g_eff,
+                    lr_d=lr_d_eff,
+                    tag=f"{lang}:Male",
+                )
+            else:
+                t_stats = train_single_specialist(
+                    net,
+                    tok,
+                    train_data[lang]["Male"],
+                    spec_ext,
+                    device=device,
+                    total_steps=steps,
+                    batch_size=args.batch_size,
+                    lr_g=lr_g_eff,
+                    lr_text=lr_text_eff,
+                    lr_d=lr_d_eff,
+                    tag=f"{lang}:Male",
+                    freeze_text_backbone=bool(recipe.get("freeze_text_backbone", False)),
+                )
             gen_sd = {
                 k: v.detach().cpu().contiguous()
                 for k, v in net.state_dict().items()
@@ -1812,20 +2009,35 @@ def main() -> None:
         net_f.load_state_dict(patched_f_sd, strict=True)
 
         f_steps = args.smoke_steps if args.smoke_steps > 0 else int(recipe["female_steps"])
-        f_stats = train_single_specialist(
-            net_f,
-            tok,
-            train_data[lang]["Female"],
-            spec_ext,
-            device=device,
-            total_steps=f_steps,
-            batch_size=args.batch_size,
-            lr_g=float(recipe["lr_g"]),
-            lr_text=float(recipe["lr_text"]),
-            lr_d=float(recipe["lr_d"]),
-            tag=f"{lang}:Female",
-            freeze_text_backbone=bool(recipe.get("freeze_text_backbone", False)),
-        )
+        if recipe.get("exact_donor_24k_vocoder_adapt"):
+            f_stats = adapt_exact_donor_24k_vocoder(
+                net_f,
+                f_sd,
+                patched_f_sd["text_encoder.emb.weight"],
+                tok,
+                spec_ext,
+                device=device,
+                total_steps=f_steps,
+                batch_size=args.batch_size,
+                lr_g=float(recipe["lr_g"]),
+                lr_d=float(recipe["lr_d"]),
+                tag=f"{lang}:Female",
+            )
+        else:
+            f_stats = train_single_specialist(
+                net_f,
+                tok,
+                train_data[lang]["Female"],
+                spec_ext,
+                device=device,
+                total_steps=f_steps,
+                batch_size=args.batch_size,
+                lr_g=float(recipe["lr_g"]),
+                lr_text=float(recipe["lr_text"]),
+                lr_d=float(recipe["lr_d"]),
+                tag=f"{lang}:Female",
+                freeze_text_backbone=bool(recipe.get("freeze_text_backbone", False)),
+            )
         gen_f_sd = {
             k: v.detach().cpu().contiguous()
             for k, v in net_f.state_dict().items()

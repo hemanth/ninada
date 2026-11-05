@@ -88,7 +88,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
   <link rel="modulepreload" href="./ninada.mjs?v=5.1.0" />
-  <link rel="modulepreload" href="./synth-worker.mjs?v=5.1.3" />
+  <link rel="modulepreload" href="./synth-worker.mjs?v=5.1.4" />
   <link rel="modulepreload" href="./ort/ort.wasm.min.mjs" />
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" crossorigin="anonymous" />
   <noscript><link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500&family=Noto+Sans+Gujarati:wght@400;500&family=Noto+Sans+Gurmukhi:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&family=Noto+Sans+Malayalam:wght@400;500&family=Noto+Sans+Oriya:wght@400;500&family=Noto+Sans+Tamil:wght@400;500&family=Noto+Sans+Telugu:wght@400;500&family=Noto+Serif+Devanagari:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" /></noscript>
@@ -1192,8 +1192,8 @@
             <input id="rateSlider" type="range" min="0.65" max="1.45" step="0.05" value="1.00" disabled />
           </div>
           <div class="control-field">
-            <label for="noiseSlider"><span>EXPRESSIVENESS</span><span id="noiseVal">0.40</span></label>
-            <input id="noiseSlider" type="range" min="0.00" max="0.85" step="0.02" value="0.40" disabled />
+            <label for="noiseSlider"><span>EXPRESSIVENESS</span><span id="noiseVal">0.56</span></label>
+            <input id="noiseSlider" type="range" min="0.00" max="0.85" step="0.02" value="0.56" disabled />
           </div>
         </div>
 
@@ -1310,7 +1310,7 @@
   </div>
 
   <script type="module">
-    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.1.0';
+    import { synthesizeKlattPcm, textToIds, encodeWavBuffer, SAMPLE_RATE } from './ninada.mjs?v=5.1.2';
     const IS_IOS_DEVICE = Boolean(
       /iPhone|iPad|iPod|CriOS|FxiOS|EdgiOS/i.test(navigator.userAgent || '') ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
@@ -1737,6 +1737,7 @@
     const metricTokens = document.getElementById('metricTokens');
 
     let activeLang = 'en';
+    let userTouchedNoise = false;
     let loadedWorkerLang = null;
     let loadedWorkerVoice = 'male';
     let activePresetIdx = 0;
@@ -2802,6 +2803,11 @@
 
     function setActiveLang(langCode, { loadDefaultPreset = true } = {}) {
       activeLang = PRESETS_BY_LANG[langCode] ? langCode : 'en';
+      if (!userTouchedNoise && noiseSlider && noiseVal) {
+        const defaultNoise = activeLang === 'en' ? '0.56' : '0.40';
+        noiseSlider.value = defaultNoise;
+        noiseVal.textContent = defaultNoise;
+      }
       bootPrestreamCache = null;
       textInput.classList.toggle('latin-script', activeLang === 'en');
       for (const b of langBtns) {
@@ -2961,6 +2967,7 @@
     });
     noiseSlider.addEventListener('input', () => {
       if (!isModelReady) return;
+      userTouchedNoise = true;
       noiseVal.textContent = Number(noiseSlider.value).toFixed(2);
     });
     textInput.addEventListener('input', () => {
@@ -3451,7 +3458,7 @@
 
     // Dedicated off-main-thread Web Worker for ONNX Runtime WebGPU / WASM SIMD
     const workerUrlSuffix = window.location.search ? '&' + window.location.search.slice(1) : '';
-    let synthWorker = new Worker('./synth-worker.mjs?v=5.1.3' + workerUrlSuffix, { type: 'module' });
+    let synthWorker = new Worker('./synth-worker.mjs?v=5.1.4' + workerUrlSuffix, { type: 'module' });
     let nextReqSeq = 1;
     let currentPendingReq = null;
 
@@ -3866,7 +3873,7 @@
 
     function respawnSynthWorker(targetLang, effVoice) {
       try { synthWorker.terminate(); } catch {}
-      synthWorker = new Worker('./synth-worker.mjs?v=5.1.3' + workerUrlSuffix, { type: 'module' });
+      synthWorker = new Worker('./synth-worker.mjs?v=5.1.4' + workerUrlSuffix, { type: 'module' });
       synthWorker.addEventListener('error', onSynthWorkerError);
       synthWorker.addEventListener('message', onSynthWorkerMessage);
       synthWorker.postMessage({ type: 'init', lang: targetLang, voice: effVoice });

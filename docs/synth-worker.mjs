@@ -1,12 +1,12 @@
-import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.1.1';
+import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.1.2';
 
 const HF_REPO = 'gnumanth/ninada';
 const SUPPORTED_LANGS = ['en', 'sa', 'kn', 'hi', 'ta', 'te', 'ml', 'mr', 'bn', 'gu', 'pa', 'or'];
 const LOCAL_BUNDLED_LANGS = new Set(['en', 'sa', 'kn', 'hi', 'ta', 'te', 'ml']);
 
-const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v5.1.0';
+const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v5.1.1';
 const MODEL_CACHE_PREFIX = 'ninada-onnx-';
-const IDB_NAME = 'ninada-onnx-idb-v510';
+const IDB_NAME = 'ninada-onnx-idb-v511';
 const LEGACY_IDB_NAMES = [
   'ninada-onnx-idb-v3',
   'ninada-onnx-idb-v31',
@@ -15,6 +15,7 @@ const LEGACY_IDB_NAMES = [
   'ninada-onnx-idb-v402',
   'ninada-onnx-idb-v500',
   'ninada-onnx-idb-v501',
+  'ninada-onnx-idb-v510',
 ];
 const IDB_STORE = 'models';
 
@@ -184,36 +185,38 @@ function shouldUseMobileWeights() {
 }
 
 function buildFallbackLangSpec(lc) {
+  const verQ = lc === 'en' ? '?v=5.1.1' : '';
+  const vTag = lc === 'en' ? 'v511' : 'v510';
   const hfMaleUrl = `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}.onnx`;
-  const localMaleUrl = `./models/${lc}.onnx`;
+  const localMaleUrl = `./models/${lc}.onnx${verQ}`;
   const maleUrls = LOCAL_BUNDLED_LANGS.has(lc) ? [localMaleUrl, hfMaleUrl] : [hfMaleUrl, localMaleUrl];
   const hfMobMaleUrl = `https://huggingface.co/${HF_REPO}/resolve/main/onnx_mobile/${lc}.onnx`;
-  const localMobMaleUrl = `./models_mobile/${lc}.onnx`;
+  const localMobMaleUrl = `./models_mobile/${lc}.onnx${verQ}`;
   return {
     lang: lc,
-    cacheKey: `ninada_v510_studio_${lc}_24k_q8f16.onnx`,
+    cacheKey: `ninada_${vTag}_studio_${lc}_24k_q8f16.onnx`,
     expectedBytes: 0,
     totalMB: 27.93,
     urls: maleUrls,
-    femaleCacheKey: `ninada_v510_studio_${lc}_female_24k_q8f16.onnx`,
+    femaleCacheKey: `ninada_${vTag}_studio_${lc}_female_24k_q8f16.onnx`,
     femaleExpectedBytes: 0,
     femaleTotalMB: 27.93,
     femaleUrls: [
       `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}_female.onnx`,
-      `./models/${lc}_female.onnx`,
+      `./models/${lc}_female.onnx${verQ}`,
     ],
-    mobileCacheKey: `ninada_v510_mobile_${lc}_24k_q8f16.onnx`,
+    mobileCacheKey: `ninada_${vTag}_mobile_${lc}_24k_q8f16.onnx`,
     mobileExpectedBytes: 0,
     mobileTotalMB: 21.68,
     mobileUrls: [localMobMaleUrl, hfMobMaleUrl, ...maleUrls],
-    femaleMobileCacheKey: `ninada_v510_mobile_${lc}_female_24k_q8f16.onnx`,
+    femaleMobileCacheKey: `ninada_${vTag}_mobile_${lc}_female_24k_q8f16.onnx`,
     femaleMobileExpectedBytes: 0,
     femaleMobileTotalMB: 21.68,
     femaleMobileUrls: [
-      `./models_mobile/${lc}_female.onnx`,
+      `./models_mobile/${lc}_female.onnx${verQ}`,
       `https://huggingface.co/${HF_REPO}/resolve/main/onnx_mobile/${lc}_female.onnx`,
       `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}_female.onnx`,
-      `./models/${lc}_female.onnx`,
+      `./models/${lc}_female.onnx${verQ}`,
     ],
   };
 }
@@ -226,7 +229,7 @@ async function getModelsManifest() {
       fallbackLanguages[lc] = buildFallbackLangSpec(lc);
     }
     try {
-      const res = await fetch('./models_manifest.json?v=5.1.1', { cache: 'no-cache' });
+      const res = await fetch('./models_manifest.json?v=5.1.2', { cache: 'no-cache' });
       if (res.ok) {
         const json = await res.json();
         if (json?.cacheName) {
@@ -241,7 +244,7 @@ async function getModelsManifest() {
           }
         }
         return {
-          version: json?.version || '5.1.0',
+          version: json?.version || '5.1.1',
           cacheName: activeCacheName,
           languages: mergedLangs,
         };
@@ -250,7 +253,7 @@ async function getModelsManifest() {
       // Fallback to built-in specialist URL map
     }
     return {
-      version: '5.1.0',
+      version: '5.1.1',
       cacheName: activeCacheName,
       languages: fallbackLanguages,
     };
@@ -837,8 +840,11 @@ self.addEventListener('message', (ev) => {
           lang: targetLang,
           voice: targetVoice,
           rate: Number(msg.rate ?? 1.0),
-          noise: Number(msg.noise ?? 0.40),
-          noiseDuration: Number(msg.noiseDuration ?? msg.noise_duration ?? 0.0),
+          noise: msg.noise !== undefined ? Number(msg.noise) : undefined,
+          noiseDuration:
+            msg.noiseDuration !== undefined || msg.noise_duration !== undefined
+              ? Number(msg.noiseDuration ?? msg.noise_duration)
+              : undefined,
           tier,
           firstChunkFrames: Number(msg.firstChunkFrames || defaultFirstFrames),
           chunkFrames: Number(msg.chunkFrames || defaultChunkFrames),

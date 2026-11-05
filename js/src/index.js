@@ -1495,7 +1495,7 @@ export default async function ninada(input = 'sa', opts = {}) {
       const is24k = !isV4 && tier !== 'klatt' && isUnified24kSession() && Boolean(ort);
       const fastFirst = is24k && callOpts.fastFirstClause !== false;
       const clauses = isV4
-        ? buildStudioSentenceBlocks(text, callOpts.maxClauseChars || (lang === 'en' ? 105 : 220))
+        ? buildStudioSentenceBlocks(text, callOpts.maxClauseChars || 220)
         : buildStreamingClauses(text, callOpts.maxClauseChars || (is24k ? 140 : 220), fastFirst);
       const tStart = nowMs();
       let ttfaMs = null;
@@ -1537,12 +1537,21 @@ export default async function ninada(input = 'sa', opts = {}) {
           return;
         }
 
-        const effNoise = Math.max(0.0, Math.min(1.2, Number(callOpts.noise ?? opts.noise ?? 0.40)));
+        const rawNoise = callOpts.noise ?? opts.noise;
+        const effNoise = Math.max(
+          0.0,
+          Math.min(1.2, Number(rawNoise ?? (lang === 'en' ? 0.56 : 0.40)))
+        );
+        const rawNoiseDp =
+          callOpts.noiseDuration ??
+          callOpts.noise_duration ??
+          opts.noiseDuration ??
+          opts.noise_duration;
         const effNoiseDp = Math.max(
           0.0,
           Math.min(
             1.2,
-            Number(callOpts.noiseDuration ?? callOpts.noise_duration ?? opts.noiseDuration ?? opts.noise_duration ?? 0.0)
+            Number(rawNoiseDp ?? (lang === 'en' ? Math.min(0.80, effNoise * 1.10) : 0.0))
           )
         );
         const chunkSamples = chunkFrames * HOP_LENGTH;
@@ -1757,9 +1766,14 @@ export default async function ninada(input = 'sa', opts = {}) {
 
             const isFinalClause = cIdx === clauses.length - 1;
             const endsWithDouble = /(?:॥|\|\||।।|।\s*।|\.\s*\.)\s*$/.test(clauseItem.text || '');
-            // Studio VITS already emits ~230ms trailing + ~100ms leading breath at sentence boundaries;
-            // keep inter-sentence room-tone padding minimal (35ms) so multi-sentence transitions never lag.
-            const pauseSec = isFinalClause ? 0.120 : endsWithDouble ? 0.140 : 0.035;
+            // Indic Studio VITS emits ~230ms trailing breath at sentence boundaries; English trims tightly so add a natural 165ms breath pause.
+            const interPauseSec =
+              resolvedLc === 'en' || lang === 'en'
+                ? clauseItem.sentenceEnd === false
+                  ? 0.075
+                  : 0.165
+                : 0.035;
+            const pauseSec = isFinalClause ? 0.120 : endsWithDouble ? Math.max(0.140, interPauseSec) : interPauseSec;
             const pauseSamples = Math.round((pauseSec / effRate) * SAMPLE_RATE);
             const clauseTotalSamples = totalLatentFrames * STUDIO_HOP_LENGTH + pauseSamples;
             const thisStudioWeight = Math.max(1, preItem.weight);
@@ -2037,7 +2051,13 @@ export default async function ninada(input = 'sa', opts = {}) {
           const dursArr = out.durations ? Array.from(out.durations.data, Number) : [];
           const isFinalClause = cIdx === clauses.length - 1;
           const endsWithDouble = /(?:॥|\|\||।।|।\s*।|\.\s*\.)\s*$/.test(clauseItem.text || '');
-          const pauseSec = isFinalClause ? 0.120 : (endsWithDouble ? 0.140 : 0.035);
+          const interPauseSec =
+            resolvedLc === 'en' || lang === 'en'
+              ? clauseItem.sentenceEnd === false
+                ? 0.075
+                : 0.165
+              : 0.035;
+          const pauseSec = isFinalClause ? 0.120 : (endsWithDouble ? Math.max(0.140, interPauseSec) : interPauseSec);
           const pauseSamples = Math.round((pauseSec / effRate) * SAMPLE_RATE);
           const clausePcm = new Float32Array(rawWav.length + pauseSamples);
           if (pauseSamples > 0) {

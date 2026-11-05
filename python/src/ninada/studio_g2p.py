@@ -166,6 +166,10 @@ _EN_ABBREVS = (
     (re.compile(r"\be\.g\.", re.IGNORECASE), "for example"),
     (re.compile(r"\bi\.e\.", re.IGNORECASE), "that is"),
     (re.compile(r"\brs\.", re.IGNORECASE), "rupees"),
+    (re.compile(r"\bcached\b", re.IGNORECASE), "cashed"),
+    (re.compile(r"\bcaches\b", re.IGNORECASE), "cashes"),
+    (re.compile(r"\bcaching\b", re.IGNORECASE), "cashing"),
+    (re.compile(r"\bcache\b", re.IGNORECASE), "cash"),
 )
 
 

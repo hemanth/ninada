@@ -962,8 +962,8 @@ class Ninada:
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.40,
-        noise_duration: float = 0.0,
+        noise: float | None = None,
+        noise_duration: float | None = None,
         tier: str = "auto",
         chunk_frames: int = 64,
         halo_frames: int = 12,
@@ -974,9 +974,10 @@ class Ninada:
         use_lang = lang if (lang in LANGUAGE_IDS) else self.default_lang
         use_voice = voice if voice is not None else self.default_voice
         eff_rate = max(0.45, min(2.5, float(rate)))
+        eff_noise_base = (0.56 if use_lang == "en" else 0.40) if noise is None else float(noise)
         v4_sess = self._get_v4_studio_session(use_lang, voice=use_voice) if tier != "klatt" else None
         clauses = (
-            split_studio_sentence_blocks(text, max_chars=105 if use_lang == "en" else 220)
+            split_studio_sentence_blocks(text, max_chars=220)
             if v4_sess is not None
             else split_prosodic_clauses(text)
         )
@@ -1015,8 +1016,9 @@ class Ninada:
             chunk_samples = chunk_f * HOP_LENGTH
             min_tail_samples = 16 * STUDIO_HOP_LENGTH
             filter_state: tuple[float, float] = self._dc_filter_state
-            eff_noise = max(0.0, min(1.2, float(noise)))
-            eff_noise_dp = 0.0 if noise_duration is None else max(0.0, min(1.2, float(noise_duration)))
+            eff_noise = max(0.0, min(1.2, eff_noise_base))
+            default_noise_dp = min(0.80, eff_noise * 1.10) if use_lang == "en" else 0.0
+            eff_noise_dp = default_noise_dp if noise_duration is None else max(0.0, min(1.2, float(noise_duration)))
             scales_vec = np.asarray([1.0 / eff_rate, eff_noise, eff_noise_dp], dtype=np.float32)
 
             for c_idx, clause in enumerate(clauses):
@@ -1136,12 +1138,13 @@ class Ninada:
                         if is_last_sub:
                             is_final_clause = c_idx == len(clauses) - 1
                             ends_with_double = bool(re.search(r"(?:॥|\|\||।।|।\s*।|\.\s*\.)\s*$", clause))
+                            inter_pause = 0.165 if (resolved_lc == "en" or use_lang == "en") else 0.035
                             if is_final_clause:
                                 pause_sec = 0.120
                             elif ends_with_double:
-                                pause_sec = 0.140
+                                pause_sec = max(0.140, inter_pause)
                             else:
-                                pause_sec = 0.035
+                                pause_sec = inter_pause
                             pause_samples = int((pause_sec / eff_rate) * SAMPLE_RATE)
                             if pause_samples > 0:
                                 room_buf = generate_room_tone(num_samples=pause_samples, seed=1337 + c_idx)
@@ -1230,12 +1233,13 @@ class Ninada:
 
                 is_final_clause = c_idx == len(clauses) - 1
                 ends_with_double = bool(re.search(r"(?:॥|\|\||।।|।\s*।|\.\s*\.)\s*$", clause))
+                inter_pause = 0.165 if (resolved_lc == "en" or use_lang == "en") else 0.035
                 if is_final_clause:
                     pause_sec = 0.120
                 elif ends_with_double:
-                    pause_sec = 0.140
+                    pause_sec = max(0.140, inter_pause)
                 else:
-                    pause_sec = 0.035
+                    pause_sec = inter_pause
                 pause_samples = int((pause_sec / eff_rate) * SAMPLE_RATE)
                 if pause_samples > 0:
                     room_buf = generate_room_tone(num_samples=pause_samples, seed=1337 + c_idx)
@@ -1468,11 +1472,11 @@ class Ninada:
                 }
                 if "lang_id" in enc_in_names:
                     ort_in_leg["lang_id"] = np.array([parsed["lang_id"]], dtype=np.int64)
-                    ort_in_leg["scales"] = np.array([eff_rate, float(noise)], dtype=np.float32)
+                    ort_in_leg["scales"] = np.array([eff_rate, eff_noise_base], dtype=np.float32)
                 else:
                     eff_noise_dur = 0.80 if noise_duration is None else float(noise_duration)
                     ort_in_leg["scales"] = np.array(
-                        [eff_rate, float(noise), eff_noise_dur], dtype=np.float32
+                        [eff_rate, eff_noise_base, eff_noise_dur], dtype=np.float32
                     )
 
                 enc_outs = enc_sess.run(None, ort_in_leg)
@@ -1588,10 +1592,10 @@ class Ninada:
                 }
                 if "lang_id" in in_names:
                     ort_in_m["lang_id"] = np.array([parsed["lang_id"]], dtype=np.int64)
-                    ort_in_m["scales"] = np.array([eff_rate, float(noise)], dtype=np.float32)
+                    ort_in_m["scales"] = np.array([eff_rate, eff_noise_base], dtype=np.float32)
                 else:
                     eff_noise_dur = 0.80 if noise_duration is None else float(noise_duration)
-                    ort_in_m["scales"] = np.array([eff_rate, float(noise), eff_noise_dur], dtype=np.float32)
+                    ort_in_m["scales"] = np.array([eff_rate, eff_noise_base, eff_noise_dur], dtype=np.float32)
                 wav, durs = self.session.run(None, ort_in_m)
                 pcm = wav[0].astype(np.float32)
                 pcm = (pcm - np.mean(pcm)).astype(np.float32)
@@ -1642,8 +1646,8 @@ class Ninada:
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.40,
-        noise_duration: float = 0.0,
+        noise: float | None = None,
+        noise_duration: float | None = None,
         tier: str = "auto",
         voice: str | None = None,
     ) -> bytes:
@@ -1664,8 +1668,8 @@ class Ninada:
         text: str,
         lang: str | None = None,
         rate: float = 1.0,
-        noise: float = 0.40,
-        noise_duration: float = 0.0,
+        noise: float | None = None,
+        noise_duration: float | None = None,
         tier: str = "auto",
         voice: str | None = None,
     ) -> tuple[Any, dict[str, Any]]:
@@ -1713,8 +1717,8 @@ def speak(
     text: str,
     lang: str = "sa",
     rate: float = 1.0,
-    noise: float = 0.40,
-    noise_duration: float = 0.0,
+    noise: float | None = None,
+    noise_duration: float | None = None,
     tier: str = "auto",
     voice: str | None = None,
 ) -> bytes:
@@ -1734,8 +1738,8 @@ def stream(
     text: str,
     lang: str = "sa",
     rate: float = 1.0,
-    noise: float = 0.40,
-    noise_duration: float = 0.0,
+    noise: float | None = None,
+    noise_duration: float | None = None,
     tier: str = "auto",
     chunk_frames: int = 64,
     voice: str | None = None,

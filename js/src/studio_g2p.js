@@ -159,6 +159,10 @@ const EN_ABBREVS = [
   [/\be\.g\./gi, 'for example'],
   [/\bi\.e\./gi, 'that is'],
   [/\brs\./gi, 'rupees'],
+  [/\bcached\b/gi, 'cashed'],
+  [/\bcaches\b/gi, 'cashes'],
+  [/\bcaching\b/gi, 'cashing'],
+  [/\bcache\b/gi, 'cash'],
 ];
 
 function enIntToWords(n) {
