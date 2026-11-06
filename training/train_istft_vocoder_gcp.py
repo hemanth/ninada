@@ -28,6 +28,7 @@ import json
 import math
 import os
 import random
+import re
 import shutil
 import sys
 import tarfile
@@ -77,6 +78,7 @@ from training.train_native_specialists_gcp import (
     NEUTRAL_RASA_STYLES,
     RASA_LANG_DIRS,
     SPECIALIST_RECIPES,
+    _clean_indictts_english_transcript,
     clean_studio_vits_24k,
     compress_studio_vits_onnx,
     gcs_blob_exists,
@@ -596,7 +598,8 @@ def collect_transcripts_and_studio_utts(
 
     if not smoke_limit and gcs_bucket:
         eval_tar = work_dir / f"{lang}_eval.tar.gz"
-        if gcs_download_if_exists(gcs_bucket, f"ninada_v5/eval_splits/{lang}_eval.tar.gz", eval_tar):
+        eval_blob_name = "en_indictts_eval.tar.gz" if lang == "en" else f"{lang}_eval.tar.gz"
+        if gcs_download_if_exists(gcs_bucket, f"ninada_v5/eval_splits/{eval_blob_name}", eval_tar):
             ex_dir = work_dir / f"eval_ex_{lang}"
             ex_dir.mkdir(parents=True, exist_ok=True)
             with tarfile.open(eval_tar, "r:gz") as tf:
@@ -612,7 +615,7 @@ def collect_transcripts_and_studio_utts(
                         continue
                     r = json.loads(line)
                     eval_blacklist.add(f"{lang}:{clean_native_text(r['text'], lang)}")
-                    if fn == "test.jsonl":
+                    if fn == "test.jsonl" and not (lang == "en" and gender == "Female"):
                         wn = Path(r["wav_path"]).name
                         if wn in w_map:
                             dst_dir = work_dir / "heldout_wavs"
@@ -644,35 +647,33 @@ def collect_transcripts_and_studio_utts(
             pass
 
     if lang == "en":
-        # Stream 44,100 Hz -> 24,000 Hz full-band clean studio utterances from MikhailT/hifi-tts (CC-BY-4.0)
-        api = HfApi(token=hf_tok)
-        all_files = sorted(
-            f for f in api.list_repo_files("MikhailT/hifi-tts", repo_type="dataset")
-            if f.startswith("data/train.clean-") and f.endswith(".parquet")
-        )
-        want_spk = "6097" if gender == "Male" else "92"
-        shards = all_files[:5] if gender == "Male" else list(reversed(all_files[-5:]))
+        # Stream 48,000 Hz -> 24,000 Hz single-speaker broadcast Studio Indian-English splits from SPRINGLab/IndicTTS-English
+        shard_indices = [9, 8, 10] if gender == "Male" else [7, 8]
+        shards = [f"data/train-{idx:05d}-of-00028.parquet" for idx in shard_indices]
+        want_prefix = "train_hindifullmale_" if gender == "Male" else "train_hindifullfemale_"
         for shard in shards:
             if len(studio_utts) >= target_studio + need_carved_test and len(extra_texts) >= target_texts:
                 break
             try:
                 pq_path = hf_hub_download(
-                    repo_id="MikhailT/hifi-tts", filename=shard, repo_type="dataset", token=hf_tok
+                    repo_id="SPRINGLab/IndicTTS-English", filename=shard, repo_type="dataset", token=hf_tok
                 )
                 pf = pq.ParquetFile(pq_path)
             except Exception as exc:
-                print(f"[WARN] Hi-Fi TTS shard {shard} skipped: {exc}", flush=True)
+                print(f"[WARN] IndicTTS-English shard {shard} skipped: {exc}", flush=True)
                 continue
 
             for batch in pf.iter_batches(batch_size=64):
                 if len(studio_utts) >= target_studio + need_carved_test and len(extra_texts) >= target_texts:
                     break
                 cols = batch.to_pydict()
-                speakers = cols.get("speaker", [])
-                texts = cols.get("text_normalized") or cols.get("text_no_preprocessing") or cols.get("text", [])
+                texts = cols.get("text", [])
                 audio_col = cols.get("audio", [])
                 for i, raw_t in enumerate(texts):
-                    raw_text = str(raw_t or "").strip()
+                    raw_str = str(raw_t or "")
+                    if "\ufffd" in raw_str and not re.search(r"(?<=[A-Za-z])\ufffd(?=[sStTdDmMrRvVlL]\b)", raw_str):
+                        continue
+                    raw_text = _clean_indictts_english_transcript(raw_str)
                     if len(raw_text) < 10 or len(raw_text) > 260:
                         continue
                     norm_t = clean_native_text(raw_text, "en")
@@ -680,36 +681,49 @@ def collect_transcripts_and_studio_utts(
                     if len(norm_t) < 8 or key in eval_blacklist or key in seen_keys:
                         continue
 
-                    spk = str(speakers[i] or "").strip() if i < len(speakers) else ""
                     aud = audio_col[i] if i < len(audio_col) else None
-                    if spk == want_spk and len(studio_utts) < target_studio + need_carved_test and isinstance(aud, dict):
+                    apath = str(aud.get("path") or "").strip().lower() if isinstance(aud, dict) else ""
+                    if (
+                        apath.startswith(want_prefix)
+                        and len(studio_utts) < target_studio + need_carved_test
+                        and isinstance(aud, dict)
+                    ):
                         b_payload = aud.get("bytes")
                         if b_payload:
                             try:
                                 raw_wav, orig_sr = sf.read(io.BytesIO(b_payload), dtype="float32")
                                 wav_24k = (
-                                    clean_studio_vits_24k(resample_to_24k(raw_wav, int(orig_sr)), pad_tail_sec=0.20)
-                                    if (raw_wav.size > 0 and int(orig_sr) >= 24000 and float(np.max(np.abs(raw_wav))) < 0.995)
+                                    clean_studio_vits_24k(resample_to_24k(raw_wav, int(orig_sr)), pad_tail_sec=0.18)
+                                    if (
+                                        raw_wav.size > 0
+                                        and int(orig_sr) >= 24000
+                                        and float(np.max(np.abs(raw_wav))) < 0.998
+                                    )
                                     else None
                                 )
                             except Exception:
                                 wav_24k = None
                             if wav_24k is not None:
-                                seen_keys.add(key)
-                                uid = hashlib.sha1(f"{gender}:{key}".encode("utf-8")).hexdigest()[:12]
-                                wpath = wav_dir / f"en_{uid}.wav"
-                                sf.write(str(wpath), wav_24k, SAMPLE_RATE_24K, subtype="PCM_16")
-                                studio_utts.append(
-                                    {
-                                        "utt_id": f"en_{uid}",
-                                        "lang": "en",
-                                        "text": raw_text,
-                                        "local_wav": str(wpath),
-                                        "n_frames": wav_24k.size // HOP_LENGTH,
-                                    }
-                                )
-                                continue
-                    if len(extra_texts) < target_texts:
+                                dur_s = wav_24k.size / SAMPLE_RATE_24K
+                                cps = len(norm_t) / max(dur_s, 0.1)
+                                if 4.5 <= cps <= 25.0:
+                                    seen_keys.add(key)
+                                    uid = hashlib.sha1(f"{gender}:{key}".encode("utf-8")).hexdigest()[:12]
+                                    wpath = wav_dir / f"en_{uid}.wav"
+                                    sf.write(str(wpath), wav_24k, SAMPLE_RATE_24K, subtype="PCM_16")
+                                    studio_utts.append(
+                                        {
+                                            "utt_id": f"en_{uid}",
+                                            "lang": "en",
+                                            "text": raw_text,
+                                            "local_wav": str(wpath),
+                                            "n_frames": wav_24k.size // HOP_LENGTH,
+                                        }
+                                    )
+                                    continue
+                    if len(extra_texts) < target_texts and (
+                        apath.startswith("train_hindifullmale_") or apath.startswith("train_hindifullfemale_")
+                    ):
                         seen_keys.add(key)
                         extra_texts.append(raw_text)
             _unlink_hf_cached_file(pq_path)

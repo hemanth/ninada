@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ninada"
-version = "5.1.1"
+version = "5.1.2"
 description = "Ninada (निनाद): In-browser, Node.js, and Python 24 kHz Native Per-Language Studio VITS neural text-to-speech for English, Classical Sanskrit & 10 Indian languages (dual-tier 27.9 MB Studio HiFi-GAN and 21.7 MB Mobile iSTFTNet ONNX specialists)."
 readme = "README.md"
 license = "MIT"

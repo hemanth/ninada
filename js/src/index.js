@@ -392,7 +392,7 @@ async function resolveOrt(explicitOrt, webmlKit = null) {
   return null;
 }
 
-const BROWSER_MODEL_CACHE = 'ninada-onnx-v5.0.0';
+const BROWSER_MODEL_CACHE = 'ninada-onnx-v5.1.2';
 
 async function fetchBrowserCachedBytes(url, useCache = true, validator = null) {
   const absUrl =

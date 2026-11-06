@@ -1,12 +1,12 @@
-import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.1.2';
+import ninada, { SAMPLE_RATE, createSplitStudioVitsSession } from './ninada.mjs?v=5.1.3';
 
 const HF_REPO = 'gnumanth/ninada';
 const SUPPORTED_LANGS = ['en', 'sa', 'kn', 'hi', 'ta', 'te', 'ml', 'mr', 'bn', 'gu', 'pa', 'or'];
 const LOCAL_BUNDLED_LANGS = new Set(['en', 'sa', 'kn', 'hi', 'ta', 'te', 'ml']);
 
-const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v5.1.1';
+const DEFAULT_MODEL_CACHE_NAME = 'ninada-onnx-v5.1.2';
 const MODEL_CACHE_PREFIX = 'ninada-onnx-';
-const IDB_NAME = 'ninada-onnx-idb-v511';
+const IDB_NAME = 'ninada-onnx-idb-v512';
 const LEGACY_IDB_NAMES = [
   'ninada-onnx-idb-v3',
   'ninada-onnx-idb-v31',
@@ -16,6 +16,7 @@ const LEGACY_IDB_NAMES = [
   'ninada-onnx-idb-v500',
   'ninada-onnx-idb-v501',
   'ninada-onnx-idb-v510',
+  'ninada-onnx-idb-v511',
 ];
 const IDB_STORE = 'models';
 
@@ -185,12 +186,12 @@ function shouldUseMobileWeights() {
 }
 
 function buildFallbackLangSpec(lc) {
-  const verQ = lc === 'en' ? '?v=5.1.1' : '';
-  const vTag = lc === 'en' ? 'v511' : 'v510';
-  const hfMaleUrl = `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}.onnx`;
+  const verQ = lc === 'en' ? '?v=5.1.2' : '';
+  const vTag = lc === 'en' ? 'v512' : 'v510';
+  const hfMaleUrl = `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}.onnx${verQ}`;
   const localMaleUrl = `./models/${lc}.onnx${verQ}`;
   const maleUrls = LOCAL_BUNDLED_LANGS.has(lc) ? [localMaleUrl, hfMaleUrl] : [hfMaleUrl, localMaleUrl];
-  const hfMobMaleUrl = `https://huggingface.co/${HF_REPO}/resolve/main/onnx_mobile/${lc}.onnx`;
+  const hfMobMaleUrl = `https://huggingface.co/${HF_REPO}/resolve/main/onnx_mobile/${lc}.onnx${verQ}`;
   const localMobMaleUrl = `./models_mobile/${lc}.onnx${verQ}`;
   return {
     lang: lc,
@@ -202,7 +203,7 @@ function buildFallbackLangSpec(lc) {
     femaleExpectedBytes: 0,
     femaleTotalMB: 27.93,
     femaleUrls: [
-      `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}_female.onnx`,
+      `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}_female.onnx${verQ}`,
       `./models/${lc}_female.onnx${verQ}`,
     ],
     mobileCacheKey: `ninada_${vTag}_mobile_${lc}_24k_q8f16.onnx`,
@@ -214,8 +215,8 @@ function buildFallbackLangSpec(lc) {
     femaleMobileTotalMB: 21.68,
     femaleMobileUrls: [
       `./models_mobile/${lc}_female.onnx${verQ}`,
-      `https://huggingface.co/${HF_REPO}/resolve/main/onnx_mobile/${lc}_female.onnx`,
-      `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}_female.onnx`,
+      `https://huggingface.co/${HF_REPO}/resolve/main/onnx_mobile/${lc}_female.onnx${verQ}`,
+      `https://huggingface.co/${HF_REPO}/resolve/main/onnx/${lc}_female.onnx${verQ}`,
       `./models/${lc}_female.onnx${verQ}`,
     ],
   };
@@ -229,7 +230,7 @@ async function getModelsManifest() {
       fallbackLanguages[lc] = buildFallbackLangSpec(lc);
     }
     try {
-      const res = await fetch('./models_manifest.json?v=5.1.2', { cache: 'no-cache' });
+      const res = await fetch('./models_manifest.json?v=5.1.3', { cache: 'no-cache' });
       if (res.ok) {
         const json = await res.json();
         if (json?.cacheName) {
@@ -244,7 +245,7 @@ async function getModelsManifest() {
           }
         }
         return {
-          version: json?.version || '5.1.1',
+          version: json?.version || '5.1.2',
           cacheName: activeCacheName,
           languages: mergedLangs,
         };
@@ -253,7 +254,7 @@ async function getModelsManifest() {
       // Fallback to built-in specialist URL map
     }
     return {
-      version: '5.1.1',
+      version: '5.1.2',
       cacheName: activeCacheName,
       languages: fallbackLanguages,
     };

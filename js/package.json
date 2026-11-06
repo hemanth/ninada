@@ -1,6 +1,6 @@
 {
   "name": "ninada",
-  "version": "5.1.1",
+  "version": "5.1.2",
   "description": "In-browser and Node.js 24 kHz text to speech for English, Classical Sanskrit, and 10 Indian languages via dual-tier Studio HiFi-GAN (27.9 MB) and Mobile iSTFTNet (21.7 MB) ONNX specialists or zero-dep Klatt synthesis.",
   "type": "module",
   "main": "dist/index.cjs",

@@ -23,6 +23,7 @@ import json
 import math
 import os
 import random
+import re
 import shutil
 import sys
 import tarfile
@@ -188,15 +189,14 @@ SPECIALIST_RECIPES: dict[str, dict[str, Any]] = {
     "en": {
         "male_donor": "SYSPIN/vits_English_Male",
         "female_donor": "SYSPIN/vits_English_Female",
-        "exact_donor_24k_vocoder_adapt": True,
-        "freeze_text_backbone": True,
-        "male_steps": 650,
-        "female_steps": 650,
-        "lr_g": 1.2e-4,
-        "lr_text": 0.0,
-        "lr_d": 1.2e-4,
-        "target_male_utts": 0,
-        "target_female_utts": 0,
+        "freeze_text_backbone": False,
+        "male_steps": 8000,
+        "female_steps": 8000,
+        "lr_g": 1.6e-4,
+        "lr_text": 1.6e-4,
+        "lr_d": 1.5e-4,
+        "target_male_utts": 3600,
+        "target_female_utts": 3600,
     },
     "mr": {
         "male_donor": "SYSPIN/vits_Marathi_Male",
@@ -582,6 +582,13 @@ def gcs_restore_v5_or_v4(
     return gcs_download_if_exists(bucket_name, f"ninada_v4/{fallback_rel}", local_path)
 
 
+def _clean_indictts_english_transcript(raw_text: str) -> str:
+    """Repair legacy Windows-1252 apostrophes (`\\ufffd`) and drop corrupted lines."""
+    txt = re.sub(r"(?<=[A-Za-z])\ufffd(?=[sStTdDmMrRvVlL]\b)", "'", str(raw_text or ""))
+    txt = txt.replace("\ufffd", "")
+    return re.sub(r"\s+", " ", txt).strip()
+
+
 def stream_indictts_english_splits(
     lang_wav_dir: Path,
     t_male: int,
@@ -592,62 +599,68 @@ def stream_indictts_english_splits(
     hf_tok: str | None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """
-    Stream single-speaker 44,100 Hz -> 24,000 Hz full-band clean studio English splits
-    from `MikhailT/hifi-tts` (`clean` subset, CC-BY-4.0: speaker `6097` Male & `92` Female).
+    Stream single-speaker 48,000 Hz -> 24,000 Hz full-band broadcast Studio Indian-English splits
+    from `SPRINGLab/IndicTTS-English`:
+      - Male: `train_hindifullmale_*.wav` (shards 08, 09, 10)
+      - Female: `train_hindifullfemale_*.wav` (shards 07, 08)
     """
-    api = HfApi(token=hf_tok)
-    all_files = sorted(
-        f for f in api.list_repo_files("MikhailT/hifi-tts", repo_type="dataset")
-        if f.startswith("data/train.clean-") and f.endswith(".parquet")
-    )
-    # Speaker 6097 lives in shards 00..11; Speaker 92 lives in shards 26..34
-    ordered_shards: list[str] = []
-    if t_male + need_eval > 0:
-        ordered_shards.extend(all_files[:4])
+    fem_holdout = 40 if t_fem >= 100 else 0
+    shard_indices: list[int] = []
     if t_fem > 0:
-        ordered_shards.extend(reversed(all_files[-4:]))
+        shard_indices.extend([7, 8])
+    if t_male + need_eval > 0:
+        for idx in (9, 8, 10):
+            if idx not in shard_indices:
+                shard_indices.append(idx)
+    ordered_shards = [f"data/train-{idx:05d}-of-00028.parquet" for idx in shard_indices]
 
     male_list: list[dict[str, Any]] = []
     fem_list: list[dict[str, Any]] = []
 
     for shard in ordered_shards:
-        if len(male_list) >= t_male + need_eval and len(fem_list) >= t_fem:
+        if len(male_list) >= t_male + need_eval and len(fem_list) >= t_fem + fem_holdout:
             break
         try:
             pq_path = hf_hub_download(
-                repo_id="MikhailT/hifi-tts",
+                repo_id="SPRINGLab/IndicTTS-English",
                 filename=shard,
                 repo_type="dataset",
                 token=hf_tok,
             )
             pf = pq.ParquetFile(pq_path)
         except Exception as exc:
-            print(f"[WARN] Hi-Fi TTS shard {shard} skipped: {exc}", flush=True)
+            print(f"[WARN] IndicTTS-English shard {shard} skipped: {exc}", flush=True)
             continue
 
         for batch in pf.iter_batches(batch_size=64):
-            if len(male_list) >= t_male + need_eval and len(fem_list) >= t_fem:
+            if len(male_list) >= t_male + need_eval and len(fem_list) >= t_fem + fem_holdout:
                 break
             cols = batch.to_pydict()
-            speakers = cols.get("speaker", [])
-            texts = cols.get("text_normalized") or cols.get("text_no_preprocessing") or cols.get("text", [])
+            texts = cols.get("text", [])
             audio_col = cols.get("audio", [])
 
             for i in range(len(texts)):
-                spk = str(speakers[i] or "").strip() if i < len(speakers) else ""
-                if spk == "6097":
+                aud = audio_col[i] if i < len(audio_col) else None
+                if not isinstance(aud, dict):
+                    continue
+                apath = str(aud.get("path") or "").strip().lower()
+                if apath.startswith("train_hindifullmale_"):
                     g_str = "Male"
-                elif spk == "92":
+                elif apath.startswith("train_hindifullfemale_"):
                     g_str = "Female"
                 else:
                     continue
 
                 if g_str == "Male" and len(male_list) >= t_male + need_eval:
                     continue
-                if g_str == "Female" and len(fem_list) >= t_fem:
+                if g_str == "Female" and len(fem_list) >= t_fem + fem_holdout:
                     continue
 
-                raw_text = str(texts[i] or "").strip()
+                if "\ufffd" in str(texts[i] or "") and not re.search(
+                    r"(?<=[A-Za-z])\ufffd(?=[sStTdDmMrRvVlL]\b)", str(texts[i] or "")
+                ):
+                    continue
+                raw_text = _clean_indictts_english_transcript(str(texts[i] or ""))
                 if len(raw_text) < 10 or len(raw_text) > 260:
                     continue
                 norm_t = clean_native_text(raw_text, "en")
@@ -657,24 +670,25 @@ def stream_indictts_english_splits(
                 if key in eval_blacklist or key in seen_local:
                     continue
 
-                aud = audio_col[i] if i < len(audio_col) else None
-                b_payload = aud.get("bytes") if isinstance(aud, dict) else None
+                b_payload = aud.get("bytes")
                 if not b_payload:
                     continue
                 try:
                     raw_wav, orig_sr = sf.read(io.BytesIO(b_payload), dtype="float32")
                 except Exception:
                     continue
-                if raw_wav.size == 0 or int(orig_sr) < 24000 or float(np.max(np.abs(raw_wav))) >= 0.995:
+                if raw_wav.ndim > 1:
+                    raw_wav = raw_wav.mean(axis=1)
+                if raw_wav.size == 0 or int(orig_sr) < 24000 or float(np.max(np.abs(raw_wav))) >= 0.998:
                     continue
 
-                wav_24k = clean_studio_vits_24k(resample_to_24k(raw_wav, int(orig_sr)), pad_tail_sec=0.20)
+                wav_24k = clean_studio_vits_24k(resample_to_24k(raw_wav, int(orig_sr)), pad_tail_sec=0.18)
                 if wav_24k is None:
                     continue
 
                 dur_s = wav_24k.size / SAMPLE_RATE_24K
                 cps = len(norm_t) / max(dur_s, 0.1)
-                if cps < 5.5 or cps > 25.0:
+                if cps < 4.5 or cps > 25.0:
                     continue
 
                 seen_local.add(key)
@@ -705,6 +719,8 @@ def stream_indictts_english_splits(
         except Exception:
             pass
 
+    if fem_holdout > 0 and len(fem_list) > fem_holdout:
+        fem_list = fem_list[fem_holdout:]
     return male_list, fem_list
 
 
@@ -829,7 +845,8 @@ def prepare_heldout_and_native_splits(
             if sum(1 for r in test_rows if r["lang"] == lc) >= 40:
                 continue
             eval_tar = work_dir / f"{lc}_eval.tar.gz"
-            if not (lc == "en" and lc in f_male_set) and gcs_download_if_exists(gcs_bucket, f"ninada_v5/eval_splits/{lc}_eval.tar.gz", eval_tar):
+            eval_blob_name = "en_indictts_eval.tar.gz" if lc == "en" else f"{lc}_eval.tar.gz"
+            if gcs_download_if_exists(gcs_bucket, f"ninada_v5/eval_splits/{eval_blob_name}", eval_tar):
                 ex_dir = work_dir / f"eval_extract_{lc}"
                 ex_dir.mkdir(parents=True, exist_ok=True)
                 with tarfile.open(eval_tar, "r:gz") as tf:
@@ -875,15 +892,19 @@ def prepare_heldout_and_native_splits(
         recipe = SPECIALIST_RECIPES[lang]
         t_male = smoke_limit if smoke_limit > 0 else int(recipe["target_male_utts"])
         t_fem = smoke_limit if smoke_limit > 0 else int(recipe["target_female_utts"])
+        skip_male_env = os.environ.get("SKIP_MALE", "0").strip() == "1"
         existing_lang_test = sum(1 for r in test_rows if r["lang"] == lang)
         target_test_n = 2 if smoke_limit > 0 else 40
-        need_eval = (4 if smoke_limit > 0 else 80) if existing_lang_test < target_test_n else 0
+        need_eval = 0 if (skip_male_env and skip_bench) else ((4 if smoke_limit > 0 else 80) if existing_lang_test < target_test_n else 0)
 
         male_done = (
-            not smoke_limit
-            and lang not in f_male_set
-            and gcs_exists_v5_or_v4(gcs_bucket, f"checkpoints/{lang}_male.safetensors")
-            and gcs_exists_v5_or_v4(gcs_bucket, f"onnx/{lang}.onnx")
+            skip_male_env
+            or (
+                not smoke_limit
+                and lang not in f_male_set
+                and gcs_exists_v5_or_v4(gcs_bucket, f"checkpoints/{lang}_male.safetensors")
+                and gcs_exists_v5_or_v4(gcs_bucket, f"onnx/{lang}.onnx")
+            )
         )
         fem_done = (
             os.environ.get("SKIP_FEMALE", "0").strip() == "1"
@@ -1083,7 +1104,8 @@ def prepare_heldout_and_native_splits(
                     tf_out.add(stage_d / "val.jsonl", arcname="val.jsonl")
                     tf_out.add(stage_d / "test.jsonl", arcname="test.jsonl")
                     tf_out.add(stage_d / "test_gt_wavs", arcname="test_gt_wavs")
-                gcs_upload_if_configured(gcs_bucket, eval_tar_out, f"ninada_v5/eval_splits/{lang}_eval.tar.gz")
+                eval_blob_out = "en_indictts_eval.tar.gz" if lang == "en" else f"{lang}_eval.tar.gz"
+                gcs_upload_if_configured(gcs_bucket, eval_tar_out, f"ninada_v5/eval_splits/{eval_blob_out}")
                 eval_tar_out.unlink(missing_ok=True)
                 shutil.rmtree(stage_d, ignore_errors=True)
 
@@ -1855,6 +1877,7 @@ def main() -> None:
     training_summary: dict[str, Any] = {}
 
     # 1. Train & Export Primary Native Male 24,000 Hz Specialists
+    skip_male = os.environ.get("SKIP_MALE", "0").strip() == "1"
     for lang in target_langs:
         recipe = SPECIALIST_RECIPES[lang]
         donor_cfg, donor_sd = load_donor_checkpoint(recipe["male_donor"])
@@ -1862,11 +1885,21 @@ def main() -> None:
             lang, donor_cfg, donor_sd["text_encoder.emb.weight"]
         )
         tokenizers[lang] = tok
+        if skip_male and args.skip_bench:
+            del donor_sd
+            print(f"[SKIP_MALE] Built tokenizer for {lang}; skipping Male training.", flush=True)
+            continue
 
         net = StudioVitsModel(num_chars=tok.num_chars, use_discriminator=True)
         patched_sd = dict(donor_sd)
         patched_sd["text_encoder.emb.weight"] = remapped_emb
         net.load_state_dict(patched_sd, strict=True)
+        donor_sr_init = int(donor_cfg.get("audio", {}).get("sample_rate", 22050))
+        if donor_sr_init != SAMPLE_RATE_24K and not recipe.get("exact_donor_24k_vocoder_adapt"):
+            with torch.no_grad():
+                net.duration_predictor.flows[0].translation.data[0, 0] += math.log(
+                    float(SAMPLE_RATE_24K) / float(donor_sr_init)
+                )
 
         # Record step-0 untuned warmstart baseline on held-out test split for this language
         if not args.skip_bench:
@@ -2007,6 +2040,12 @@ def main() -> None:
             tok, f_cfg, f_sd["text_encoder.emb.weight"], lang
         )
         net_f.load_state_dict(patched_f_sd, strict=True)
+        f_donor_sr = int(f_cfg.get("audio", {}).get("sample_rate", 22050))
+        if f_donor_sr != SAMPLE_RATE_24K and not recipe.get("exact_donor_24k_vocoder_adapt"):
+            with torch.no_grad():
+                net_f.duration_predictor.flows[0].translation.data[0, 0] += math.log(
+                    float(SAMPLE_RATE_24K) / float(f_donor_sr)
+                )
 
         f_steps = args.smoke_steps if args.smoke_steps > 0 else int(recipe["female_steps"])
         if recipe.get("exact_donor_24k_vocoder_adapt"):
